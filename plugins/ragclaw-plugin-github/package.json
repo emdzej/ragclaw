@@ -1,0 +1,23 @@
+{
+  "name": "ragclaw-plugin-github",
+  "version": "0.1.0",
+  "description": "RagClaw plugin for indexing GitHub repositories, issues, PRs, and discussions",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["ragclaw", "ragclaw-plugin", "github", "issues", "pull-requests"],
+  "peerDependencies": {
+    "@emdzej/ragclaw-core": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@emdzej/ragclaw-core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  },
+  "ragclaw": {
+    "schemes": ["github", "gh"]
+  }
+}

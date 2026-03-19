@@ -1,0 +1,23 @@
+{
+  "name": "ragclaw-plugin-obsidian",
+  "version": "0.1.0",
+  "description": "RagClaw plugin for indexing Obsidian vaults",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["ragclaw", "ragclaw-plugin", "obsidian", "notes", "markdown"],
+  "peerDependencies": {
+    "@emdzej/ragclaw-core": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@emdzej/ragclaw-core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  },
+  "ragclaw": {
+    "schemes": ["obsidian", "vault"]
+  }
+}
