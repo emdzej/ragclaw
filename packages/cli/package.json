@@ -1,0 +1,33 @@
+{
+  "name": "@emdzej/ragclaw-cli",
+  "version": "0.1.0",
+  "description": "CLI for RagClaw - local-first RAG engine",
+  "type": "module",
+  "bin": {
+    "ragclaw": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@emdzej/ragclaw-core": "workspace:*",
+    "commander": "^13.1.0",
+    "chalk": "^5.4.1",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
