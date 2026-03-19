@@ -8,13 +8,15 @@ import {
   Store,
   Embedder,
   SemanticChunker,
+  CodeChunker,
   MarkdownExtractor,
   TextExtractor,
   PdfExtractor,
   DocxExtractor,
   WebExtractor,
+  CodeExtractor,
 } from "@emdzej/ragclaw-core";
-import type { Source, Extractor, ChunkRecord } from "@emdzej/ragclaw-core";
+import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
 import { getDbPath, RAGCLAW_DIR } from "../config.js";
 import { mkdir } from "fs/promises";
 
@@ -60,9 +62,11 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
     new PdfExtractor(),
     new DocxExtractor(),
     new WebExtractor(),
+    new CodeExtractor(),
     new TextExtractor(), // Fallback, keep last
   ];
-  const chunker = new SemanticChunker();
+  const semanticChunker = new SemanticChunker();
+  const codeChunker = new CodeChunker();
 
   try {
     const sources = await collectSources(source, options);
@@ -113,6 +117,9 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
         // Extract content
         const extracted = await extractor.extract(src);
+
+        // Choose chunker based on content type
+        const chunker: Chunker = extracted.sourceType === "code" ? codeChunker : semanticChunker;
 
         // Chunk content
         const sourceId = existing?.id ?? "";
@@ -222,7 +229,11 @@ async function collectFilesRecursive(dir: string, options: AddOptions): Promise<
       }
 
       // Only include supported extensions
-      if ([".md", ".markdown", ".mdx", ".txt", ".text", ".pdf", ".docx"].includes(ext)) {
+      const supportedExts = [
+        ".md", ".markdown", ".mdx", ".txt", ".text", ".pdf", ".docx",
+        ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java",
+      ];
+      if (supportedExts.includes(ext)) {
         sources.push({ type: "file", path: fullPath });
       }
     }
