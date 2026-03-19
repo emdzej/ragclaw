@@ -9,6 +9,7 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 - **🌳 Code-aware** — Tree-sitter AST parsing for semantic code chunks
 - **📱 Portable** — SQLite database, copy anywhere
 - **🔌 MCP server** — Works with Codex, Claude Code, OpenCode
+- **🧩 Extensible** — Plugin system for custom extractors
 - **⚡ Incremental** — Only re-indexes changed files
 
 ## Quick Start
@@ -232,6 +233,67 @@ Reindex ragclaw with force=true
 5. **Search** — Hybrid scoring: 70% vector + 30% BM25
 
 All processing happens locally. No external APIs.
+
+---
+
+## Plugins
+
+Extend RagClaw with custom extractors for additional data sources.
+
+### Using Plugins
+
+```bash
+# Install from npm
+npm install -g ragclaw-plugin-youtube
+
+# Use custom schemes
+ragclaw add youtube://dQw4w9WgXcQ
+ragclaw add yt://dQw4w9WgXcQ
+
+# List installed plugins
+ragclaw plugin list
+```
+
+### Available Plugins
+
+| Plugin | Source | Schemes |
+|--------|--------|---------|
+| `ragclaw-plugin-youtube` | YouTube transcripts | `youtube://`, `yt://` |
+
+### Creating Plugins
+
+```bash
+# Scaffold a new plugin
+ragclaw plugin create notion
+
+# Creates ragclaw-plugin-notion/ with:
+#   package.json
+#   tsconfig.json
+#   src/index.ts (example extractor)
+#   README.md
+```
+
+### Plugin Interface
+
+```typescript
+import type { RagClawPlugin, Extractor } from "@emdzej/ragclaw-core";
+
+const plugin: RagClawPlugin = {
+  name: "ragclaw-plugin-notion",
+  version: "0.1.0",
+  extractors: [new MyExtractor()],
+  schemes: ["notion"],      // URL schemes to handle
+  extensions: [".notion"],  // File extensions to handle
+};
+
+export default plugin;
+```
+
+### Plugin Discovery
+
+Plugins are discovered from:
+- **npm global:** `ragclaw-plugin-*` packages
+- **Local:** `~/.openclaw/ragclaw/plugins/`
 
 ---
 
