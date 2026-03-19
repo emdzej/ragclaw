@@ -18,6 +18,7 @@ export { PdfExtractor } from "./extractors/pdf.js";
 export { DocxExtractor } from "./extractors/docx.js";
 export { WebExtractor } from "./extractors/web.js";
 export { CodeExtractor } from "./extractors/code.js";
+export { ImageExtractor, ocrFromBuffer } from "./extractors/image.js";
 
 // Utils
 export { cosineSimilarity } from "./utils/math.js";

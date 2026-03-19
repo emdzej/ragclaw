@@ -15,6 +15,7 @@ import {
   DocxExtractor,
   WebExtractor,
   CodeExtractor,
+  ImageExtractor,
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
 import { getDbPath, RAGCLAW_DIR } from "../config.js";
@@ -63,6 +64,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
     new DocxExtractor(),
     new WebExtractor(),
     new CodeExtractor(),
+    new ImageExtractor(),
     new TextExtractor(), // Fallback, keep last
   ];
   const semanticChunker = new SemanticChunker();
@@ -232,6 +234,7 @@ async function collectFilesRecursive(dir: string, options: AddOptions): Promise<
       const supportedExts = [
         ".md", ".markdown", ".mdx", ".txt", ".text", ".pdf", ".docx",
         ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java",
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
       ];
       if (supportedExts.includes(ext)) {
         sources.push({ type: "file", path: fullPath });
