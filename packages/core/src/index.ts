@@ -20,5 +20,13 @@ export { WebExtractor } from "./extractors/web.js";
 export { CodeExtractor } from "./extractors/code.js";
 export { ImageExtractor, ocrFromBuffer } from "./extractors/image.js";
 
+// Plugin system
+export type {
+  RagClawPlugin,
+  PluginManifest,
+  LoadedPlugin,
+  PluginLoaderOptions,
+} from "./plugin.js";
+
 // Utils
 export { cosineSimilarity } from "./utils/math.js";
