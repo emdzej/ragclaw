@@ -14,5 +14,8 @@
   "packageManager": "pnpm@10.6.1",
   "engines": {
     "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
   }
 }
