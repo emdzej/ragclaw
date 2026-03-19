@@ -350,7 +350,9 @@ export class Store {
     const rows = this.db.prepare("SELECT * FROM chunks WHERE embedding IS NOT NULL").all() as Record<string, unknown>[];
 
     const results: SearchResult[] = rows.map((row) => {
-      const chunkEmbedding = new Float32Array(row.embedding as ArrayBuffer);
+      // SQLite returns Buffer, need to convert to Float32Array properly
+      const buf = row.embedding as Buffer;
+      const chunkEmbedding = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
       const similarity = cosineSimilarity(embedding, chunkEmbedding);
 
       return {
