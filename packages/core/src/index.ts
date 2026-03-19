@@ -13,6 +13,9 @@ export { SemanticChunker } from "./chunkers/semantic.js";
 // Extractors
 export { MarkdownExtractor } from "./extractors/markdown.js";
 export { TextExtractor } from "./extractors/text.js";
+export { PdfExtractor } from "./extractors/pdf.js";
+export { DocxExtractor } from "./extractors/docx.js";
+export { WebExtractor } from "./extractors/web.js";
 
 // Utils
 export { cosineSimilarity } from "./utils/math.js";

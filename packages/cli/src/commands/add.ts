@@ -10,6 +10,9 @@ import {
   SemanticChunker,
   MarkdownExtractor,
   TextExtractor,
+  PdfExtractor,
+  DocxExtractor,
+  WebExtractor,
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord } from "@emdzej/ragclaw-core";
 import { getDbPath, RAGCLAW_DIR } from "../config.js";
@@ -52,34 +55,55 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
     throw error;
   }
 
-  const extractors: Extractor[] = [new MarkdownExtractor(), new TextExtractor()];
+  const extractors: Extractor[] = [
+    new MarkdownExtractor(),
+    new PdfExtractor(),
+    new DocxExtractor(),
+    new WebExtractor(),
+    new TextExtractor(), // Fallback, keep last
+  ];
   const chunker = new SemanticChunker();
 
   try {
     const sources = await collectSources(source, options);
-    console.log(chalk.dim(`Found ${sources.length} file(s) to process`));
+    console.log(chalk.dim(`Found ${sources.length} source(s) to process`));
 
     let totalChunks = 0;
 
     for (const src of sources) {
-      const fileSpinner = ora(`Processing ${src.path}`).start();
+      const displayPath = src.path || src.url || "unknown";
+      const fileSpinner = ora(`Processing ${displayPath}`).start();
 
       try {
         // Find matching extractor
         const extractor = extractors.find((e) => e.canHandle(src));
         if (!extractor) {
-          fileSpinner.warn(`Skipping ${src.path} (unsupported format)`);
+          fileSpinner.warn(`Skipping ${displayPath} (unsupported format)`);
           continue;
         }
 
-        // Check if already indexed with same hash
-        const content = await readFile(src.path!, "utf-8");
-        const contentHash = createHash("sha256").update(content).digest("hex");
-        const existing = await store.getSource(src.path!);
+        // For URLs, we need different handling
+        const isUrl = src.type === "url";
+        const sourcePath = isUrl ? src.url! : src.path!;
 
-        if (existing && existing.contentHash === contentHash) {
-          fileSpinner.info(`Skipping ${src.path} (unchanged)`);
-          continue;
+        // Check if already indexed (for URLs, always re-fetch)
+        const existing = await store.getSource(sourcePath);
+
+        // For files, check content hash to skip unchanged
+        let contentHash: string;
+        if (!isUrl) {
+          const content = await readFile(src.path!, "utf-8").catch(() => 
+            readFile(src.path!).then(b => b.toString("base64"))
+          );
+          contentHash = createHash("sha256").update(content).digest("hex");
+
+          if (existing && existing.contentHash === contentHash) {
+            fileSpinner.info(`Skipping ${displayPath} (unchanged)`);
+            continue;
+          }
+        } else {
+          // For URLs, use timestamp-based hash (always re-index)
+          contentHash = createHash("sha256").update(sourcePath + Date.now()).digest("hex");
         }
 
         // Remove old chunks if re-indexing
@@ -92,30 +116,35 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
         // Chunk content
         const sourceId = existing?.id ?? "";
-        const chunks = await chunker.chunk(extracted, sourceId, src.path!);
+        const chunks = await chunker.chunk(extracted, sourceId, sourcePath);
 
         // Generate embeddings
         const embeddings = await embedder.embedBatch(chunks.map((c) => c.text));
 
         // Create/update source record
-        const fileStat = await stat(src.path!);
         const now = Date.now();
+        let mtime: number | undefined;
+        
+        if (!isUrl) {
+          const fileStat = await stat(src.path!);
+          mtime = fileStat.mtimeMs;
+        }
 
         let finalSourceId: string;
         if (existing) {
           await store.updateSource(existing.id, {
             contentHash,
-            mtime: fileStat.mtimeMs,
+            mtime,
             indexedAt: now,
             metadata: extracted.metadata,
           });
           finalSourceId = existing.id;
         } else {
           finalSourceId = await store.addSource({
-            path: src.path!,
-            type: "file",
+            path: sourcePath,
+            type: src.type,
             contentHash,
-            mtime: fileStat.mtimeMs,
+            mtime,
             indexedAt: now,
             metadata: extracted.metadata,
           });
@@ -132,14 +161,14 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
         await store.addChunks(chunkRecords);
         totalChunks += chunkRecords.length;
 
-        fileSpinner.succeed(`Indexed ${src.path} (${chunkRecords.length} chunks)`);
+        fileSpinner.succeed(`Indexed ${displayPath} (${chunkRecords.length} chunks)`);
       } catch (error) {
-        fileSpinner.fail(`Failed to process ${src.path}: ${error}`);
+        fileSpinner.fail(`Failed to process ${displayPath}: ${error}`);
       }
     }
 
     console.log();
-    console.log(chalk.green(`✓ Indexed ${sources.length} file(s), ${totalChunks} chunks`));
+    console.log(chalk.green(`✓ Indexed ${sources.length} source(s), ${totalChunks} chunks`));
   } finally {
     await store.close();
   }
@@ -193,7 +222,7 @@ async function collectFilesRecursive(dir: string, options: AddOptions): Promise<
       }
 
       // Only include supported extensions
-      if ([".md", ".markdown", ".mdx", ".txt", ".text"].includes(ext)) {
+      if ([".md", ".markdown", ".mdx", ".txt", ".text", ".pdf", ".docx"].includes(ext)) {
         sources.push({ type: "file", path: fullPath });
       }
     }
