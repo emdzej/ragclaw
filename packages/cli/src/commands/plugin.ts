@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { PluginLoader } from "../plugins/loader.js";
+import { pluginCreate as createScaffold } from "../plugins/scaffold.js";
 
 const BUILT_IN_EXTRACTORS = [
   { name: "markdown", extensions: ".md, .mdx" },
@@ -71,4 +72,8 @@ export async function pluginRemove(name: string): Promise<void> {
   console.log("");
   console.log("For now, remove manually:");
   console.log(chalk.cyan(`  npm uninstall -g ${name}`));
+}
+
+export async function pluginCreate(name: string): Promise<void> {
+  await createScaffold(name);
 }
