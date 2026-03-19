@@ -1,0 +1,18 @@
+{
+  "name": "ragclaw",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "pnpm@10.6.1",
+  "engines": {
+    "node": ">=22"
+  }
+}
