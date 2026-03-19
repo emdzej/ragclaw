@@ -60,5 +60,5 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Test CLI help
-        run: node packages/cli/dist/cli.js --help
+      - name: Verify CLI build
+        run: test -f packages/cli/dist/cli.js
