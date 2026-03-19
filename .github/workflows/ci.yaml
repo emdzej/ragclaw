@@ -58,4 +58,4 @@ jobs:
         run: pnpm build
 
       - name: Test CLI help
-        run: node packages/cli/dist/index.js --help
+        run: node packages/cli/dist/cli.js --help
