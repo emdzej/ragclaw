@@ -28,7 +28,25 @@ import {
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
 
-const RAGCLAW_DIR = join(homedir(), ".openclaw", "ragclaw");
+// XDG Base Directory paths
+function getXdgConfigHome(): string {
+  return process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+}
+
+function getXdgDataHome(): string {
+  return process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+}
+
+function getDefaultDataDir(): string {
+  // Check for legacy path first (backwards compatibility)
+  const legacyDir = join(homedir(), ".openclaw", "ragclaw");
+  if (existsSync(legacyDir)) {
+    return legacyDir;
+  }
+  return join(getXdgDataHome(), "ragclaw");
+}
+
+const RAGCLAW_DIR = process.env.RAGCLAW_DATA_DIR || getDefaultDataDir();
 
 function getDbPath(name: string): string {
   return join(RAGCLAW_DIR, `${name}.sqlite`);

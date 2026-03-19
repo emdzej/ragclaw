@@ -1,4 +1,3 @@
-import { homedir } from "os";
 import { join, dirname } from "path";
 import { existsSync } from "fs";
 import { readdir, readFile } from "fs/promises";
@@ -11,8 +10,7 @@ import type {
   Extractor,
   Chunker,
 } from "@emdzej/ragclaw-core";
-
-const DEFAULT_LOCAL_PLUGINS_DIR = join(homedir(), ".openclaw", "ragclaw", "plugins");
+import { getPluginsDir } from "../config.js";
 
 export class PluginLoader {
   private options: PluginLoaderOptions;
@@ -21,7 +19,7 @@ export class PluginLoader {
 
   constructor(options: PluginLoaderOptions = {}) {
     this.options = {
-      localPluginsDir: DEFAULT_LOCAL_PLUGINS_DIR,
+      localPluginsDir: getPluginsDir(),
       ...options,
     };
   }

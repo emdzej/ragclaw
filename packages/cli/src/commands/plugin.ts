@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { PluginLoader } from "../plugins/loader.js";
 import { pluginCreate as createScaffold } from "../plugins/scaffold.js";
+import { getPluginsDir } from "../config.js";
 
 const BUILT_IN_EXTRACTORS = [
   { name: "markdown", extensions: ".md, .mdx" },
@@ -25,7 +26,7 @@ export async function pluginList(): Promise<void> {
     console.log(chalk.cyan("  npm install -g ragclaw-plugin-<name>"));
     console.log("");
     console.log("Or create local plugins in:");
-    console.log(chalk.cyan("  ~/.openclaw/ragclaw/plugins/"));
+    console.log(chalk.cyan(`  ${getPluginsDir()}`));
   } else {
     console.log(chalk.bold("Installed plugins:"));
     console.log("");

@@ -83,21 +83,52 @@ ragclaw remove <source>    # Remove from index
 
 ## Storage & Portability
 
-Knowledge bases are stored as SQLite files:
+Knowledge bases are stored as SQLite files following XDG Base Directory spec:
+
 ```
-~/.openclaw/ragclaw/
-├── default.sqlite      # Default KB
-├── project-a.sqlite    # Named KB
-└── docs.sqlite
+~/.local/share/ragclaw/       # Data directory (XDG_DATA_HOME)
+├── default.sqlite            # Default KB
+├── project-a.sqlite          # Named KB
+└── plugins/                  # Local plugins
+
+~/.config/ragclaw/            # Config directory (XDG_CONFIG_HOME)
+└── config.yaml               # Optional configuration
 ```
 
-**Copy/sync databases freely:**
+### Configuration
+
+Create `~/.config/ragclaw/config.yaml` to customize paths:
+
+```yaml
+# Override data directory
+dataDir: ~/my-ragclaw-data
+
+# Override plugins directory
+pluginsDir: ~/my-ragclaw-plugins
+```
+
+### Environment Variables
+
+```bash
+RAGCLAW_DATA_DIR      # Override data directory
+RAGCLAW_PLUGINS_DIR   # Override plugins directory
+RAGCLAW_CONFIG_DIR    # Override config directory
+XDG_DATA_HOME         # XDG data home (default: ~/.local/share)
+XDG_CONFIG_HOME       # XDG config home (default: ~/.config)
+```
+
+### Backwards Compatibility
+
+If `~/.openclaw/ragclaw/` exists, RagClaw will use it automatically (for existing OpenClaw users).
+
+### Copy/Sync Databases
+
 ```bash
 # Backup
-cp ~/.openclaw/ragclaw/default.sqlite ~/backup/
+cp ~/.local/share/ragclaw/default.sqlite ~/backup/
 
 # Sync between machines
-rsync -av ~/.openclaw/ragclaw/ user@server:~/.openclaw/ragclaw/
+rsync -av ~/.local/share/ragclaw/ user@server:~/.local/share/ragclaw/
 
 # Use from different location
 ragclaw search "query" -d /path/to/backup.sqlite
@@ -293,7 +324,9 @@ export default plugin;
 
 Plugins are discovered from:
 - **npm global:** `ragclaw-plugin-*` packages
-- **Local:** `~/.openclaw/ragclaw/plugins/`
+- **Local:** `~/.local/share/ragclaw/plugins/`
+
+Override with `RAGCLAW_PLUGINS_DIR` or config file.
 
 ---
 
