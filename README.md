@@ -38,10 +38,10 @@ ragclaw status
 ## OpenClaw Skill
 
 ```
-User: zaindeksuj https://docs.example.com/guide
+User: index https://docs.example.com/guide
 Agent: ✓ Indexed 15 chunks from docs.example.com
 
-User: co wiesz o rate limiting?
+User: what do you know about rate limiting?
 Agent: Based on indexed knowledge: [relevant context]
 ```
 
