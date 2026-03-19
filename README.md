@@ -289,6 +289,8 @@ ragclaw plugin list
 
 | Plugin | Source | Schemes |
 |--------|--------|---------|
+| `ragclaw-plugin-github` | GitHub repos, issues, PRs | `github://`, `gh://` |
+| `ragclaw-plugin-obsidian` | Obsidian vaults | `obsidian://`, `vault://` |
 | `ragclaw-plugin-youtube` | YouTube transcripts | `youtube://`, `yt://` |
 
 ### Creating Plugins

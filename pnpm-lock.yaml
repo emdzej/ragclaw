@@ -114,6 +114,30 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  plugins/ragclaw-plugin-github:
+    devDependencies:
+      '@emdzej/ragclaw-core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  plugins/ragclaw-plugin-obsidian:
+    devDependencies:
+      '@emdzej/ragclaw-core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   plugins/ragclaw-plugin-youtube:
     devDependencies:
       '@emdzej/ragclaw-core':
