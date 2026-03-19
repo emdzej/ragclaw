@@ -18,7 +18,7 @@ import {
   ImageExtractor,
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
-import { getDbPath, RAGCLAW_DIR } from "../config.js";
+import { getDbPath, ensureDataDir } from "../config.js";
 import { mkdir } from "fs/promises";
 import { PluginLoader } from "../plugins/loader.js";
 
@@ -35,7 +35,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
   // Auto-create database if it doesn't exist
   if (!existsSync(dbPath)) {
-    await mkdir(RAGCLAW_DIR, { recursive: true });
+    ensureDataDir();
     console.log(chalk.dim(`Creating knowledge base "${options.db}"...`));
   }
 

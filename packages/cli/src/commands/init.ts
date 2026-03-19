@@ -1,7 +1,6 @@
-import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import chalk from "chalk";
-import { RAGCLAW_DIR, getDbPath } from "../config.js";
+import { ensureDataDir, getDbPath } from "../config.js";
 import { Store } from "@emdzej/ragclaw-core";
 
 export async function initCommand(name: string): Promise<void> {
@@ -13,7 +12,7 @@ export async function initCommand(name: string): Promise<void> {
   }
 
   // Create directory if needed
-  await mkdir(RAGCLAW_DIR, { recursive: true });
+  ensureDataDir();
 
   // Initialize empty database
   const store = new Store();
