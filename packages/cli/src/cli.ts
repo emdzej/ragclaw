@@ -8,7 +8,7 @@ import { statusCommand } from "./commands/status.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
 import { reindex } from "./commands/reindex.js";
-import { pluginList, pluginAdd, pluginRemove } from "./commands/plugin.js";
+import { pluginList, pluginAdd, pluginRemove, pluginCreate } from "./commands/plugin.js";
 
 const program = new Command();
 
@@ -94,5 +94,11 @@ pluginCmd
   .description("Uninstall a plugin")
   .argument("<name>", "Plugin name")
   .action(pluginRemove);
+
+pluginCmd
+  .command("create")
+  .description("Create a new plugin from template")
+  .argument("<name>", "Plugin name (e.g., 'notion' or 'ragclaw-plugin-notion')")
+  .action(pluginCreate);
 
 program.parse();
