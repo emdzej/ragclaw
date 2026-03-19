@@ -13,10 +13,32 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 
 ## Quick Start
 
-```bash
-# Install
-npm install -g @emdzej/ragclaw-cli
+### Install from npm
 
+```bash
+npm install -g @emdzej/ragclaw-cli
+```
+
+### Install from source
+
+```bash
+# Clone
+git clone https://github.com/emdzej/ragclaw.git
+cd ragclaw
+
+# Install dependencies
+pnpm install
+
+# Build
+pnpm build
+
+# Link CLI globally
+cd packages/cli && npm link
+```
+
+### Usage
+
+```bash
 # Index some docs
 ragclaw add ./docs/
 ragclaw add https://docs.example.com
@@ -213,24 +235,7 @@ All processing happens locally. No external APIs.
 
 ---
 
-## Development
-
-```bash
-# Clone
-git clone https://github.com/emdzej/ragclaw.git
-cd ragclaw
-
-# Install
-pnpm install
-
-# Build
-pnpm build
-
-# Link CLI globally
-cd packages/cli && npm link
-```
-
-### Packages
+## Packages
 
 | Package | Description |
 |---------|-------------|
