@@ -7,6 +7,7 @@ import { searchCommand } from "./commands/search.js";
 import { statusCommand } from "./commands/status.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
+import { reindex } from "./commands/reindex.js";
 
 const program = new Command();
 
@@ -62,5 +63,13 @@ program
   .option("-d, --db <name>", "Knowledge base name", "default")
   .option("-y, --yes", "Skip confirmation")
   .action(removeCommand);
+
+program
+  .command("reindex")
+  .description("Re-process changed sources")
+  .option("-d, --db <name>", "Knowledge base name", "default")
+  .option("-f, --force", "Reindex all sources regardless of hash")
+  .option("-p, --prune", "Remove sources that no longer exist")
+  .action((options) => reindex(options));
 
 program.parse();
