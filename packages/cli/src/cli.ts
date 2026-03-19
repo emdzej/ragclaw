@@ -8,6 +8,7 @@ import { statusCommand } from "./commands/status.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
 import { reindex } from "./commands/reindex.js";
+import { pluginList, pluginAdd, pluginRemove } from "./commands/plugin.js";
 
 const program = new Command();
 
@@ -71,5 +72,27 @@ program
   .option("-f, --force", "Reindex all sources regardless of hash")
   .option("-p, --prune", "Remove sources that no longer exist")
   .action((options) => reindex(options));
+
+// Plugin commands
+const pluginCmd = program
+  .command("plugin")
+  .description("Manage plugins");
+
+pluginCmd
+  .command("list")
+  .description("List installed plugins")
+  .action(pluginList);
+
+pluginCmd
+  .command("add")
+  .description("Install a plugin from npm")
+  .argument("<name>", "Plugin name (e.g., ragclaw-plugin-notion)")
+  .action(pluginAdd);
+
+pluginCmd
+  .command("remove")
+  .description("Uninstall a plugin")
+  .argument("<name>", "Plugin name")
+  .action(pluginRemove);
 
 program.parse();
