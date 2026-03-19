@@ -184,7 +184,7 @@ export class PluginLoader {
       const entries = await readdir(globalNodeModules, { withFileTypes: true });
       
       for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
         if (!entry.name.startsWith("ragclaw-plugin-")) continue;
 
         const pluginPath = join(globalNodeModules, entry.name);
@@ -218,7 +218,7 @@ export class PluginLoader {
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
       if (entry.name.startsWith(".")) continue;
 
       const pluginPath = join(dir, entry.name);

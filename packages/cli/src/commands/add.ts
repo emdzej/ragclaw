@@ -20,6 +20,7 @@ import {
 import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
 import { getDbPath, RAGCLAW_DIR } from "../config.js";
 import { mkdir } from "fs/promises";
+import { PluginLoader } from "../plugins/loader.js";
 
 interface AddOptions {
   db: string;
@@ -43,6 +44,11 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
   const spinner = ora("Loading embedding model...").start();
 
+  // Load plugins
+  const pluginLoader = new PluginLoader();
+  await pluginLoader.loadAll();
+  const pluginExtractors = pluginLoader.getExtractors();
+
   let embedder: Embedder;
   try {
     embedder = new Embedder({
@@ -59,6 +65,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   }
 
   const extractors: Extractor[] = [
+    ...pluginExtractors, // Plugin extractors first (higher priority)
     new MarkdownExtractor(),
     new PdfExtractor(),
     new DocxExtractor(),
@@ -187,8 +194,8 @@ async function collectSources(source: string, options: AddOptions): Promise<Sour
   const resolved = resolve(source);
 
   if (!existsSync(resolved)) {
-    // Check if it's a URL
-    if (source.startsWith("http://") || source.startsWith("https://")) {
+    // Check if it's a URL (http/https or custom scheme)
+    if (source.includes("://")) {
       return [{ type: "url", url: source }];
     }
     throw new Error(`Source not found: ${source}`);
