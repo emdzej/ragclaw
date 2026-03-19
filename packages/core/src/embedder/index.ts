@@ -1,4 +1,4 @@
-import { pipeline, env, Tensor } from "@xenova/transformers";
+import { pipeline, env, Tensor } from "@huggingface/transformers";
 import { homedir } from "os";
 import { join } from "path";
 import type { EmbedderConfig } from "../types.js";

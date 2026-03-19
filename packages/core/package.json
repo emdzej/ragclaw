@@ -18,7 +18,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@xenova/transformers": "^2.17.0",
+    "@huggingface/transformers": "^3.8.0",
     "better-sqlite3": "^11.8.0",
     "canvas": "^3.2.1",
     "cheerio": "^1.2.0",
@@ -47,6 +47,7 @@
     "dist"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   }
 }
