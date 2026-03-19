@@ -137,6 +137,30 @@ const TOOLS: Tool[] = [
       required: ["source"],
     },
   },
+  {
+    name: "rag_reindex",
+    description: "Re-process changed sources in the knowledge base. Only re-indexes files that have changed since last indexing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        db: {
+          type: "string",
+          description: "Knowledge base name (default: 'default')",
+          default: "default",
+        },
+        force: {
+          type: "boolean",
+          description: "Reindex all sources regardless of hash (default: false)",
+          default: false,
+        },
+        prune: {
+          type: "boolean",
+          description: "Remove sources that no longer exist (default: false)",
+          default: false,
+        },
+      },
+    },
+  },
 ];
 
 // Cached embedder (expensive to initialize)
@@ -409,6 +433,138 @@ async function ragRemove(args: { source: string; db?: string }): Promise<string>
   }
 }
 
+async function ragReindex(args: {
+  db?: string;
+  force?: boolean;
+  prune?: boolean;
+}): Promise<string> {
+  const dbName = args.db || "default";
+  const dbPath = getDbPath(dbName);
+
+  if (!existsSync(dbPath)) {
+    return `Knowledge base "${dbName}" not found.`;
+  }
+
+  const store = new Store();
+  await store.open(dbPath);
+
+  const extractors: Extractor[] = [
+    new MarkdownExtractor(),
+    new PdfExtractor(),
+    new DocxExtractor(),
+    new WebExtractor(),
+    new CodeExtractor(),
+    new TextExtractor(),
+  ];
+  const semanticChunker = new SemanticChunker();
+  const codeChunker = new CodeChunker();
+
+  try {
+    const sources = await store.listSources();
+
+    if (sources.length === 0) {
+      return "No sources to reindex.";
+    }
+
+    const embedder = await getEmbedder();
+
+    let updated = 0;
+    let unchanged = 0;
+    let removed = 0;
+    const errors: string[] = [];
+
+    for (const source of sources) {
+      try {
+        const isUrl = source.type === "url";
+
+        // Check if source still exists
+        if (!isUrl && !existsSync(source.path)) {
+          if (args.prune) {
+            await store.removeSource(source.id);
+            removed++;
+          }
+          continue;
+        }
+
+        // Calculate current hash
+        let currentHash: string | undefined;
+        let currentMtime: number | undefined;
+
+        if (!isUrl) {
+          const content = await readFile(source.path, "utf-8").catch(() =>
+            readFile(source.path).then((b) => b.toString("base64"))
+          );
+          currentHash = createHash("sha256").update(content).digest("hex");
+          const fileStat = await stat(source.path);
+          currentMtime = fileStat.mtimeMs;
+        }
+
+        // Skip if unchanged (unless --force)
+        if (!args.force && currentHash && currentHash === source.contentHash) {
+          unchanged++;
+          continue;
+        }
+
+        // Find extractor
+        const src = isUrl
+          ? { type: "url" as const, url: source.path }
+          : { type: "file" as const, path: source.path };
+
+        const extractor = extractors.find((e) => e.canHandle(src));
+        if (!extractor) {
+          errors.push(`${source.path}: No extractor`);
+          continue;
+        }
+
+        // Re-extract and re-chunk
+        const extracted = await extractor.extract(src);
+        const chunker: Chunker = extracted.sourceType === "code" ? codeChunker : semanticChunker;
+        const chunks = await chunker.chunk(extracted, source.id, source.path);
+        const embeddings = await embedder.embedBatch(chunks.map((c) => c.text));
+
+        // Remove old chunks
+        await store.removeChunksBySource(source.id);
+
+        // Update source metadata
+        const now = Date.now();
+        await store.updateSource(source.id, {
+          contentHash: currentHash,
+          mtime: currentMtime,
+          indexedAt: now,
+          metadata: extracted.metadata,
+        });
+
+        // Add new chunks
+        const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
+          ...chunk,
+          sourceId: source.id,
+          embedding: embeddings[i],
+          createdAt: now,
+        }));
+
+        await store.addChunks(chunkRecords);
+        updated++;
+      } catch (err) {
+        errors.push(`${source.path}: ${err}`);
+      }
+    }
+
+    let result = `Reindex complete: ${updated} updated, ${unchanged} unchanged`;
+    if (removed > 0) {
+      result += `, ${removed} removed`;
+    }
+    if (errors.length > 0) {
+      result += `\n\nErrors (${errors.length}):\n${errors.slice(0, 5).join("\n")}`;
+      if (errors.length > 5) {
+        result += `\n... and ${errors.length - 5} more`;
+      }
+    }
+    return result;
+  } finally {
+    await store.close();
+  }
+}
+
 // Helper to collect sources
 async function collectSources(source: string, recursive: boolean): Promise<Source[]> {
   // URL
@@ -503,6 +659,9 @@ async function main() {
           break;
         case "rag_remove":
           result = await ragRemove(args as Parameters<typeof ragRemove>[0]);
+          break;
+        case "rag_reindex":
+          result = await ragReindex(args as Parameters<typeof ragReindex>[0]);
           break;
         default:
           throw new Error(`Unknown tool: ${name}`);
