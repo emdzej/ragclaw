@@ -1,0 +1,39 @@
+{
+  "name": "ragclaw",
+  "version": "0.1.0",
+  "description": "Local-first RAG for OpenClaw - index and search documents, code, and web pages",
+  "triggers": [
+    "/rag",
+    "index documents",
+    "search knowledge base",
+    "add to rag",
+    "rag search"
+  ],
+  "commands": {
+    "add": {
+      "description": "Index a file, directory, or URL",
+      "usage": "/rag add <source> [--db <name>]"
+    },
+    "search": {
+      "description": "Search the knowledge base",
+      "usage": "/rag search <query> [--limit <n>] [--mode <mode>]"
+    },
+    "status": {
+      "description": "Show knowledge base statistics",
+      "usage": "/rag status [--db <name>]"
+    },
+    "list": {
+      "description": "List indexed sources",
+      "usage": "/rag list [--db <name>]"
+    },
+    "remove": {
+      "description": "Remove a source from the index",
+      "usage": "/rag remove <source> [--db <name>]"
+    }
+  },
+  "dependencies": {
+    "cli": "@emdzej/ragclaw-cli"
+  },
+  "storage": "~/.openclaw/ragclaw/",
+  "offline": true
+}
