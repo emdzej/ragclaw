@@ -1,6 +1,5 @@
 import { existsSync } from "fs";
-import { stat, readFile } from "fs/promises";
-import { createHash } from "crypto";
+import { stat } from "fs/promises";
 import ora from "ora";
 import chalk from "chalk";
 import {
@@ -17,6 +16,7 @@ import {
   ImageExtractor,
   isPathAllowed,
   isUrlAllowed,
+  hashFile,
 } from "@emdzej/ragclaw-core";
 import type { Extractor, Chunker, ChunkRecord, RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, getConfig } from "../config.js";
@@ -173,10 +173,7 @@ export async function reindex(options: ReindexOptions): Promise<void> {
         let currentMtime: number | undefined;
 
         if (!isUrl) {
-          const content = await readFile(source.path, "utf-8").catch(() =>
-            readFile(source.path).then((b) => b.toString("base64"))
-          );
-          currentHash = createHash("sha256").update(content).digest("hex");
+          currentHash = await hashFile(source.path);
           const fileStat = await stat(source.path);
           currentMtime = fileStat.mtimeMs;
         }

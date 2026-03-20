@@ -80,6 +80,10 @@ export class Embedder {
 
   /**
    * Generate embeddings for multiple texts (batched for efficiency).
+   *
+   * Passes each batch of up to 32 texts to the pipeline as an array so
+   * the model runs true batched inference (single forward pass per batch)
+   * instead of one-by-one.
    */
   async embedBatch(texts: string[]): Promise<Float32Array[]> {
     const pipe = await this.getPipeline();
@@ -92,12 +96,18 @@ export class Embedder {
       const batch = texts.slice(i, i + batchSize);
       const prefixed = batch.map((t) => `search_document: ${t}`);
 
-      for (const text of prefixed) {
-        const output = await pipe(text, {
-          pooling: "mean",
-          normalize: true,
-        }) as Tensor;
-        results.push(new Float32Array(output.data as Float32Array));
+      // Pass the full batch array — the pipeline tokenises and runs
+      // a single forward pass, returning a Tensor of shape [N, DIMENSIONS].
+      const output = await pipe(prefixed, {
+        pooling: "mean",
+        normalize: true,
+      }) as Tensor;
+
+      // Slice the flat backing buffer into per-text embeddings.
+      const data = output.data as Float32Array;
+      for (let j = 0; j < batch.length; j++) {
+        const start = j * DIMENSIONS;
+        results.push(new Float32Array(data.slice(start, start + DIMENSIONS)));
       }
     }
 

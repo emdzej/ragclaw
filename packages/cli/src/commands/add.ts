@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "fs";
-import { readdir, stat, readFile } from "fs/promises";
+import { readdir, stat } from "fs/promises";
 import { join, resolve, extname } from "path";
 import { createHash } from "crypto";
 import chalk from "chalk";
@@ -18,6 +18,7 @@ import {
   ImageExtractor,
   isPathAllowed,
   isUrlAllowed,
+  hashFile,
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord, Chunker, RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, ensureDataDir, getConfig } from "../config.js";
@@ -178,10 +179,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
         // For files, check content hash to skip unchanged
         let contentHash: string;
         if (!isUrl) {
-          const content = await readFile(src.path!, "utf-8").catch(() => 
-            readFile(src.path!).then(b => b.toString("base64"))
-          );
-          contentHash = createHash("sha256").update(content).digest("hex");
+          contentHash = await hashFile(src.path!);
 
           if (existing && existing.contentHash === contentHash) {
             fileSpinner.info(`Skipping ${displayPath} (unchanged)`);

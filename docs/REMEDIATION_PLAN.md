@@ -116,9 +116,10 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 ### TASK-06 — Replace full-file hashing with streaming SHA-256
 
 - **Finding:** F-10 (Medium)
-- **File(s):** `packages/cli/src/commands/add.ts`, `packages/cli/src/commands/reindex.ts`, `packages/mcp/src/index.ts`
+- **File(s):** `packages/core/src/utils/hash.ts` (new), `packages/core/src/index.ts`, `packages/cli/src/commands/add.ts`, `packages/cli/src/commands/reindex.ts`, `packages/mcp/src/index.ts`
 - **Problem:** Change detection reads entire files into memory before hashing. For large files this wastes memory and adds latency.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Created `hashFile(filePath)` in `packages/core/src/utils/hash.ts` — uses `createReadStream` piped through `crypto.createHash("sha256")`, so the file is read in ~64 KB stream chunks and never held fully in memory. Replaced all 4 `readFile` + `createHash().update(content)` call sites (CLI add, CLI reindex, MCP add, MCP reindex) with `await hashFile(path)`. URL sources still use inline `createHash` with a timestamp string (no file to stream). Note: hashes now operate on raw bytes rather than UTF-8/base64 text, so the first `reindex` after upgrade will re-index all files once (one-time, no data loss).
 
 ---
 
@@ -127,7 +128,8 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 - **Finding:** F-09 (Medium)
 - **File(s):** `packages/core/src/embedder/index.ts`
 - **Problem:** `embedBatch()` groups texts into slices of 32 but still invokes the embedding model individually per item inside the batch. This negates the batching benefit and slows all indexing operations.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Changed the inner loop to pass the full batch array to the `@huggingface/transformers` pipeline in a single call. The pipeline tokenises all texts and runs one forward pass per batch, returning a `Tensor` of shape `[N, 768]`. The flat backing `Float32Array` is sliced into per-text embeddings. Batch size remains 32 to bound memory. This is a pure performance improvement — no API or data format changes.
 
 ---
 

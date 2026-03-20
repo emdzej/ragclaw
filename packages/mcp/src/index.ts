@@ -9,7 +9,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { join } from "path";
 import { existsSync } from "fs";
-import { mkdir, readdir, readFile, stat } from "fs/promises";
+import { mkdir, readdir, stat } from "fs/promises";
 import { createHash } from "crypto";
 import { extname, resolve, basename } from "path";
 
@@ -28,6 +28,7 @@ import {
   getDbPath,
   isPathAllowed,
   isUrlAllowed,
+  hashFile,
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord, Chunker, RagclawConfig } from "@emdzej/ragclaw-core";
 
@@ -273,10 +274,7 @@ async function ragAdd(args: {
         
         let contentHash: string;
         if (!isUrl) {
-          const content = await readFile(src.path!, "utf-8").catch(() => 
-            readFile(src.path!).then(b => b.toString("base64"))
-          );
-          contentHash = createHash("sha256").update(content).digest("hex");
+          contentHash = await hashFile(src.path!);
 
           if (existing && existing.contentHash === contentHash) {
             continue; // Unchanged
@@ -491,10 +489,7 @@ async function ragReindex(args: {
         let currentMtime: number | undefined;
 
         if (!isUrl) {
-          const content = await readFile(source.path, "utf-8").catch(() =>
-            readFile(source.path).then((b) => b.toString("base64"))
-          );
-          currentHash = createHash("sha256").update(content).digest("hex");
+          currentHash = await hashFile(source.path);
           const fileStat = await stat(source.path);
           currentMtime = fileStat.mtimeMs;
         }
