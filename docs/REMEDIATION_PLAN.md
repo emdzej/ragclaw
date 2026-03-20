@@ -56,7 +56,8 @@ Add new config keys with built-in defaults, configurable via config file, env va
 | `maxDepth` | `maxDepth:` | `RAGCLAW_MAX_DEPTH` | `--max-depth` | `10` |
 | `maxFiles` | `maxFiles:` | `RAGCLAW_MAX_FILES` | `--max-files` | `1000` |
 
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Extended `RagclawConfig` interface with 5 new fields. `getConfig()` parses all from config file (comma-separated paths → `resolve(expandHome())`; `"true"/"false"` → boolean; `parseInt` with `>0` validation for numbers) and env vars. Overrides parameter applies last. CLI flag wiring is deferred to TASK-03e; enforcement to TASK-03d.
 
 #### TASK-03c — Add `ragclaw config get/set/list` CLI commands
 

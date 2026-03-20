@@ -1,5 +1,5 @@
 import { homedir, platform } from "os";
-import { join } from "path";
+import { join, resolve } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
 /**
@@ -45,6 +45,22 @@ export interface RagclawConfig {
   pluginsDir: string;
   enabledPlugins: string[];
   scanGlobalNpm: boolean;
+
+  /** Allowed filesystem paths for indexing.  Empty array = no restriction (CLI)
+   *  or cwd-only (MCP — enforced at the call site in TASK-03d). */
+  allowedPaths: string[];
+
+  /** Whether URL sources are permitted (default: true). */
+  allowUrls: boolean;
+
+  /** Block fetches to private / reserved IP ranges (default: true). */
+  blockPrivateUrls: boolean;
+
+  /** Maximum directory recursion depth (default: 10). */
+  maxDepth: number;
+
+  /** Maximum number of files collected from a single directory source (default: 1000). */
+  maxFiles: number;
 }
 
 let cachedConfig: RagclawConfig | null = null;
@@ -69,6 +85,11 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   let pluginsDir = join(dataDir, "plugins");
   let enabledPlugins: string[] = [];
   let scanGlobalNpm = false;
+  let allowedPaths: string[] = [];
+  let allowUrls = true;
+  let blockPrivateUrls = true;
+  let maxDepth = 10;
+  let maxFiles = 1000;
 
   // Check for legacy path (backwards compatibility)
   if (existsSync(LEGACY_DIR)) {
@@ -91,6 +112,27 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
       if (parsed.scanGlobalNpm) {
         scanGlobalNpm = parsed.scanGlobalNpm === "true";
       }
+      if (parsed.allowedPaths) {
+        allowedPaths = parsed.allowedPaths
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .map((p: string) => resolve(expandHome(p)));
+      }
+      if (parsed.allowUrls) {
+        allowUrls = parsed.allowUrls !== "false";
+      }
+      if (parsed.blockPrivateUrls) {
+        blockPrivateUrls = parsed.blockPrivateUrls !== "false";
+      }
+      if (parsed.maxDepth) {
+        const n = parseInt(parsed.maxDepth, 10);
+        if (Number.isFinite(n) && n > 0) maxDepth = n;
+      }
+      if (parsed.maxFiles) {
+        const n = parseInt(parsed.maxFiles, 10);
+        if (Number.isFinite(n) && n > 0) maxFiles = n;
+      }
     } catch {
       // Ignore config parse errors
     }
@@ -106,8 +148,32 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   if (process.env.RAGCLAW_PLUGINS_DIR) {
     pluginsDir = process.env.RAGCLAW_PLUGINS_DIR;
   }
+  if (process.env.RAGCLAW_ALLOWED_PATHS) {
+    allowedPaths = process.env.RAGCLAW_ALLOWED_PATHS
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => resolve(expandHome(p)));
+  }
+  if (process.env.RAGCLAW_ALLOW_URLS !== undefined) {
+    allowUrls = process.env.RAGCLAW_ALLOW_URLS !== "false";
+  }
+  if (process.env.RAGCLAW_BLOCK_PRIVATE_URLS !== undefined) {
+    blockPrivateUrls = process.env.RAGCLAW_BLOCK_PRIVATE_URLS !== "false";
+  }
+  if (process.env.RAGCLAW_MAX_DEPTH) {
+    const n = parseInt(process.env.RAGCLAW_MAX_DEPTH, 10);
+    if (Number.isFinite(n) && n > 0) maxDepth = n;
+  }
+  if (process.env.RAGCLAW_MAX_FILES) {
+    const n = parseInt(process.env.RAGCLAW_MAX_FILES, 10);
+    if (Number.isFinite(n) && n > 0) maxFiles = n;
+  }
 
-  let config: RagclawConfig = { configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm };
+  let config: RagclawConfig = {
+    configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm,
+    allowedPaths, allowUrls, blockPrivateUrls, maxDepth, maxFiles,
+  };
 
   // CLI-flag overrides (highest priority)
   if (overrides) {
