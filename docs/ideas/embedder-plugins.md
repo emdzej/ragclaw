@@ -122,6 +122,37 @@ ragclaw index --config ragclaw.yaml ./docs
 - `ragclaw-embedder-cohere` — Cohere Embed v4
 - `ragclaw-embedder-voyage` — Voyage AI
 
+## Store Metadata
+
+Model info stored in SQLite — search auto-loads correct embedder.
+
+```sql
+CREATE TABLE IF NOT EXISTS store_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- Example entries:
+-- ('embedder_name', 'bge')
+-- ('embedder_model', 'BAAI/bge-m3')
+-- ('embedder_dimensions', '1024')
+-- ('created_at', '2026-03-20T21:00:00Z')
+```
+
+### Search Flow
+
+1. `ragclaw search "query"` — no `--embedder` needed
+2. Read `embedder_name` from `store_meta`
+3. Load matching embedder (built-in alias or plugin)
+4. Generate query embedding
+5. Vector search
+
+### Error Handling
+
+- Model not available locally → prompt to download or error
+- Dimensions mismatch → error with clear message
+- `ragclaw info` → show store metadata including embedder
+
 ## Store Compatibility
 
 - Store metadata tracks embedder name + dimensions
