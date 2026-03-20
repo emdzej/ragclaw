@@ -7,6 +7,8 @@
 
 Local-first RAG engine for OpenClaw. Index and search your documents, code, and web pages — fully offline, no API keys required.
 
+> ⚠️ **Pre-1.0 Warning:** Until version 1.0.0, any release may contain breaking changes. Pin your versions in production.
+
 ## Features
 
 - **📄 Multi-format** — Markdown, PDF, DOCX, code, web pages, images (OCR)
