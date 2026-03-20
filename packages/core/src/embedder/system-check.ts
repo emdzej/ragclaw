@@ -1,5 +1,5 @@
-import os from "os";
 import type { EmbedderPreset } from "../types.js";
+import { getAvailableMemory } from "../utils/memory.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // System Requirements Checker
@@ -15,13 +15,17 @@ export interface SystemCheck {
 }
 
 /**
- * Check whether the current machine has enough free RAM to run the given
+ * Check whether the current machine has enough available RAM to run the given
  * embedder preset.
  *
+ * Uses `getAvailableMemory()` (free + reclaimable cache) rather than
+ * `os.freemem()` (idle pages only), so the estimate is not misleadingly low
+ * on systems with large page caches (common on Linux and macOS).
+ *
  * Thresholds (based on `estimatedRAM`):
- * - `freeRAM < estimatedRAM × 1.2`  → **error**  (insufficient RAM)
- * - `freeRAM < estimatedRAM × 2.0`  → **warning** (may be slow / cause swapping)
- * - Otherwise                        → OK
+ * - `availableRAM < estimatedRAM × 1.2`  → **error**  (insufficient RAM)
+ * - `availableRAM < estimatedRAM × 2.0`  → **warning** (may be slow / cause swapping)
+ * - Otherwise                             → OK
  *
  * If the preset has no `estimatedRAM` value, the check is skipped and the
  * result is always OK (canRun=true, no warnings/errors).
@@ -34,20 +38,20 @@ export function checkSystemRequirements(preset: EmbedderPreset): SystemCheck {
     return result;
   }
 
-  const freeRAM = os.freemem();
+  const availableRAM = getAvailableMemory();
   const needed = preset.estimatedRAM;
 
-  if (freeRAM < needed * 1.2) {
+  if (availableRAM < needed * 1.2) {
     result.canRun = false;
     result.errors.push(
-      `Insufficient free RAM for ${preset.model}: ` +
-      `needs ~${formatBytes(needed)}, only ${formatBytes(freeRAM)} available. ` +
+      `Insufficient available RAM for ${preset.model}: ` +
+      `needs ~${formatBytes(needed)}, only ${formatBytes(availableRAM)} available. ` +
       `Consider using a lighter model (e.g. minilm ~90 MB).`
     );
-  } else if (freeRAM < needed * 2.0) {
+  } else if (availableRAM < needed * 2.0) {
     result.warnings.push(
-      `Low free RAM for ${preset.model}: ` +
-      `needs ~${formatBytes(needed)}, ${formatBytes(freeRAM)} available. ` +
+      `Low available RAM for ${preset.model}: ` +
+      `needs ~${formatBytes(needed)}, ${formatBytes(availableRAM)} available. ` +
       `The model may run slowly or cause swapping.`
     );
   }

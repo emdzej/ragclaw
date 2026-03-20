@@ -1,6 +1,6 @@
 import os from "os";
 import chalk from "chalk";
-import { Store, listPresets, resolvePreset, getConfig, checkSystemRequirements } from "@emdzej/ragclaw-core";
+import { Store, listPresets, resolvePreset, getConfig, checkSystemRequirements, getAvailableMemory } from "@emdzej/ragclaw-core";
 import { PluginLoader } from "../plugins/loader.js";
 
 function formatBytes(bytes: number): string {
@@ -37,11 +37,11 @@ export async function doctorCommand(): Promise<void> {
 
   // ── System info ────────────────────────────────────────────────────────────
   const totalRAM = os.totalmem();
-  const freeRAM = os.freemem();
+  const availableRAM = getAvailableMemory(); // free + reclaimable cache
   const nodeVersion = process.version;
 
   console.log(chalk.bold("System Check:"));
-  console.log(`  RAM:   ${formatBytes(totalRAM)} total, ${formatBytes(freeRAM)} available`);
+  console.log(`  RAM:   ${formatBytes(totalRAM)} total, ${formatBytes(availableRAM)} available ${chalk.dim("(free + reclaimable cache)")}`);
   console.log(`  Node:  ${nodeVersion}`);
   console.log();
 

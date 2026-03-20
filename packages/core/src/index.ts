@@ -66,6 +66,7 @@ export {
 // Utils
 export { cosineSimilarity } from "./utils/math.js";
 export { hashFile } from "./utils/hash.js";
+export { getAvailableMemory } from "./utils/memory.js";
 
 // Security guards
 export { isPathAllowed, isUrlAllowed } from "./guards.js";
