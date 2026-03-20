@@ -7,6 +7,8 @@ import {
   isPathAllowed,
   isUrlAllowed,
   createEmbedder,
+  resolvePreset,
+  checkSystemRequirements,
 } from "@emdzej/ragclaw-core";
 import type { RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, getConfig } from "../config.js";
@@ -110,6 +112,22 @@ export async function reindex(options: ReindexOptions): Promise<void> {
       ? createEmbedder({ alias: embedderAlias, onProgress })
       : pluginEmbedder
         ?? createEmbedder({ onProgress });
+
+    // System requirements check (RAM) for known presets
+    const presetAlias = embedderAlias ?? "nomic";
+    const preset = resolvePreset(presetAlias);
+    if (preset) {
+      const sysCheck = checkSystemRequirements(preset);
+      if (sysCheck.errors.length > 0) {
+        spinner.fail("System requirements not met");
+        console.error(chalk.red(sysCheck.errors[0]));
+        await store.close();
+        return;
+      }
+      if (sysCheck.warnings.length > 0) {
+        spinner.warn(chalk.yellow(sysCheck.warnings[0]));
+      }
+    }
 
     const indexingService = new IndexingService({
       extractorLimits: config.extractorLimits,

@@ -1,6 +1,6 @@
 import os from "os";
 import chalk from "chalk";
-import { listPresets, resolvePreset, getConfig } from "@emdzej/ragclaw-core";
+import { listPresets, resolvePreset, getConfig, checkSystemRequirements } from "@emdzej/ragclaw-core";
 import { PluginLoader } from "../plugins/loader.js";
 
 function formatBytes(bytes: number): string {
@@ -35,10 +35,11 @@ export async function doctorCommand(): Promise<void> {
     const ramStr = formatBytes(ram);
     const dimStr = preset.dim ? `${preset.dim} dim` : "auto";
 
+    const sysCheck = checkSystemRequirements(preset);
     let status: string;
-    if (ram > 0 && freeRAM < ram * 1.2) {
+    if (!sysCheck.canRun) {
       status = chalk.red("ERROR  insufficient RAM");
-    } else if (ram > 0 && freeRAM < ram * 2.0) {
+    } else if (sysCheck.warnings.length > 0) {
       status = chalk.yellow("WARN   may be slow");
     } else {
       status = chalk.green("OK");

@@ -17,6 +17,7 @@ export {
   listPresets,
 } from "./embedder/presets.js";
 export { createEmbedder, type EmbedderResolvedConfig } from "./embedder/factory.js";
+export { checkSystemRequirements, type SystemCheck } from "./embedder/system-check.js";
 
 // Chunkers
 export { SemanticChunker } from "./chunkers/semantic.js";

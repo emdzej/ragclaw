@@ -9,6 +9,8 @@ import {
   isPathAllowed,
   isUrlAllowed,
   createEmbedder,
+  resolvePreset,
+  checkSystemRequirements,
 } from "@emdzej/ragclaw-core";
 import type { Source, RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, ensureDataDir, getConfig } from "../config.js";
@@ -112,6 +114,22 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
     ? createEmbedder({ alias: embedderAlias, onProgress })
     : pluginEmbedder
       ?? createEmbedder({ onProgress });
+
+  // System requirements check (RAM) for known presets
+  const presetAlias = embedderAlias ?? "nomic";
+  const preset = resolvePreset(presetAlias);
+  if (preset) {
+    const sysCheck = checkSystemRequirements(preset);
+    if (sysCheck.errors.length > 0) {
+      spinner.fail("System requirements not met");
+      console.error(chalk.red(sysCheck.errors[0]));
+      await store.close();
+      process.exit(1);
+    }
+    if (sysCheck.warnings.length > 0) {
+      spinner.warn(chalk.yellow(sysCheck.warnings[0]));
+    }
+  }
 
   // Create the indexing service — owns extractors, chunkers, embedder
   const indexingService = new IndexingService({
