@@ -35,7 +35,8 @@ let MAX_BUFFER = 10 * 1024 * 1024;
  *   github://owner/repo/pulls/5   - specific PR
  *   github://owner/repo/discussions - discussions
  */
-function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
+/** @internal — exported for testing only */
+export function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
   // Remove scheme
   const match = source.match(/^(?:github|gh):\/\/(.+)$/);
   if (!match) return null;
@@ -296,7 +297,8 @@ async function fetchDiscussions(owner: string, repo: string): Promise<ExtractedC
 /**
  * Get source URL string
  */
-function getSourceUrl(source: Source): string {
+/** @internal — exported for testing only */
+export function getSourceUrl(source: Source): string {
   return source.url || source.path || "";
 }
 

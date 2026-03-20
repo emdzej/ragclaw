@@ -9,7 +9,8 @@
   },
   "devDependencies": {
     "turbo": "^2.5.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
   },
   "packageManager": "pnpm@10.6.1",
   "engines": {

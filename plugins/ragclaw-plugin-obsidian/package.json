@@ -6,7 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "license": "MIT",
   "repository": {
@@ -26,7 +28,8 @@
   "devDependencies": {
     "@emdzej/ragclaw-core": "workspace:*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
   },
   "ragclaw": {
     "schemes": ["obsidian", "vault"]

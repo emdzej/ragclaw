@@ -99,16 +99,18 @@ async function findMarkdownFiles(dir: string, files: string[] = []): Promise<str
 // Content processing helpers
 // ---------------------------------------------------------------------------
 
-/** Convert Obsidian wikilinks, embeds, and tags to readable format. */
-function processObsidianContent(content: string): string {
-  // Convert [[wikilinks]] to readable format
-  let processed = content.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, link, alias) => {
-    return alias || link;
+/** @internal — exported for testing only.
+ * Convert Obsidian wikilinks, embeds, and tags to readable format. */
+export function processObsidianContent(content: string): string {
+  // Convert ![[embeds]] to reference format (MUST run before wikilinks
+  // so that the inner [[…]] is not stripped first)
+  let processed = content.replace(/!\[\[([^\]]+)\]\]/g, (_, embed) => {
+    return `[Embedded: ${embed}]`;
   });
 
-  // Convert ![[embeds]] to reference format
-  processed = processed.replace(/!\[\[([^\]]+)\]\]/g, (_, embed) => {
-    return `[Embedded: ${embed}]`;
+  // Convert [[wikilinks]] to readable format
+  processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, link, alias) => {
+    return alias || link;
   });
 
   // Handle tags
@@ -119,8 +121,9 @@ function processObsidianContent(content: string): string {
   return processed;
 }
 
-/** Extract YAML frontmatter from note content. */
-function extractFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
+/** @internal — exported for testing only.
+ * Extract YAML frontmatter from note content. */
+export function extractFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) {
     return { frontmatter: null, body: content };

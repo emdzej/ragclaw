@@ -10,7 +10,9 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "license": "MIT",
   "repository": {
@@ -29,7 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=22"

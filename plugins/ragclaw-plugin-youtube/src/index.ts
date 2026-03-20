@@ -18,7 +18,8 @@ let FETCH_TIMEOUT_MS = 30_000;
 /**
  * Extract video ID from various YouTube URL formats
  */
-function extractVideoId(input: string): string | null {
+/** @internal — exported for testing only */
+export function extractVideoId(input: string): string | null {
   // Handle youtube:// and yt:// schemes
   if (input.startsWith("youtube://") || input.startsWith("yt://")) {
     return input.replace(/^(youtube|yt):\/\//, "");
@@ -141,7 +142,8 @@ async function fetchTranscript(videoId: string): Promise<TranscriptSegment[]> {
   return segments;
 }
 
-function decodeHtmlEntities(text: string): string {
+/** @internal — exported for testing only */
+export function decodeHtmlEntities(text: string): string {
   return text
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -156,7 +158,8 @@ function decodeHtmlEntities(text: string): string {
 /**
  * Format timestamp from seconds
  */
-function formatTimestamp(seconds: number): string {
+/** @internal — exported for testing only */
+export function formatTimestamp(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const hours = Math.floor(mins / 60);
   const secs = Math.floor(seconds % 60);
