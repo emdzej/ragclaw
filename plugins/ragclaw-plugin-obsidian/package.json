@@ -19,5 +19,9 @@
   },
   "ragclaw": {
     "schemes": ["obsidian", "vault"]
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   }
 }

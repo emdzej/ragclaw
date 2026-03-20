@@ -35,8 +35,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          # Update all package versions
+          # Update all package versions (@emdzej/* and plugins)
           pnpm --filter "@emdzej/*" exec npm pkg set version="$VERSION"
+          pnpm --filter "ragclaw-plugin-*" exec npm pkg set version="$VERSION"
 
       - name: Publish @emdzej/ragclaw-core
         working-directory: packages/core
@@ -52,6 +53,24 @@ jobs:
 
       - name: Publish @emdzej/ragclaw-mcp
         working-directory: packages/mcp
+        run: pnpm publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish ragclaw-plugin-github
+        working-directory: plugins/ragclaw-plugin-github
+        run: pnpm publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish ragclaw-plugin-obsidian
+        working-directory: plugins/ragclaw-plugin-obsidian
+        run: pnpm publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish ragclaw-plugin-youtube
+        working-directory: plugins/ragclaw-plugin-youtube
         run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
