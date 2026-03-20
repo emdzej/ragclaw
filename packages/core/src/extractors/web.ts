@@ -1,9 +1,19 @@
 import * as cheerio from "cheerio";
 import type { Extractor, ExtractedContent, Source } from "../types.js";
+import type { ExtractorLimits } from "../config.js";
+import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
 
 type CheerioElement = ReturnType<ReturnType<typeof cheerio.load>>[number];
 
 export class WebExtractor implements Extractor {
+  private fetchTimeoutMs: number;
+  private maxResponseSizeBytes: number;
+
+  constructor(limits?: Partial<ExtractorLimits>) {
+    this.fetchTimeoutMs = limits?.fetchTimeoutMs ?? DEFAULT_EXTRACTOR_LIMITS.fetchTimeoutMs;
+    this.maxResponseSizeBytes = limits?.maxResponseSizeBytes ?? DEFAULT_EXTRACTOR_LIMITS.maxResponseSizeBytes;
+  }
+
   canHandle(source: Source): boolean {
     if (source.type !== "url" || !source.url) return false;
     return source.url.startsWith("http://") || source.url.startsWith("https://");
@@ -14,19 +24,36 @@ export class WebExtractor implements Extractor {
       throw new Error("WebExtractor requires a URL");
     }
 
-    const response = await fetch(source.url, {
-      headers: {
-        "User-Agent": "RagClaw/0.1 (local RAG indexer)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(source.url, {
+        headers: {
+          "User-Agent": "RagClaw/0.1 (local RAG indexer)",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+      });
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(`Fetch timed out after ${this.fetchTimeoutMs}ms: ${source.url}`);
+      }
+      throw err;
+    }
 
     if (!response.ok) {
+      clearTimeout(timer);
       throw new Error(`Failed to fetch ${source.url}: ${response.status} ${response.statusText}`);
     }
 
+    // Stream the body, enforcing a byte-size cap
+    const html = await this.readBodyWithLimit(response, source.url);
+    clearTimeout(timer);
+
     const contentType = response.headers.get("content-type") || "";
-    const html = await response.text();
 
     const $ = cheerio.load(html);
 
@@ -66,6 +93,43 @@ export class WebExtractor implements Extractor {
       sourceType: "web",
       mimeType: contentType.split(";")[0].trim() || "text/html",
     };
+  }
+
+  /**
+   * Read the response body, aborting if it exceeds `maxResponseSizeBytes`.
+   */
+  private async readBodyWithLimit(response: Response, url: string): Promise<string> {
+    // If no body stream (e.g. older runtimes), fall back to .text()
+    if (!response.body) {
+      const text = await response.text();
+      if (text.length > this.maxResponseSizeBytes) {
+        throw new Error(
+          `Response body (${text.length} bytes) exceeds limit (${this.maxResponseSizeBytes} bytes): ${url}`
+        );
+      }
+      return text;
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > this.maxResponseSizeBytes) {
+        reader.cancel();
+        throw new Error(
+          `Response body (>${this.maxResponseSizeBytes} bytes) exceeds limit: ${url}`
+        );
+      }
+      chunks.push(value);
+    }
+
+    const decoder = new TextDecoder();
+    return chunks.map((c) => decoder.decode(c, { stream: true })).join("") + decoder.decode();
   }
 
   private extractText(element: cheerio.Cheerio<CheerioElement>, $: cheerio.CheerioAPI): string {

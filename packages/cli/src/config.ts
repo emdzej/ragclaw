@@ -17,6 +17,8 @@ export {
   setConfigValue,
   SETTABLE_KEYS,
   RAGCLAW_DIR,
+  DEFAULT_EXTRACTOR_LIMITS,
   type RagclawConfig,
   type ConfigKeyMeta,
+  type ExtractorLimits,
 } from "@emdzej/ragclaw-core";

@@ -1,4 +1,4 @@
-import type { RagClawPlugin, Extractor, Source, ExtractedContent, ContentType } from "@emdzej/ragclaw-core";
+import type { RagClawPlugin, Extractor, Source, ExtractedContent, ContentType, PluginConfigKey } from "@emdzej/ragclaw-core";
 
 interface TranscriptSegment {
   text: string;
@@ -11,6 +11,9 @@ interface CaptionTrack {
   name: { simpleText: string };
   languageCode: string;
 }
+
+/** Configurable fetch timeout in ms (overridable via plugin config). */
+let FETCH_TIMEOUT_MS = 30_000;
 
 /**
  * Extract video ID from various YouTube URL formats
@@ -43,7 +46,7 @@ function extractVideoId(input: string): string | null {
 async function fetchVideoMetadata(videoId: string): Promise<{ title: string; author: string } | null> {
   try {
     const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!response.ok) return null;
     
     const data = await response.json();
@@ -78,7 +81,8 @@ async function fetchTranscript(videoId: string): Promise<TranscriptSegment[]> {
       "Content-Type": "application/json",
       "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14)"
     },
-    body
+    body,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -105,7 +109,8 @@ async function fetchTranscript(videoId: string): Promise<TranscriptSegment[]> {
   const transcriptResponse = await fetch(track.baseUrl, {
     headers: {
       "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14)"
-    }
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!transcriptResponse.ok) {
@@ -258,6 +263,18 @@ const plugin: RagClawPlugin = {
   extractors: [new YouTubeExtractor()],
   
   schemes: ["youtube", "yt"],
+
+  configSchema: [
+    { key: "fetchTimeoutMs", type: "number", description: "HTTP fetch timeout in ms (default: 30000)", defaultValue: 30_000 },
+  ],
+
+  async init(config?: Record<string, unknown>) {
+    if (!config) return;
+    if (typeof config.fetchTimeoutMs === "string") {
+      const n = parseInt(config.fetchTimeoutMs, 10);
+      if (Number.isFinite(n) && n > 0) FETCH_TIMEOUT_MS = n;
+    }
+  },
 };
 
 export default plugin;

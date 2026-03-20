@@ -39,6 +39,24 @@ function getDefaultDataDir(): string {
  */
 const LEGACY_DIR = join(homedir(), ".openclaw", "ragclaw");
 
+export interface ExtractorLimits {
+  /** AbortController timeout for HTTP fetches in ms (default: 30 000). */
+  fetchTimeoutMs: number;
+  /** Max HTTP response body in bytes before aborting (default: 50 MB). */
+  maxResponseSizeBytes: number;
+  /** Max pages to process per PDF (default: 200). */
+  maxPdfPages: number;
+  /** Timeout per OCR invocation in ms (default: 60 000). */
+  ocrTimeoutMs: number;
+}
+
+export const DEFAULT_EXTRACTOR_LIMITS: Readonly<ExtractorLimits> = {
+  fetchTimeoutMs: 30_000,
+  maxResponseSizeBytes: 50 * 1024 * 1024,
+  maxPdfPages: 200,
+  ocrTimeoutMs: 60_000,
+};
+
 export interface RagclawConfig {
   configDir: string;
   dataDir: string;
@@ -68,6 +86,13 @@ export interface RagclawConfig {
    *  autonomously rather than by a human user.
    *  MCP always enforces guards regardless of this setting. */
   enforceGuards: boolean;
+
+  /** Resource limits for built-in extractors (web, PDF, image/OCR). */
+  extractorLimits: ExtractorLimits;
+
+  /** Per-plugin configuration parsed from `plugin.<name>.<key>` entries in
+   *  config.yaml.  Keyed by plugin name, value is a flat key→value map. */
+  pluginConfig: Record<string, Record<string, unknown>>;
 }
 
 let cachedConfig: RagclawConfig | null = null;
@@ -98,6 +123,8 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   let maxDepth = 10;
   let maxFiles = 1000;
   let enforceGuards = false;
+  let extractorLimits: ExtractorLimits = { ...DEFAULT_EXTRACTOR_LIMITS };
+  let pluginConfig: Record<string, Record<string, unknown>> = {};
 
   // Check for legacy path (backwards compatibility)
   if (existsSync(LEGACY_DIR)) {
@@ -144,6 +171,33 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
       if (parsed.enforceGuards) {
         enforceGuards = parsed.enforceGuards === "true";
       }
+
+      // Parse extractor.* keys
+      for (const [key, val] of Object.entries(parsed)) {
+        if (key.startsWith("extractor.")) {
+          const limitsKey = key.slice("extractor.".length) as keyof ExtractorLimits;
+          if (limitsKey in DEFAULT_EXTRACTOR_LIMITS) {
+            const n = parseInt(val, 10);
+            if (Number.isFinite(n) && n > 0) {
+              (extractorLimits as unknown as Record<string, number>)[limitsKey] = n;
+            }
+          }
+        }
+      }
+
+      // Parse plugin.<name>.<key> entries
+      for (const [key, val] of Object.entries(parsed)) {
+        if (key.startsWith("plugin.")) {
+          const rest = key.slice("plugin.".length);
+          const dotIdx = rest.indexOf(".");
+          if (dotIdx > 0) {
+            const pluginName = rest.slice(0, dotIdx);
+            const pluginKey = rest.slice(dotIdx + 1);
+            if (!pluginConfig[pluginName]) pluginConfig[pluginName] = {};
+            pluginConfig[pluginName][pluginKey] = val;
+          }
+        }
+      }
     } catch {
       // Ignore config parse errors
     }
@@ -183,11 +237,27 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   if (process.env.RAGCLAW_ENFORCE_GUARDS !== undefined) {
     enforceGuards = process.env.RAGCLAW_ENFORCE_GUARDS === "true";
   }
+  if (process.env.RAGCLAW_FETCH_TIMEOUT_MS) {
+    const n = parseInt(process.env.RAGCLAW_FETCH_TIMEOUT_MS, 10);
+    if (Number.isFinite(n) && n > 0) extractorLimits.fetchTimeoutMs = n;
+  }
+  if (process.env.RAGCLAW_MAX_RESPONSE_SIZE_BYTES) {
+    const n = parseInt(process.env.RAGCLAW_MAX_RESPONSE_SIZE_BYTES, 10);
+    if (Number.isFinite(n) && n > 0) extractorLimits.maxResponseSizeBytes = n;
+  }
+  if (process.env.RAGCLAW_MAX_PDF_PAGES) {
+    const n = parseInt(process.env.RAGCLAW_MAX_PDF_PAGES, 10);
+    if (Number.isFinite(n) && n > 0) extractorLimits.maxPdfPages = n;
+  }
+  if (process.env.RAGCLAW_OCR_TIMEOUT_MS) {
+    const n = parseInt(process.env.RAGCLAW_OCR_TIMEOUT_MS, 10);
+    if (Number.isFinite(n) && n > 0) extractorLimits.ocrTimeoutMs = n;
+  }
 
   let config: RagclawConfig = {
     configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm,
     allowedPaths, allowUrls, blockPrivateUrls, maxDepth, maxFiles,
-    enforceGuards,
+    enforceGuards, extractorLimits, pluginConfig,
   };
 
   // CLI-flag overrides (highest priority)
@@ -267,13 +337,14 @@ export function getEnabledPlugins(): string[] {
  * `yamlKey`  — the key used in config.yaml
  * `envVar`   — the corresponding environment variable (if any)
  * `type`     — how to serialise/deserialise the value
- * `configKey` — the field name on `RagclawConfig`
+ * `configKey` — the field name on `RagclawConfig` (for flat keys) or undefined
+ *               for nested extractor.* / plugin.* keys
  */
 export interface ConfigKeyMeta {
   yamlKey: string;
   envVar?: string;
   type: "string" | "string[]" | "boolean" | "number";
-  configKey: keyof RagclawConfig;
+  configKey: keyof RagclawConfig | undefined;
   description: string;
 }
 
@@ -288,6 +359,10 @@ export const SETTABLE_KEYS: ConfigKeyMeta[] = [
   { yamlKey: "maxDepth",         envVar: "RAGCLAW_MAX_DEPTH",           type: "number",    configKey: "maxDepth",         description: "Max directory recursion depth" },
   { yamlKey: "maxFiles",         envVar: "RAGCLAW_MAX_FILES",           type: "number",    configKey: "maxFiles",         description: "Max files per directory source" },
   { yamlKey: "enforceGuards",    envVar: "RAGCLAW_ENFORCE_GUARDS",      type: "boolean",   configKey: "enforceGuards",    description: "Enforce path/URL guards in CLI (for autonomous use)" },
+  { yamlKey: "extractor.fetchTimeoutMs",      envVar: "RAGCLAW_FETCH_TIMEOUT_MS",        type: "number", configKey: undefined, description: "HTTP fetch timeout in ms (default: 30000)" },
+  { yamlKey: "extractor.maxResponseSizeBytes", envVar: "RAGCLAW_MAX_RESPONSE_SIZE_BYTES", type: "number", configKey: undefined, description: "Max HTTP response body in bytes (default: 52428800)" },
+  { yamlKey: "extractor.maxPdfPages",          envVar: "RAGCLAW_MAX_PDF_PAGES",           type: "number", configKey: undefined, description: "Max pages per PDF (default: 200)" },
+  { yamlKey: "extractor.ocrTimeoutMs",         envVar: "RAGCLAW_OCR_TIMEOUT_MS",          type: "number", configKey: undefined, description: "OCR timeout in ms per invocation (default: 60000)" },
 ];
 
 /**
@@ -339,7 +414,9 @@ export function setEnabledPlugins(plugins: string[]): void {
 }
 
 /**
- * Simple YAML parser for config (no dependencies)
+ * Simple YAML parser for config (no dependencies).
+ * Supports flat `key: value` pairs and dotted keys like
+ * `extractor.fetchTimeoutMs` or `plugin.github.maxIssues`.
  */
 function parseSimpleYaml(content: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -349,7 +426,7 @@ function parseSimpleYaml(content: string): Record<string, string> {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
 
-    const match = trimmed.match(/^(\w+):\s*(.+)$/);
+    const match = trimmed.match(/^([\w]+(?:\.[\w]+)*):\s*(.+)$/);
     if (match) {
       result[match[1]] = match[2].replace(/^["']|["']$/g, "");
     }

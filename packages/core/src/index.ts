@@ -26,6 +26,7 @@ export type {
   PluginManifest,
   LoadedPlugin,
   PluginLoaderOptions,
+  PluginConfigKey,
 } from "./plugin.js";
 
 // Config
@@ -42,8 +43,10 @@ export {
   setConfigValue,
   SETTABLE_KEYS,
   RAGCLAW_DIR,
+  DEFAULT_EXTRACTOR_LIMITS,
   type RagclawConfig,
   type ConfigKeyMeta,
+  type ExtractorLimits,
 } from "./config.js";
 
 // Utils

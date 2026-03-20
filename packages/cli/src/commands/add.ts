@@ -100,6 +100,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   const pluginLoader = new PluginLoader({
     enabledPlugins: config.enabledPlugins,
     scanGlobalNpm: config.scanGlobalNpm,
+    config: config.pluginConfig,
   });
   await pluginLoader.loadAll();
   const pluginExtractors = pluginLoader.getExtractors();
@@ -122,11 +123,11 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   const extractors: Extractor[] = [
     ...pluginExtractors, // Plugin extractors first (higher priority)
     new MarkdownExtractor(),
-    new PdfExtractor(),
+    new PdfExtractor({ limits: config.extractorLimits }),
     new DocxExtractor(),
-    new WebExtractor(),
+    new WebExtractor(config.extractorLimits),
     new CodeExtractor(),
-    new ImageExtractor(),
+    new ImageExtractor({ limits: config.extractorLimits }),
     new TextExtractor(), // Fallback, keep last
   ];
   const semanticChunker = new SemanticChunker();

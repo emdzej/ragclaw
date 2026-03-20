@@ -91,9 +91,13 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 ### TASK-04 — Add timeouts and size limits to network fetches and heavy extractors
 
 - **Finding:** F-04 (Medium)
-- **File(s):** `packages/core/src/extractors/web.ts`, `packages/core/src/extractors/pdf.ts`, `packages/core/src/extractors/image.ts`
-- **Problem:** Remote fetches have no timeout or response body size cap. PDF processing loads the full file into memory with no page budget. OCR runs without any time or resource limit.
-- **Status:** `pending`
+- **File(s):** `packages/core/src/extractors/web.ts`, `packages/core/src/extractors/pdf.ts`, `packages/core/src/extractors/image.ts`, `packages/core/src/config.ts`, `packages/core/src/plugin.ts`, `packages/core/src/index.ts`, `packages/cli/src/config.ts`, `packages/cli/src/commands/add.ts`, `packages/cli/src/commands/reindex.ts`, `packages/cli/src/commands/config.ts`, `packages/mcp/src/index.ts`, `plugins/ragclaw-plugin-github/src/index.ts`, `plugins/ragclaw-plugin-obsidian/src/index.ts`, `plugins/ragclaw-plugin-youtube/src/index.ts`
+- **Problem:** Remote fetches have no timeout or response body size cap. PDF processing loads the full file into memory with no page budget. OCR runs without any time or resource limit. Plugin configuration has no mechanism.
+- **Status:** `done`
+- **Resolution:** Three-layer implementation:
+  1. **`ExtractorLimits`** — Added `fetchTimeoutMs` (30s), `maxResponseSizeBytes` (50MB), `maxPdfPages` (200), `ocrTimeoutMs` (60s) to `RagclawConfig`. Configurable via `extractor.<key>` in config.yaml, env vars (`RAGCLAW_FETCH_TIMEOUT_MS`, etc.), and `ragclaw config set`. `WebExtractor` uses `AbortController` timeout + streaming body size cap. `PdfExtractor` caps page loop to `maxPdfPages` + wraps OCR in `Promise.race` timeout. `ImageExtractor` wraps `Tesseract.recognize` in `Promise.race` timeout. `ocrFromBuffer` accepts optional timeout.
+  2. **`pluginConfig`** — Added `Record<string, Record<string, unknown>>` to `RagclawConfig`, parsed from `plugin.<name>.<key>` lines in config.yaml. Passed through `PluginLoader` → `plugin.init(config)`.
+  3. **`configSchema`** on `RagClawPlugin` — Optional `PluginConfigKey[]` array for documenting plugin-accepted keys. All three built-in plugins now declare schemas and consume config via `init()`: GitHub (`maxIssues`, `maxPRs`, `maxBuffer`), Obsidian (`maxNotes`, `maxNoteSize`), YouTube (`fetchTimeoutMs`). `parseSimpleYaml()` extended to handle dotted keys (`[\w]+(?:\.[\w]+)*`).
 
 ---
 

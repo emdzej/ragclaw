@@ -1,4 +1,4 @@
-import type { RagClawPlugin, Extractor, ExtractedContent, Source } from "@emdzej/ragclaw-core";
+import type { RagClawPlugin, Extractor, ExtractedContent, Source, PluginConfigKey } from "@emdzej/ragclaw-core";
 import { execFileSync } from "child_process";
 
 /**
@@ -17,6 +17,13 @@ interface ParsedGitHubUrl {
  * Valid characters for GitHub owner and repository names.
  */
 const SAFE_SLUG = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Configurable limits (overridable via plugin config).
+ */
+let MAX_ISSUES = 100;
+let MAX_PRS = 100;
+let MAX_BUFFER = 10 * 1024 * 1024;
 
 /**
  * Parse GitHub URL scheme
@@ -67,7 +74,7 @@ function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
  */
 function gh(...args: string[]): string {
   try {
-    return execFileSync("gh", args, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
+    return execFileSync("gh", args, { encoding: "utf-8", maxBuffer: MAX_BUFFER });
   } catch (error) {
     throw new Error(`gh CLI failed: ${error}`);
   }
@@ -110,7 +117,7 @@ async function fetchRepo(owner: string, repo: string): Promise<ExtractedContent>
  * Fetch all issues
  */
 async function fetchIssues(owner: string, repo: string): Promise<ExtractedContent> {
-  const issuesJson = gh("issue", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", "100");
+  const issuesJson = gh("issue", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", String(MAX_ISSUES));
   const issues = JSON.parse(issuesJson);
 
   let text = `# Issues: ${owner}/${repo}\n\n`;
@@ -179,7 +186,7 @@ async function fetchIssue(owner: string, repo: string, number: number): Promise<
  * Fetch all PRs
  */
 async function fetchPulls(owner: string, repo: string): Promise<ExtractedContent> {
-  const prsJson = gh("pr", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", "100");
+  const prsJson = gh("pr", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", String(MAX_PRS));
   const prs = JSON.parse(prsJson);
 
   let text = `# Pull Requests: ${owner}/${repo}\n\n`;
@@ -340,6 +347,28 @@ const plugin: RagClawPlugin = {
   version: "0.1.0",
   extractors: [new GitHubExtractor()],
   schemes: ["github", "gh"],
+
+  configSchema: [
+    { key: "maxIssues",  type: "number", description: "Max issues to fetch (default: 100)",     defaultValue: 100 },
+    { key: "maxPRs",     type: "number", description: "Max PRs to fetch (default: 100)",        defaultValue: 100 },
+    { key: "maxBuffer",  type: "number", description: "Max gh CLI output buffer in bytes (default: 10485760)", defaultValue: 10 * 1024 * 1024 },
+  ],
+
+  async init(config?: Record<string, unknown>) {
+    if (!config) return;
+    if (typeof config.maxIssues === "string") {
+      const n = parseInt(config.maxIssues, 10);
+      if (Number.isFinite(n) && n > 0) MAX_ISSUES = n;
+    }
+    if (typeof config.maxPRs === "string") {
+      const n = parseInt(config.maxPRs, 10);
+      if (Number.isFinite(n) && n > 0) MAX_PRS = n;
+    }
+    if (typeof config.maxBuffer === "string") {
+      const n = parseInt(config.maxBuffer, 10);
+      if (Number.isFinite(n) && n > 0) MAX_BUFFER = n;
+    }
+  },
 };
 
 export default plugin;

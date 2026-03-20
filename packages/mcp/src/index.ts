@@ -239,9 +239,9 @@ async function ragAdd(args: {
 
   const extractors: Extractor[] = [
     new MarkdownExtractor(),
-    new PdfExtractor(),
+    new PdfExtractor({ limits: config.extractorLimits }),
     new DocxExtractor(),
-    new WebExtractor(),
+    new WebExtractor(config.extractorLimits),
     new CodeExtractor(),
     new TextExtractor(),
   ];
@@ -450,9 +450,9 @@ async function ragReindex(args: {
 
   const extractors: Extractor[] = [
     new MarkdownExtractor(),
-    new PdfExtractor(),
+    new PdfExtractor({ limits: config.extractorLimits }),
     new DocxExtractor(),
-    new WebExtractor(),
+    new WebExtractor(config.extractorLimits),
     new CodeExtractor(),
     new TextExtractor(),
   ];

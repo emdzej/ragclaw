@@ -1,14 +1,18 @@
 import { basename, extname } from "path";
 import Tesseract from "tesseract.js";
 import type { Extractor, ExtractedContent, Source } from "../types.js";
+import type { ExtractorLimits } from "../config.js";
+import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
 
 export class ImageExtractor implements Extractor {
   private language: string;
+  private ocrTimeoutMs: number;
 
-  constructor(language = "eng") {
-    this.language = language;
+  constructor(options?: { language?: string; limits?: Partial<ExtractorLimits> }) {
+    this.language = options?.language ?? "eng";
+    this.ocrTimeoutMs = options?.limits?.ocrTimeoutMs ?? DEFAULT_EXTRACTOR_LIMITS.ocrTimeoutMs;
   }
 
   canHandle(source: Source): boolean {
@@ -22,9 +26,14 @@ export class ImageExtractor implements Extractor {
       throw new Error("ImageExtractor requires a file path");
     }
 
-    const result = await Tesseract.recognize(source.path, this.language, {
-      logger: () => {}, // Suppress progress logs
-    });
+    const result = await Promise.race([
+      Tesseract.recognize(source.path, this.language, {
+        logger: () => {}, // Suppress progress logs
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`OCR timed out after ${this.ocrTimeoutMs}ms`)), this.ocrTimeoutMs)
+      ),
+    ]);
 
     const text = result.data.text.trim();
     const confidence = result.data.confidence;
@@ -67,14 +76,25 @@ export class ImageExtractor implements Extractor {
 /**
  * Run OCR on an image buffer and return extracted text.
  * Useful for PDF pages that are image-only.
+ *
+ * @param ocrTimeoutMs  Optional timeout in ms; defaults to
+ *                      `DEFAULT_EXTRACTOR_LIMITS.ocrTimeoutMs`.
  */
 export async function ocrFromBuffer(
   buffer: Buffer,
-  language = "eng"
+  language = "eng",
+  ocrTimeoutMs?: number,
 ): Promise<{ text: string; confidence: number }> {
-  const result = await Tesseract.recognize(buffer, language, {
-    logger: () => {},
-  });
+  const timeout = ocrTimeoutMs ?? DEFAULT_EXTRACTOR_LIMITS.ocrTimeoutMs;
+
+  const result = await Promise.race([
+    Tesseract.recognize(buffer, language, {
+      logger: () => {},
+    }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`OCR timed out after ${timeout}ms`)), timeout)
+    ),
+  ]);
 
   return {
     text: result.data.text.trim(),

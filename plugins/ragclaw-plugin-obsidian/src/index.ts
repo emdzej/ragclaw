@@ -1,4 +1,4 @@
-import type { RagClawPlugin, Extractor, ExtractedContent, Source } from "@emdzej/ragclaw-core";
+import type { RagClawPlugin, Extractor, ExtractedContent, Source, PluginConfigKey } from "@emdzej/ragclaw-core";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, basename, relative, extname } from "path";
 import { homedir } from "os";
@@ -6,6 +6,11 @@ import { homedir } from "os";
 /**
  * Default Obsidian vault locations by platform
  */
+
+/** Configurable limits (overridable via plugin config). */
+let MAX_NOTES = Infinity;
+let MAX_NOTE_SIZE = Infinity;
+
 function getDefaultVaultLocations(): string[] {
   const home = homedir();
   const platform = process.platform;
@@ -57,12 +62,16 @@ function findVault(vaultName: string): string | null {
 }
 
 /**
- * Recursively find all markdown files in vault
+ * Recursively find all markdown files in vault, respecting MAX_NOTES.
  */
 function findMarkdownFiles(dir: string, files: string[] = []): string[] {
+  if (files.length >= MAX_NOTES) return files;
+
   const entries = readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
+    if (files.length >= MAX_NOTES) break;
+
     const fullPath = join(dir, entry.name);
 
     // Skip hidden files and .obsidian directory
@@ -262,6 +271,10 @@ class ObsidianExtractor implements Extractor {
 
     for (const file of files) {
       const raw = readFileSync(file, "utf-8");
+
+      // Skip notes that exceed the configured size limit
+      if (raw.length > MAX_NOTE_SIZE) continue;
+
       const { frontmatter, body } = extractFrontmatter(raw);
       const processed = processObsidianContent(body);
       const relativePath = relative(vaultPath, file);
@@ -300,6 +313,23 @@ const plugin: RagClawPlugin = {
   version: "0.1.0",
   extractors: [new ObsidianExtractor()],
   schemes: ["obsidian", "vault"],
+
+  configSchema: [
+    { key: "maxNotes",    type: "number", description: "Max notes to index from a vault (default: unlimited)", defaultValue: undefined },
+    { key: "maxNoteSize", type: "number", description: "Max note size in bytes to include (default: unlimited)", defaultValue: undefined },
+  ],
+
+  async init(config?: Record<string, unknown>) {
+    if (!config) return;
+    if (typeof config.maxNotes === "string") {
+      const n = parseInt(config.maxNotes, 10);
+      if (Number.isFinite(n) && n > 0) MAX_NOTES = n;
+    }
+    if (typeof config.maxNoteSize === "string") {
+      const n = parseInt(config.maxNoteSize, 10);
+      if (Number.isFinite(n) && n > 0) MAX_NOTE_SIZE = n;
+    }
+  },
 };
 
 export default plugin;

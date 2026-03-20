@@ -104,11 +104,11 @@ export async function reindex(options: ReindexOptions): Promise<void> {
 
     const extractors: Extractor[] = [
       new MarkdownExtractor(),
-      new PdfExtractor(),
+      new PdfExtractor({ limits: config.extractorLimits }),
       new DocxExtractor(),
-      new WebExtractor(),
+      new WebExtractor(config.extractorLimits),
       new CodeExtractor(),
-      new ImageExtractor(),
+      new ImageExtractor({ limits: config.extractorLimits }),
       new TextExtractor(),
     ];
     const semanticChunker = new SemanticChunker();

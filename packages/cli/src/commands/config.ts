@@ -1,6 +1,23 @@
 import chalk from "chalk";
 import { getConfig, getConfigFilePath, setConfigValue, SETTABLE_KEYS } from "../config.js";
-import type { RagclawConfig } from "../config.js";
+import type { RagclawConfig, ConfigKeyMeta } from "../config.js";
+
+/**
+ * Resolve the current value for a SETTABLE_KEYS entry.
+ * Flat keys use `config[configKey]`; dotted extractor.* keys read from
+ * `config.extractorLimits`.
+ */
+function resolveSettableValue(config: RagclawConfig, meta: ConfigKeyMeta): unknown {
+  if (meta.configKey) {
+    return config[meta.configKey];
+  }
+  // extractor.* keys
+  if (meta.yamlKey.startsWith("extractor.")) {
+    const limitsKey = meta.yamlKey.slice("extractor.".length);
+    return (config.extractorLimits as unknown as Record<string, unknown>)[limitsKey];
+  }
+  return undefined;
+}
 
 /**
  * Determine where a config value came from.
@@ -44,7 +61,7 @@ export async function configList(): Promise<void> {
   const keyWidth = Math.max(...SETTABLE_KEYS.map((k) => k.yamlKey.length)) + 2;
 
   for (const meta of SETTABLE_KEYS) {
-    const value = config[meta.configKey];
+    const value = resolveSettableValue(config, meta);
     const source = getSource(meta);
     const sourceLabel = source === "env"
       ? chalk.yellow(`[env: ${meta.envVar}]`)
@@ -72,7 +89,7 @@ export async function configGet(key: string): Promise<void> {
   const meta = SETTABLE_KEYS.find((k) => k.yamlKey === key || k.configKey === key);
 
   if (meta) {
-    const value = config[meta.configKey];
+    const value = resolveSettableValue(config, meta);
     console.log(formatValue(value));
     return;
   }
@@ -92,7 +109,7 @@ export async function configGet(key: string): Promise<void> {
  * `ragclaw config set <key> <value>` — persist a config value to config.yaml.
  */
 export async function configSet(key: string, value: string): Promise<void> {
-  const meta = SETTABLE_KEYS.find((k) => k.yamlKey === key || k.configKey === key);
+  const meta = SETTABLE_KEYS.find((k) => k.yamlKey === key || (k.configKey && k.configKey === key));
 
   if (!meta) {
     console.log(chalk.red(`Unknown config key: "${key}"`));

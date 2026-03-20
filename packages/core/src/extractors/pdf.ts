@@ -1,6 +1,8 @@
 import { readFile } from "fs/promises";
 import { basename, extname } from "path";
 import type { Extractor, ExtractedContent, Source } from "../types.js";
+import type { ExtractorLimits } from "../config.js";
+import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
 
 // Minimum text length per page to consider it "has text"
 const MIN_TEXT_PER_PAGE = 50;
@@ -8,10 +10,18 @@ const MIN_TEXT_PER_PAGE = 50;
 export class PdfExtractor implements Extractor {
   private enableOcr: boolean;
   private ocrLanguage: string;
+  private maxPdfPages: number;
+  private ocrTimeoutMs: number;
 
-  constructor(options: { enableOcr?: boolean; ocrLanguage?: string } = {}) {
+  constructor(options: {
+    enableOcr?: boolean;
+    ocrLanguage?: string;
+    limits?: Partial<ExtractorLimits>;
+  } = {}) {
     this.enableOcr = options.enableOcr ?? true;
     this.ocrLanguage = options.ocrLanguage ?? "eng";
+    this.maxPdfPages = options.limits?.maxPdfPages ?? DEFAULT_EXTRACTOR_LIMITS.maxPdfPages;
+    this.ocrTimeoutMs = options.limits?.ocrTimeoutMs ?? DEFAULT_EXTRACTOR_LIMITS.ocrTimeoutMs;
   }
 
   canHandle(source: Source): boolean {
@@ -32,12 +42,13 @@ export class PdfExtractor implements Extractor {
     
     const doc = await pdfjs.getDocument({ data: uint8Array }).promise;
     const numPages = doc.numPages;
+    const pagesToProcess = Math.min(numPages, this.maxPdfPages);
     
     const textParts: string[] = [];
     let ocrPages = 0;
     let usedOcr = false;
     
-    for (let i = 1; i <= numPages; i++) {
+    for (let i = 1; i <= pagesToProcess; i++) {
       const page = await doc.getPage(i);
       const textContent = await page.getTextContent();
       const pageText = textContent.items
@@ -72,6 +83,10 @@ export class PdfExtractor implements Extractor {
       filename: basename(source.path),
       pages: numPages,
     };
+
+    if (pagesToProcess < numPages) {
+      metadata.pagesCapped = pagesToProcess;
+    }
 
     if (usedOcr) {
       metadata.ocrPages = ocrPages;
@@ -118,9 +133,14 @@ export class PdfExtractor implements Extractor {
     // Convert to PNG buffer
     const pngBuffer = canvas.toBuffer("image/png");
 
-    // Run OCR
+    // Run OCR with timeout
     const { ocrFromBuffer } = await import("./image.js");
-    const result = await ocrFromBuffer(pngBuffer, this.ocrLanguage);
+    const result = await Promise.race([
+      ocrFromBuffer(pngBuffer, this.ocrLanguage),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`OCR timed out after ${this.ocrTimeoutMs}ms`)), this.ocrTimeoutMs)
+      ),
+    ]);
     
     return result.text;
   }

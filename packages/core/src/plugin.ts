@@ -1,6 +1,21 @@
 import type { Extractor, Chunker } from "./types.js";
 
 /**
+ * Describes a single config key that a plugin accepts.
+ * Used by `ragclaw config list` to document plugin-specific settings.
+ */
+export interface PluginConfigKey {
+  /** The key name (without the `plugin.<name>.` prefix). */
+  key: string;
+  /** Human-readable description. */
+  description: string;
+  /** Value type hint. */
+  type: "string" | "number" | "boolean";
+  /** Default value (for documentation). */
+  defaultValue?: unknown;
+}
+
+/**
  * RagClaw plugin interface.
  * Plugins can provide custom extractors and chunkers for new data sources.
  */
@@ -28,6 +43,10 @@ export interface RagClawPlugin {
   
   /** Optional cleanup function */
   dispose?: () => Promise<void>;
+
+  /** Optional schema describing config keys the plugin accepts.
+   *  Shown by `ragclaw config list` for discoverability. */
+  configSchema?: PluginConfigKey[];
 }
 
 /**
