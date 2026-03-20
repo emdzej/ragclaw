@@ -25,14 +25,17 @@ export class PluginLoader {
   }
 
   /**
-   * Discover all available plugins (npm global + local)
+   * Discover all available plugins (npm global + local).
+   * Global npm scanning is off by default (opt-in via scanGlobalNpm option).
    */
   async discover(): Promise<PluginManifest[]> {
     const manifests: PluginManifest[] = [];
 
-    // 1. Scan npm global packages for ragclaw-plugin-*
-    const npmPlugins = await this.discoverNpmPlugins();
-    manifests.push(...npmPlugins);
+    // 1. Scan npm global packages for ragclaw-plugin-* (off by default)
+    if (this.options.scanGlobalNpm) {
+      const npmPlugins = await this.discoverNpmPlugins();
+      manifests.push(...npmPlugins);
+    }
 
     // 2. Scan local plugins directory
     const localPlugins = await this.discoverLocalPlugins();
@@ -77,7 +80,8 @@ export class PluginLoader {
   }
 
   /**
-   * Load all discovered plugins
+   * Load all discovered plugins that are in the enabled allowlist.
+   * If enabledPlugins is undefined or empty, no plugins are loaded.
    */
   async loadAll(): Promise<LoadedPlugin[]> {
     if (this.initialized) {
@@ -85,8 +89,14 @@ export class PluginLoader {
     }
 
     const manifests = await this.discover();
-    
+    const allowed = this.options.enabledPlugins;
+
     for (const manifest of manifests) {
+      // Only load plugins explicitly listed in the allowlist
+      if (!allowed || !allowed.includes(manifest.name)) {
+        continue;
+      }
+
       try {
         await this.load(manifest);
       } catch (err) {

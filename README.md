@@ -78,6 +78,9 @@ ragclaw reindex            # Re-process changed files
 ragclaw status             # Show KB statistics
 ragclaw list               # List indexed sources
 ragclaw remove <source>    # Remove from index
+ragclaw plugin list        # List plugins with enabled/disabled status
+ragclaw plugin enable <n>  # Enable a plugin (or --all)
+ragclaw plugin disable <n> # Disable a plugin
 ```
 
 ### Options
@@ -114,6 +117,12 @@ dataDir: ~/my-ragclaw-data
 
 # Override plugins directory
 pluginsDir: ~/my-ragclaw-plugins
+
+# Enabled plugins (managed via `ragclaw plugin enable/disable`)
+plugins: ragclaw-plugin-github, ragclaw-plugin-obsidian
+
+# Allow scanning global npm packages for plugins (default: false)
+scanGlobalNpm: true
 ```
 
 ### Environment Variables
@@ -282,17 +291,36 @@ Extend RagClaw with custom extractors for additional data sources.
 
 ### Using Plugins
 
+Plugins must be **explicitly enabled** before they are loaded. This is a security measure — no plugin runs code until you opt in.
+
 ```bash
 # Install from npm
 npm install -g ragclaw-plugin-youtube
 
-# Use custom schemes
+# List installed plugins (shows enabled/disabled status)
+ragclaw plugin list
+
+# Enable a plugin
+ragclaw plugin enable ragclaw-plugin-youtube
+
+# Enable all discovered plugins at once
+ragclaw plugin enable --all
+
+# Now use custom schemes
 ragclaw add youtube://dQw4w9WgXcQ
 ragclaw add yt://dQw4w9WgXcQ
 
-# List installed plugins
-ragclaw plugin list
+# Disable a plugin
+ragclaw plugin disable ragclaw-plugin-youtube
 ```
+
+Enabled plugins are stored in your config file (`~/.config/ragclaw/config.yaml`):
+
+```yaml
+plugins: ragclaw-plugin-youtube, ragclaw-plugin-github
+```
+
+You can also edit this file directly if you prefer.
 
 ### Available Plugins
 
@@ -334,10 +362,15 @@ export default plugin;
 ### Plugin Discovery
 
 Plugins are discovered from:
-- **npm global:** `ragclaw-plugin-*` packages
 - **Local:** `~/.local/share/ragclaw/plugins/`
+- **npm global:** `ragclaw-plugin-*` packages (opt-in, requires `scanGlobalNpm: true` in config)
 
-Override with `RAGCLAW_PLUGINS_DIR` or config file.
+Override the local plugins directory with `RAGCLAW_PLUGINS_DIR` or the config file.
+
+> **Note:** Global npm scanning is disabled by default to prevent typosquatting attacks. Enable it in `config.yaml` if needed:
+> ```yaml
+> scanGlobalNpm: true
+> ```
 
 ---
 

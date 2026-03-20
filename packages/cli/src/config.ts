@@ -1,6 +1,6 @@
 import { homedir, platform } from "os";
 import { join } from "path";
-import { existsSync, readFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 
 /**
  * XDG Base Directory paths
@@ -43,6 +43,8 @@ export interface RagclawConfig {
   configDir: string;
   dataDir: string;
   pluginsDir: string;
+  enabledPlugins: string[];
+  scanGlobalNpm: boolean;
 }
 
 let cachedConfig: RagclawConfig | null = null;
@@ -61,6 +63,8 @@ export function getConfig(): RagclawConfig {
   let configDir = getDefaultConfigDir();
   let dataDir = getDefaultDataDir();
   let pluginsDir = join(dataDir, "plugins");
+  let enabledPlugins: string[] = [];
+  let scanGlobalNpm = false;
 
   // Check for legacy path (backwards compatibility)
   if (existsSync(LEGACY_DIR)) {
@@ -77,6 +81,12 @@ export function getConfig(): RagclawConfig {
       const parsed = parseSimpleYaml(content);
       if (parsed.dataDir) dataDir = expandHome(parsed.dataDir);
       if (parsed.pluginsDir) pluginsDir = expandHome(parsed.pluginsDir);
+      if (parsed.plugins) {
+        enabledPlugins = parsed.plugins.split(",").map((s: string) => s.trim()).filter(Boolean);
+      }
+      if (parsed.scanGlobalNpm) {
+        scanGlobalNpm = parsed.scanGlobalNpm === "true";
+      }
     } catch {
       // Ignore config parse errors
     }
@@ -93,7 +103,7 @@ export function getConfig(): RagclawConfig {
     pluginsDir = process.env.RAGCLAW_PLUGINS_DIR;
   }
 
-  cachedConfig = { configDir, dataDir, pluginsDir };
+  cachedConfig = { configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm };
   return cachedConfig;
 }
 
@@ -131,6 +141,59 @@ export function ensureDataDir(): void {
 
 // Legacy export for backwards compatibility
 export const RAGCLAW_DIR = getDataDir();
+
+/**
+ * Get the path to the config file
+ */
+export function getConfigFilePath(): string {
+  const { configDir } = getConfig();
+  return join(configDir, "config.yaml");
+}
+
+/**
+ * Get list of enabled plugins from config
+ */
+export function getEnabledPlugins(): string[] {
+  return getConfig().enabledPlugins;
+}
+
+/**
+ * Persist the enabled plugins list to config.yaml.
+ * Preserves existing non-plugins config lines.
+ */
+export function setEnabledPlugins(plugins: string[]): void {
+  const config = getConfig();
+  const configFile = getConfigFilePath();
+
+  // Ensure config directory exists
+  const dir = config.configDir;
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  // Read existing config (if any) and replace/add the plugins line
+  let lines: string[] = [];
+  if (existsSync(configFile)) {
+    lines = readFileSync(configFile, "utf-8").split("\n");
+  }
+
+  const pluginsLine = plugins.length > 0
+    ? `plugins: ${plugins.join(", ")}`
+    : "plugins:";
+
+  const idx = lines.findIndex((l) => l.trimStart().startsWith("plugins:"));
+  if (idx !== -1) {
+    lines[idx] = pluginsLine;
+  } else {
+    // Add after last non-empty line (or at end)
+    lines.push(pluginsLine);
+  }
+
+  writeFileSync(configFile, lines.join("\n"), "utf-8");
+
+  // Bust the cached config so next getConfig() re-reads
+  cachedConfig = null;
+}
 
 /**
  * Simple YAML parser for config (no dependencies)

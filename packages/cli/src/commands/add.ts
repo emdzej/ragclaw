@@ -18,7 +18,7 @@ import {
   ImageExtractor,
 } from "@emdzej/ragclaw-core";
 import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
-import { getDbPath, ensureDataDir } from "../config.js";
+import { getDbPath, ensureDataDir, getConfig } from "../config.js";
 import { mkdir } from "fs/promises";
 import { PluginLoader } from "../plugins/loader.js";
 
@@ -44,8 +44,12 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
   const spinner = ora("Loading embedding model...").start();
 
-  // Load plugins
-  const pluginLoader = new PluginLoader();
+  // Load plugins (only those explicitly enabled in config)
+  const config = getConfig();
+  const pluginLoader = new PluginLoader({
+    enabledPlugins: config.enabledPlugins,
+    scanGlobalNpm: config.scanGlobalNpm,
+  });
   await pluginLoader.loadAll();
   const pluginExtractors = pluginLoader.getExtractors();
 

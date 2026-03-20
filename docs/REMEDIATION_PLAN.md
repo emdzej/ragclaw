@@ -21,9 +21,10 @@ Implementation details are decided task-by-task before work begins.
 ### TASK-02 — Restrict automatic plugin discovery and loading
 
 - **Finding:** F-02 (High)
-- **File(s):** `packages/cli/src/plugins/loader.ts`, `packages/cli/src/commands/add.ts`
+- **File(s):** `packages/cli/src/plugins/loader.ts`, `packages/cli/src/commands/add.ts`, `packages/cli/src/commands/plugin.ts`, `packages/cli/src/config.ts`, `packages/cli/src/cli.ts`, `packages/core/src/plugin.ts`
 - **Problem:** Plugins are auto-discovered from global npm packages and local directories, then dynamically imported and executed without any user consent or allowlist. Any package matching the naming convention runs code automatically.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Plugins are now opt-in. Added `enabledPlugins` allowlist and `scanGlobalNpm` flag (default `false`) to `PluginLoaderOptions`. The `loadAll()` method filters discovered plugins against the allowlist — unlisted plugins are never imported or executed. Config is stored as a `plugins:` line in `config.yaml`. New CLI commands: `ragclaw plugin enable <name>`, `ragclaw plugin enable --all`, `ragclaw plugin disable <name>`. `plugin list` now shows enabled/disabled status per plugin.
 
 ---
 

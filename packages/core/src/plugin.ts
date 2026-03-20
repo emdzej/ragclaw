@@ -76,4 +76,10 @@ export interface PluginLoaderOptions {
   
   /** Plugin configuration (passed to plugin.init()) */
   config?: Record<string, Record<string, unknown>>;
+
+  /** Explicit list of plugin names allowed to load. If undefined, no plugins load. */
+  enabledPlugins?: string[];
+
+  /** Whether to scan global npm packages for plugins (default: false) */
+  scanGlobalNpm?: boolean;
 }

@@ -8,7 +8,7 @@ import { statusCommand } from "./commands/status.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
 import { reindex } from "./commands/reindex.js";
-import { pluginList, pluginAdd, pluginRemove, pluginCreate } from "./commands/plugin.js";
+import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
 
 const program = new Command();
 
@@ -100,5 +100,18 @@ pluginCmd
   .description("Create a new plugin from template")
   .argument("<name>", "Plugin name (e.g., 'notion' or 'ragclaw-plugin-notion')")
   .action(pluginCreate);
+
+pluginCmd
+  .command("enable")
+  .description("Enable a plugin so it loads during indexing")
+  .argument("[name]", "Plugin name (e.g., ragclaw-plugin-github)")
+  .option("-a, --all", "Enable all discovered plugins")
+  .action(pluginEnable);
+
+pluginCmd
+  .command("disable")
+  .description("Disable a plugin so it no longer loads")
+  .argument("<name>", "Plugin name")
+  .action(pluginDisable);
 
 program.parse();
