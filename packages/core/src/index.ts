@@ -28,5 +28,20 @@ export type {
   PluginLoaderOptions,
 } from "./plugin.js";
 
+// Config
+export {
+  getConfig,
+  resetConfigCache,
+  getDbPath,
+  getPluginsDir,
+  getDataDir,
+  ensureDataDir,
+  getConfigFilePath,
+  getEnabledPlugins,
+  setEnabledPlugins,
+  RAGCLAW_DIR,
+  type RagclawConfig,
+} from "./config.js";
+
 // Utils
 export { cosineSimilarity } from "./utils/math.js";

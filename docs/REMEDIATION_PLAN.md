@@ -31,9 +31,54 @@ Implementation details are decided task-by-task before work begins.
 ### TASK-03 — Restrict MCP `rag_add` to scoped paths and URLs
 
 - **Finding:** F-03 (High)
-- **File(s):** `packages/mcp/src/index.ts`, `packages/core/src/extractors/web.ts`
-- **Problem:** The MCP `rag_add` tool accepts arbitrary local filesystem paths, recursive directories, and remote URLs with no scope restrictions. Sensitive files can be indexed and later retrieved via `rag_search` excerpts.
+- **File(s):** `packages/mcp/src/index.ts`, `packages/core/src/extractors/web.ts`, `packages/core/src/config.ts` (new), `packages/cli/src/config.ts`, `packages/cli/src/cli.ts`
+- **Problem:** The MCP `rag_add` tool accepts arbitrary local filesystem paths, recursive directories, and remote URLs with no scope restrictions. Sensitive files can be indexed and later retrieved via `rag_search` excerpts. Additionally, config logic is duplicated between CLI and MCP, making it hard to share settings.
 - **Status:** `pending`
+
+This task is broken into sub-tasks due to scope:
+
+#### TASK-03a — Move config module into `@emdzej/ragclaw-core`
+
+Move the config logic (`getConfig`, `getDbPath`, config file parsing, etc.) from `packages/cli/src/config.ts` into `packages/core/src/config.ts` so both CLI and MCP can import from the same source. Re-export from CLI for backwards compatibility. Add a `overrides?: Partial<RagclawConfig>` parameter so CLI flags and env vars can override config file values.
+
+- **Status:** `done`
+- **Resolution:** Created `packages/core/src/config.ts` with all config logic, `RagclawConfig` interface, and `overrides?: Partial<RagclawConfig>` parameter on `getConfig()`. Exported `resetConfigCache()` for use by `setEnabledPlugins()` and tests. CLI's `config.ts` is now a re-export barrel — all 9 consumer files unchanged. MCP's duplicated config block (lines 31–53) replaced with `import { getConfig, getDbPath } from "@emdzej/ragclaw-core"`. All three packages type-check clean.
+
+#### TASK-03b — Add security-scoping config keys with three-layer resolution
+
+Add new config keys with built-in defaults, configurable via config file, env vars, and CLI flags. Resolution order: CLI flag > env var > config file > built-in default.
+
+| Key | Config file | Env var | CLI flag | Default |
+|-----|-------------|---------|----------|---------|
+| `allowedPaths` | `allowedPaths:` | `RAGCLAW_ALLOWED_PATHS` | `--allowed-paths` | `""` (MCP: cwd only) |
+| `allowUrls` | `allowUrls:` | `RAGCLAW_ALLOW_URLS` | `--allow-urls` / `--no-allow-urls` | `true` |
+| `blockPrivateUrls` | `blockPrivateUrls:` | `RAGCLAW_BLOCK_PRIVATE_URLS` | `--block-private-urls` / `--no-block-private-urls` | `true` |
+| `maxDepth` | `maxDepth:` | `RAGCLAW_MAX_DEPTH` | `--max-depth` | `10` |
+| `maxFiles` | `maxFiles:` | `RAGCLAW_MAX_FILES` | `--max-files` | `1000` |
+
+- **Status:** `pending`
+
+#### TASK-03c — Add `ragclaw config get/set/list` CLI commands
+
+Generic config management commands so users can persistently configure settings without manually editing YAML:
+
+```bash
+ragclaw config list                                          # show all values + source
+ragclaw config get allowedPaths                              # show single key
+ragclaw config set allowedPaths "/Users/me/projects, /docs"  # persist to config.yaml
+```
+
+- **Status:** `pending`
+
+#### TASK-03d — Enforce path/URL restrictions in MCP server
+
+Replace MCP's duplicated config code with shared config import. Add `isPathAllowed()` (checks resolved path against `allowedPaths`, defaults to cwd), `isUrlAllowed()` (blocks private/reserved IP ranges when `blockPrivateUrls` is true), and recursion limits (`maxDepth`, `maxFiles`) in `collectSources` / `collectFilesRecursive`. Return clear error messages explaining why a path/URL was blocked and how to adjust.
+
+- **Status:** `pending`
+
+#### TASK-03e — Pass CLI flag overrides through to `add` and `reindex` commands
+
+Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-private-urls` / `--no-block-private-urls` flags into `ragclaw add` and `ragclaw reindex` so per-invocation overrides work for the CLI as well.
 
 ---
 
