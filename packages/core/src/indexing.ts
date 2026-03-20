@@ -3,6 +3,7 @@ import { stat } from "fs/promises";
 import { existsSync } from "fs";
 import { Store } from "./store/index.js";
 import { Embedder } from "./embedder/index.js";
+import { createEmbedder } from "./embedder/factory.js";
 import { SemanticChunker } from "./chunkers/semantic.js";
 import { CodeChunker } from "./chunkers/code.js";
 import { MarkdownExtractor } from "./extractors/markdown.js";
@@ -13,7 +14,8 @@ import { WebExtractor } from "./extractors/web.js";
 import { CodeExtractor } from "./extractors/code.js";
 import { ImageExtractor } from "./extractors/image.js";
 import { hashFile } from "./utils/hash.js";
-import type { Source, Extractor, Chunker, ChunkRecord, ExtractedContent, SourceRecord } from "./types.js";
+import type { Source, Extractor, Chunker, ChunkRecord, ExtractedContent, SourceRecord, EmbedderPlugin } from "./types.js";
+import type { EmbedderResolvedConfig } from "./embedder/factory.js";
 import type { ExtractorLimits } from "./config.js";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,13 @@ export interface IndexingServiceConfig {
   extractorLimits?: Partial<ExtractorLimits>;
   /** Callback fired on embedding model download progress (0–1). */
   onModelProgress?: (progress: number) => void;
+  /**
+   * Embedder to use.  Accepts:
+   *  - An `EmbedderPlugin` instance (plugin-provided or custom)
+   *  - An `EmbedderResolvedConfig` object (alias / model / etc.)
+   *  - Omit for the default nomic embedder
+   */
+  embedder?: EmbedderPlugin | EmbedderResolvedConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +90,7 @@ export class IndexingService {
   private extractors: Extractor[];
   private semanticChunker: SemanticChunker;
   private codeChunker: CodeChunker;
-  private embedder: Embedder;
+  private embedder: EmbedderPlugin;
   private ready = false;
 
   constructor(private cfg: IndexingServiceConfig = {}) {
@@ -97,16 +106,62 @@ export class IndexingService {
     ];
     this.semanticChunker = new SemanticChunker();
     this.codeChunker = new CodeChunker();
-    this.embedder = new Embedder({
-      onProgress: cfg.onModelProgress,
-    });
+
+    // Resolve embedder: plugin instance > resolved config > default nomic
+    if (cfg.embedder && "embed" in cfg.embedder) {
+      // Already an EmbedderPlugin instance
+      this.embedder = cfg.embedder as EmbedderPlugin;
+    } else if (cfg.embedder) {
+      // EmbedderResolvedConfig object
+      this.embedder = createEmbedder({
+        ...(cfg.embedder as EmbedderResolvedConfig),
+        onProgress: cfg.onModelProgress,
+      });
+    } else {
+      // Default: nomic via factory (respects onProgress)
+      this.embedder = createEmbedder({ onProgress: cfg.onModelProgress });
+    }
   }
 
   /** Warm up the embedding model. Call once before first use. */
   async init(): Promise<void> {
     if (this.ready) return;
-    await this.embedder.embed("warmup");
+    await this.embedder.init?.();
+    // Ensure dimensions are detected (init may trigger auto-detect)
+    if (this.embedder.dimensions === 0) {
+      await this.embedder.embed("warmup");
+    }
     this.ready = true;
+  }
+
+  /**
+   * Check that the embedder's dimensions match what's stored in the database.
+   * Throws a descriptive error if there's a mismatch.
+   *
+   * Also writes embedder metadata to the store on first use (when store_meta
+   * doesn't have a non-nomic embedder yet after the legacy migration).
+   */
+  private async checkAndRecordEmbedderMeta(store: Store): Promise<void> {
+    const storedDim = await store.getMeta("embedder_dimensions");
+    const currentDim = this.embedder.dimensions;
+
+    // If dimensions are unknown yet (auto-detect hasn't run), skip the check
+    if (currentDim === 0) return;
+
+    if (storedDim !== null && parseInt(storedDim, 10) !== currentDim) {
+      const storedName = (await store.getMeta("embedder_name")) ?? "unknown";
+      throw new Error(
+        `Embedder dimension mismatch: the database contains ${storedDim}-dim embeddings ` +
+          `(stored with "${storedName}") but the current embedder "${this.embedder.name}" ` +
+          `produces ${currentDim}-dim vectors.\n` +
+          `To fix: run \`ragclaw reindex --embedder ${this.embedder.name}\` to rebuild the index, ` +
+          `or switch back to the original embedder.`,
+      );
+    }
+
+    // Record/update embedder metadata in store
+    await store.setMeta("embedder_name", this.embedder.name);
+    await store.setMeta("embedder_dimensions", String(currentDim));
   }
 
   /**
@@ -130,6 +185,9 @@ export class IndexingService {
 
       const isUrl = source.type === "url";
       const sourcePath = isUrl ? source.url! : source.path!;
+
+      // Check dimension compatibility before any I/O (fast-fail)
+      await this.checkAndRecordEmbedderMeta(store);
 
       const existing = await store.getSource(sourcePath);
 
@@ -164,6 +222,13 @@ export class IndexingService {
       const embeddings = await this.embedder.embedBatch(
         chunks.map((c) => c.text),
       );
+
+      // For auto-detect embedders (dim was 0 at pre-check), write meta now
+      // that dimensions are known after the first real embed.
+      if (this.embedder.dimensions > 0) {
+        await store.setMeta("embedder_name", this.embedder.name);
+        await store.setMeta("embedder_dimensions", String(this.embedder.dimensions));
+      }
 
       // Source metadata
       const now = Date.now();
@@ -227,6 +292,9 @@ export class IndexingService {
   ): Promise<ReindexOutcome> {
     try {
       const isUrl = source.type === "url";
+
+      // Check dimension compatibility before any I/O (fast-fail)
+      await this.checkAndRecordEmbedderMeta(store);
 
       // Check existence
       if (!isUrl && !existsSync(source.path)) {

@@ -34,9 +34,17 @@ CREATE TABLE IF NOT EXISTS chunks (
   created_at INTEGER NOT NULL
 );
 
+-- Store-level key/value metadata (embedder name, dimensions, etc.)
+CREATE TABLE IF NOT EXISTS store_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_sources_path ON sources(path);
+-- Speeds up listSources() ORDER BY indexed_at DESC and getStats() MAX(indexed_at)
+CREATE INDEX IF NOT EXISTS idx_sources_indexed_at ON sources(indexed_at);
 
 -- Full-text search (FTS5)
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -83,6 +91,9 @@ export class Store {
     // Initialize schema
     this.db.exec(SCHEMA);
 
+    // Migrate legacy databases: write nomic defaults if no embedder meta exists
+    this.migrateLegacyMeta();
+
     // Try to load sqlite-vec extension
     this.hasVec = this.tryLoadVec();
 
@@ -95,16 +106,45 @@ export class Store {
     }
   }
 
+  /**
+   * Write nomic defaults into store_meta for legacy databases that were
+   * created before the embedder plugin system existed.
+   * Only runs if `embedder_name` is not yet set.
+   */
+  private migrateLegacyMeta(): void {
+    if (!this.db) return;
+
+    const existing = this.db
+      .prepare("SELECT value FROM store_meta WHERE key = 'embedder_name'")
+      .get() as { value: string } | undefined;
+
+    if (!existing) {
+      const insert = this.db.prepare(
+        "INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)"
+      );
+      const migrate = this.db.transaction(() => {
+        insert.run("embedder_name", "nomic");
+        insert.run("embedder_model", "nomic-ai/nomic-embed-text-v1.5");
+        insert.run("embedder_dimensions", "768");
+      });
+      migrate();
+    }
+  }
+
   private tryLoadVec(): boolean {
     if (!this.db) return false;
 
+    // Read stored dimensions — fall back to 768 if not set yet
+    const dimRow = this.db
+      .prepare("SELECT value FROM store_meta WHERE key = 'embedder_dimensions'")
+      .get() as { value: string } | undefined;
+    const dim = dimRow ? parseInt(dimRow.value, 10) : 768;
+
     try {
-      // Try to load sqlite-vec
-      // This will fail gracefully if extension is not available
       this.db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
           id TEXT PRIMARY KEY,
-          embedding FLOAT[768]
+          embedding FLOAT[${dim}]
         );
       `);
       return true;
@@ -117,6 +157,54 @@ export class Store {
   async close(): Promise<void> {
     this.db?.close();
     this.db = null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Store Metadata
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Read a single metadata value by key.
+   * Returns `null` if the key does not exist.
+   */
+  async getMeta(key: string): Promise<string | null> {
+    if (!this.db) throw new Error("Store not opened");
+    const row = this.db
+      .prepare("SELECT value FROM store_meta WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  /**
+   * Synchronous variant used internally (before async context is available).
+   */
+  private getMetaSync(key: string): string | null {
+    if (!this.db) return null;
+    const row = this.db
+      .prepare("SELECT value FROM store_meta WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  /**
+   * Write (upsert) a metadata key/value pair.
+   */
+  async setMeta(key: string, value: string): Promise<void> {
+    if (!this.db) throw new Error("Store not opened");
+    this.db
+      .prepare("INSERT OR REPLACE INTO store_meta (key, value) VALUES (?, ?)")
+      .run(key, value);
+  }
+
+  /**
+   * Return all metadata as a plain object.
+   */
+  async getAllMeta(): Promise<Record<string, string>> {
+    if (!this.db) throw new Error("Store not opened");
+    const rows = this.db
+      .prepare("SELECT key, value FROM store_meta")
+      .all() as { key: string; value: string }[];
+    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
