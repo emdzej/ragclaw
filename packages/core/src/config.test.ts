@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { writeFileSync, mkdirSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   sanitizeDbName,
   getConfig,
@@ -361,5 +364,169 @@ describe("SETTABLE_KEYS", () => {
     expect(yamlKeys).toContain("extractor.maxResponseSizeBytes");
     expect(yamlKeys).toContain("extractor.maxPdfPages");
     expect(yamlKeys).toContain("extractor.ocrTimeoutMs");
+  });
+
+  it("includes embedder key", () => {
+    const yamlKeys = SETTABLE_KEYS.map((k) => k.yamlKey);
+    expect(yamlKeys).toContain("embedder");
+    const meta = SETTABLE_KEYS.find((k) => k.yamlKey === "embedder");
+    expect(meta?.envVar).toBe("RAGCLAW_EMBEDDER");
+    expect(meta?.type).toBe("string");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// YAML config file parsing — embedder field + nested blocks
+// ---------------------------------------------------------------------------
+
+describe("config file YAML parsing", () => {
+  let tmpDir: string;
+
+  // Save/restore env vars that affect config loading
+  const savedEnv: Record<string, string | undefined> = {};
+  const envKeys = ["RAGCLAW_CONFIG_DIR", "RAGCLAW_DATA_DIR", "RAGCLAW_EMBEDDER", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
+
+  beforeEach(() => {
+    // Create a temp dir used as RAGCLAW_CONFIG_DIR
+    tmpDir = join(tmpdir(), `ragclaw-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    resetConfigCache();
+    for (const key of envKeys) savedEnv[key] = process.env[key];
+    process.env.RAGCLAW_CONFIG_DIR = tmpDir;
+    process.env.RAGCLAW_DATA_DIR = tmpDir;
+  });
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+    resetConfigCache();
+  });
+
+  function writeConfig(yaml: string) {
+    writeFileSync(join(tmpDir, "config.yaml"), yaml, "utf-8");
+    resetConfigCache();
+  }
+
+  it("parses embedder alias string", () => {
+    writeConfig("embedder: bge\n");
+    const cfg = getConfig();
+    expect(cfg.embedder).toBe("bge");
+  });
+
+  it("parses embedder alias with quotes", () => {
+    writeConfig('embedder: "nomic"\n');
+    const cfg = getConfig();
+    expect(cfg.embedder).toBe("nomic");
+  });
+
+  it("parses embedder as nested object with model", () => {
+    writeConfig("embedder:\n  model: BAAI/bge-m3\n");
+    const cfg = getConfig();
+    expect(cfg.embedder).toEqual(expect.objectContaining({ model: "BAAI/bge-m3" }));
+  });
+
+  it("parses embedder object with plugin + baseUrl", () => {
+    writeConfig("embedder:\n  plugin: ollama\n  model: nomic-embed-text\n  baseUrl: http://localhost:11434\n");
+    const cfg = getConfig();
+    expect(cfg.embedder).toEqual(expect.objectContaining({
+      plugin: "ollama",
+      model: "nomic-embed-text",
+      baseUrl: "http://localhost:11434",
+    }));
+  });
+
+  it("embedder is undefined when not set", () => {
+    writeConfig("maxDepth: 5\n");
+    const cfg = getConfig();
+    expect(cfg.embedder).toBeUndefined();
+  });
+
+  it("parses booleans natively (true/false, not strings)", () => {
+    writeConfig("allowUrls: false\nblockPrivateUrls: false\nscanGlobalNpm: true\n");
+    const cfg = getConfig();
+    expect(cfg.allowUrls).toBe(false);
+    expect(cfg.blockPrivateUrls).toBe(false);
+    expect(cfg.scanGlobalNpm).toBe(true);
+  });
+
+  it("parses numbers natively", () => {
+    writeConfig("maxDepth: 7\nmaxFiles: 500\n");
+    const cfg = getConfig();
+    expect(cfg.maxDepth).toBe(7);
+    expect(cfg.maxFiles).toBe(500);
+  });
+
+  it("parses plugins as a YAML list", () => {
+    writeConfig("plugins:\n  - github\n  - youtube\n");
+    const cfg = getConfig();
+    expect(cfg.enabledPlugins).toEqual(["github", "youtube"]);
+  });
+
+  it("parses allowedPaths as a YAML list", () => {
+    writeConfig("allowedPaths:\n  - /tmp/a\n  - /tmp/b\n");
+    const cfg = getConfig();
+    expect(cfg.allowedPaths).toHaveLength(2);
+    expect(cfg.allowedPaths[0]).toContain("tmp/a");
+    expect(cfg.allowedPaths[1]).toContain("tmp/b");
+  });
+
+  it("parses nested extractor block", () => {
+    writeConfig("extractor:\n  fetchTimeoutMs: 5000\n  maxPdfPages: 50\n");
+    const cfg = getConfig();
+    expect(cfg.extractorLimits.fetchTimeoutMs).toBe(5000);
+    expect(cfg.extractorLimits.maxPdfPages).toBe(50);
+  });
+
+  it("still supports legacy flat dotted extractor keys", () => {
+    writeConfig("extractor.fetchTimeoutMs: 8000\n");
+    const cfg = getConfig();
+    expect(cfg.extractorLimits.fetchTimeoutMs).toBe(8000);
+  });
+
+  it("parses nested plugin block", () => {
+    writeConfig("plugin:\n  github:\n    token: abc123\n    maxIssues: 50\n");
+    const cfg = getConfig();
+    expect(cfg.pluginConfig.github?.token).toBe("abc123");
+    expect(cfg.pluginConfig.github?.maxIssues).toBe(50);
+  });
+
+  it("still supports legacy flat dotted plugin keys", () => {
+    writeConfig("plugin.github.token: mytoken\n");
+    const cfg = getConfig();
+    expect(cfg.pluginConfig.github?.token).toBe("mytoken");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RAGCLAW_EMBEDDER env var
+// ---------------------------------------------------------------------------
+
+describe("RAGCLAW_EMBEDDER env var", () => {
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    resetConfigCache();
+    savedEnv["RAGCLAW_EMBEDDER"] = process.env.RAGCLAW_EMBEDDER;
+  });
+
+  afterEach(() => {
+    if (savedEnv["RAGCLAW_EMBEDDER"] === undefined) delete process.env.RAGCLAW_EMBEDDER;
+    else process.env.RAGCLAW_EMBEDDER = savedEnv["RAGCLAW_EMBEDDER"];
+    resetConfigCache();
+  });
+
+  it("sets embedder from env var", () => {
+    process.env.RAGCLAW_EMBEDDER = "minilm";
+    const cfg = getConfig();
+    expect(cfg.embedder).toBe("minilm");
+  });
+
+  it("env var overrides config file embedder", () => {
+    process.env.RAGCLAW_EMBEDDER = "bge";
+    // Even without a file, env var wins
+    const cfg = getConfig();
+    expect(cfg.embedder).toBe("bge");
   });
 });

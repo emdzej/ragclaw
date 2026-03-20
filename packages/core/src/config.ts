@@ -1,6 +1,7 @@
 import { homedir, platform } from "os";
 import { join, resolve } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
+import YAML from "yaml";
 
 /**
  * XDG Base Directory paths
@@ -57,6 +58,21 @@ export const DEFAULT_EXTRACTOR_LIMITS: Readonly<ExtractorLimits> = {
   ocrTimeoutMs: 60_000,
 };
 
+/**
+ * Embedder configuration block (for nested YAML config).
+ * Used when `embedder:` in config.yaml is an object rather than a string alias.
+ */
+export interface EmbedderConfigBlock {
+  /** Plugin name (for plugin-provided embedders, e.g. "ollama"). */
+  plugin?: string;
+  /** HuggingFace model ID (e.g. "BAAI/bge-m3"). */
+  model?: string;
+  /** Override output dimensions (optional, auto-detected if omitted). */
+  dimensions?: number;
+  /** API base URL (for Ollama, OpenAI-compatible, etc.). */
+  baseUrl?: string;
+}
+
 export interface RagclawConfig {
   configDir: string;
   dataDir: string;
@@ -93,6 +109,25 @@ export interface RagclawConfig {
   /** Per-plugin configuration parsed from `plugin.<name>.<key>` entries in
    *  config.yaml.  Keyed by plugin name, value is a flat key→value map. */
   pluginConfig: Record<string, Record<string, unknown>>;
+
+  /**
+   * Embedder to use for indexing.
+   *  - `string`  — preset alias or HuggingFace model ID (e.g. "bge", "nomic", "BAAI/bge-m3")
+   *  - `object`  — full config block with optional plugin/model/dimensions/baseUrl
+   *  - `undefined` — use the default (nomic)
+   *
+   * Config file examples:
+   * ```yaml
+   * embedder: bge          # alias shorthand
+   * embedder:
+   *   model: BAAI/bge-m3   # HF model
+   * embedder:
+   *   plugin: ollama
+   *   model: nomic-embed-text
+   *   baseUrl: http://localhost:11434
+   * ```
+   */
+  embedder?: string | EmbedderConfigBlock;
 }
 
 let cachedConfig: RagclawConfig | null = null;
@@ -125,6 +160,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   let enforceGuards = false;
   let extractorLimits: ExtractorLimits = { ...DEFAULT_EXTRACTOR_LIMITS };
   let pluginConfig: Record<string, Record<string, unknown>> = {};
+  let embedder: string | EmbedderConfigBlock | undefined;
 
   // Check for legacy path (backwards compatibility)
   if (existsSync(LEGACY_DIR)) {
@@ -133,51 +169,86 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
     pluginsDir = join(LEGACY_DIR, "plugins");
   }
 
+  // Apply RAGCLAW_CONFIG_DIR early so we read the right config file
+  if (process.env.RAGCLAW_CONFIG_DIR) {
+    configDir = process.env.RAGCLAW_CONFIG_DIR;
+  }
+
   // Try to load config file
   const configFile = join(configDir, "config.yaml");
   if (existsSync(configFile)) {
     try {
       const content = readFileSync(configFile, "utf-8");
-      const parsed = parseSimpleYaml(content);
-      if (parsed.dataDir) dataDir = expandHome(parsed.dataDir);
-      if (parsed.pluginsDir) pluginsDir = expandHome(parsed.pluginsDir);
-      if (parsed.plugins) {
+      const parsed = parseConfigYaml(content);
+
+      if (typeof parsed.dataDir === "string") dataDir = expandHome(parsed.dataDir);
+      if (typeof parsed.pluginsDir === "string") pluginsDir = expandHome(parsed.pluginsDir);
+
+      // plugins: list or comma-separated string
+      if (Array.isArray(parsed.plugins)) {
+        enabledPlugins = (parsed.plugins as unknown[]).map(String).filter(Boolean);
+      } else if (typeof parsed.plugins === "string") {
         enabledPlugins = parsed.plugins.split(",").map((s: string) => s.trim()).filter(Boolean);
       }
-      if (parsed.scanGlobalNpm) {
-        scanGlobalNpm = parsed.scanGlobalNpm === "true";
+
+      if (typeof parsed.scanGlobalNpm === "boolean") {
+        scanGlobalNpm = parsed.scanGlobalNpm;
+      } else if (parsed.scanGlobalNpm === "true") {
+        scanGlobalNpm = true;
       }
-      if (parsed.allowedPaths) {
+
+      // allowedPaths: YAML list or comma-separated string
+      if (Array.isArray(parsed.allowedPaths)) {
+        allowedPaths = (parsed.allowedPaths as unknown[])
+          .map(String)
+          .filter(Boolean)
+          .map((p: string) => resolve(expandHome(p)));
+      } else if (typeof parsed.allowedPaths === "string") {
         allowedPaths = parsed.allowedPaths
           .split(",")
           .map((s: string) => s.trim())
           .filter(Boolean)
           .map((p: string) => resolve(expandHome(p)));
       }
-      if (parsed.allowUrls) {
+
+      if (typeof parsed.allowUrls === "boolean") {
+        allowUrls = parsed.allowUrls;
+      } else if (typeof parsed.allowUrls === "string") {
         allowUrls = parsed.allowUrls !== "false";
       }
-      if (parsed.blockPrivateUrls) {
+
+      if (typeof parsed.blockPrivateUrls === "boolean") {
+        blockPrivateUrls = parsed.blockPrivateUrls;
+      } else if (typeof parsed.blockPrivateUrls === "string") {
         blockPrivateUrls = parsed.blockPrivateUrls !== "false";
       }
-      if (parsed.maxDepth) {
+
+      if (typeof parsed.maxDepth === "number") {
+        if (Number.isFinite(parsed.maxDepth) && parsed.maxDepth > 0) maxDepth = parsed.maxDepth;
+      } else if (typeof parsed.maxDepth === "string") {
         const n = parseInt(parsed.maxDepth, 10);
         if (Number.isFinite(n) && n > 0) maxDepth = n;
       }
-      if (parsed.maxFiles) {
+
+      if (typeof parsed.maxFiles === "number") {
+        if (Number.isFinite(parsed.maxFiles) && parsed.maxFiles > 0) maxFiles = parsed.maxFiles;
+      } else if (typeof parsed.maxFiles === "string") {
         const n = parseInt(parsed.maxFiles, 10);
         if (Number.isFinite(n) && n > 0) maxFiles = n;
       }
-      if (parsed.enforceGuards) {
-        enforceGuards = parsed.enforceGuards === "true";
+
+      if (typeof parsed.enforceGuards === "boolean") {
+        enforceGuards = parsed.enforceGuards;
+      } else if (parsed.enforceGuards === "true") {
+        enforceGuards = true;
       }
 
-      // Parse extractor.* keys
+      // Parse extractor.* keys (flat dotted keys — legacy flat format still supported)
       for (const [key, val] of Object.entries(parsed)) {
         if (key.startsWith("extractor.")) {
           const limitsKey = key.slice("extractor.".length) as keyof ExtractorLimits;
           if (limitsKey in DEFAULT_EXTRACTOR_LIMITS) {
-            const n = parseInt(val, 10);
+            const n = typeof val === "number" ? val : parseInt(String(val), 10);
             if (Number.isFinite(n) && n > 0) {
               (extractorLimits as unknown as Record<string, number>)[limitsKey] = n;
             }
@@ -185,7 +256,20 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
         }
       }
 
-      // Parse plugin.<name>.<key> entries
+      // Parse nested extractor block (new format)
+      if (parsed.extractor && typeof parsed.extractor === "object" && !Array.isArray(parsed.extractor)) {
+        for (const [key, val] of Object.entries(parsed.extractor as Record<string, unknown>)) {
+          const limitsKey = key as keyof ExtractorLimits;
+          if (limitsKey in DEFAULT_EXTRACTOR_LIMITS) {
+            const n = typeof val === "number" ? val : parseInt(String(val), 10);
+            if (Number.isFinite(n) && n > 0) {
+              (extractorLimits as unknown as Record<string, number>)[limitsKey] = n;
+            }
+          }
+        }
+      }
+
+      // Parse plugin.<name>.<key> entries (flat dotted keys — legacy)
       for (const [key, val] of Object.entries(parsed)) {
         if (key.startsWith("plugin.")) {
           const rest = key.slice("plugin.".length);
@@ -198,15 +282,35 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
           }
         }
       }
+
+      // Parse nested plugin block (new format)
+      if (parsed.plugin && typeof parsed.plugin === "object" && !Array.isArray(parsed.plugin)) {
+        for (const [pluginName, pluginVals] of Object.entries(parsed.plugin as Record<string, unknown>)) {
+          if (pluginVals && typeof pluginVals === "object" && !Array.isArray(pluginVals)) {
+            pluginConfig[pluginName] = { ...(pluginConfig[pluginName] ?? {}), ...(pluginVals as Record<string, unknown>) };
+          }
+        }
+      }
+
+      // Parse embedder: alias string or config block
+      if (typeof parsed.embedder === "string") {
+        embedder = parsed.embedder;
+      } else if (parsed.embedder && typeof parsed.embedder === "object" && !Array.isArray(parsed.embedder)) {
+        const eb = parsed.embedder as Record<string, unknown>;
+        embedder = {
+          plugin: typeof eb.plugin === "string" ? eb.plugin : undefined,
+          model: typeof eb.model === "string" ? eb.model : undefined,
+          dimensions: typeof eb.dimensions === "number" ? eb.dimensions : undefined,
+          baseUrl: typeof eb.baseUrl === "string" ? eb.baseUrl : undefined,
+        };
+      }
     } catch {
       // Ignore config parse errors
     }
   }
 
   // Environment variables override config file
-  if (process.env.RAGCLAW_CONFIG_DIR) {
-    configDir = process.env.RAGCLAW_CONFIG_DIR;
-  }
+  // Note: RAGCLAW_CONFIG_DIR was already applied above (before reading the file).
   if (process.env.RAGCLAW_DATA_DIR) {
     dataDir = process.env.RAGCLAW_DATA_DIR;
   }
@@ -253,11 +357,15 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
     const n = parseInt(process.env.RAGCLAW_OCR_TIMEOUT_MS, 10);
     if (Number.isFinite(n) && n > 0) extractorLimits.ocrTimeoutMs = n;
   }
+  // RAGCLAW_EMBEDDER accepts alias string only (nested config requires the file)
+  if (process.env.RAGCLAW_EMBEDDER) {
+    embedder = process.env.RAGCLAW_EMBEDDER;
+  }
 
   let config: RagclawConfig = {
     configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm,
     allowedPaths, allowUrls, blockPrivateUrls, maxDepth, maxFiles,
-    enforceGuards, extractorLimits, pluginConfig,
+    enforceGuards, extractorLimits, pluginConfig, embedder,
   };
 
   // CLI-flag overrides (highest priority)
@@ -395,6 +503,7 @@ export const SETTABLE_KEYS: ConfigKeyMeta[] = [
   { yamlKey: "extractor.maxResponseSizeBytes", envVar: "RAGCLAW_MAX_RESPONSE_SIZE_BYTES", type: "number", configKey: undefined, description: "Max HTTP response body in bytes (default: 52428800)" },
   { yamlKey: "extractor.maxPdfPages",          envVar: "RAGCLAW_MAX_PDF_PAGES",           type: "number", configKey: undefined, description: "Max pages per PDF (default: 200)" },
   { yamlKey: "extractor.ocrTimeoutMs",         envVar: "RAGCLAW_OCR_TIMEOUT_MS",          type: "number", configKey: undefined, description: "OCR timeout in ms per invocation (default: 60000)" },
+  { yamlKey: "embedder",                       envVar: "RAGCLAW_EMBEDDER",                type: "string", configKey: "embedder", description: "Embedder preset alias or model (e.g. bge, nomic, BAAI/bge-m3)" },
 ];
 
 /**
@@ -446,25 +555,13 @@ export function setEnabledPlugins(plugins: string[]): void {
 }
 
 /**
- * Simple YAML parser for config (no dependencies).
- * Supports flat `key: value` pairs and dotted keys like
- * `extractor.fetchTimeoutMs` or `plugin.github.maxIssues`.
+ * Parse config.yaml using the `yaml` package.
+ * Returns a plain object with string/number/boolean/object/array values.
+ * Flat dotted keys (e.g. `extractor.fetchTimeoutMs`) from legacy files are
+ * preserved as-is by the yaml parser and handled in getConfig().
  */
-function parseSimpleYaml(content: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const lines = content.split("\n");
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const match = trimmed.match(/^([\w]+(?:\.[\w]+)*):\s*(.+)$/);
-    if (match) {
-      result[match[1]] = match[2].replace(/^["']|["']$/g, "");
-    }
-  }
-
-  return result;
+function parseConfigYaml(content: string): Record<string, unknown> {
+  return (YAML.parse(content) as Record<string, unknown>) ?? {};
 }
 
 /**
