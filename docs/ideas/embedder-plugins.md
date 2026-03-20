@@ -108,12 +108,79 @@ ragclaw index --config ragclaw.yaml ./docs
 
 ## Built-in Aliases
 
-| Alias | Model | Dim | Notes |
-|-------|-------|-----|-------|
-| `nomic` | nomic-ai/nomic-embed-text-v1.5 | 768 | Default, good balance |
-| `bge` | BAAI/bge-m3 | 1024 | Best multilingual (100+ langs) |
-| `mxbai` | mixedbread-ai/mxbai-embed-large-v1 | 1024 | Fast, MRL support |
-| `minilm` | sentence-transformers/all-MiniLM-L6-v2 | 384 | Ultra-lightweight |
+| Alias | Model | Dim | RAM (approx) | Notes |
+|-------|-------|-----|--------------|-------|
+| `nomic` | nomic-ai/nomic-embed-text-v1.5 | 768 | ~600MB | Default, good balance |
+| `bge` | BAAI/bge-m3 | 1024 | ~2.3GB | Best multilingual (100+ langs) |
+| `mxbai` | mixedbread-ai/mxbai-embed-large-v1 | 1024 | ~1.4GB | Fast, MRL support |
+| `minilm` | sentence-transformers/all-MiniLM-L6-v2 | 384 | ~90MB | Ultra-lightweight |
+
+## System Requirements Check
+
+Before loading a model, verify the system can handle it:
+
+```typescript
+interface SystemCheck {
+  canRun: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+async function checkSystemRequirements(model: string): Promise<SystemCheck> {
+  const preset = EMBEDDER_PRESETS[model];
+  const availableRAM = os.freemem();
+  const requiredRAM = preset.estimatedRAM;
+  
+  // Check available memory
+  if (availableRAM < requiredRAM * 1.2) {
+    return {
+      canRun: false,
+      errors: [`Insufficient RAM: ${formatBytes(availableRAM)} available, ~${formatBytes(requiredRAM)} required`],
+      warnings: []
+    };
+  }
+  
+  // Warn if tight on memory
+  if (availableRAM < requiredRAM * 2) {
+    return {
+      canRun: true,
+      errors: [],
+      warnings: [`Low RAM: model may run slowly. Consider 'minilm' for constrained environments.`]
+    };
+  }
+  
+  return { canRun: true, errors: [], warnings: [] };
+}
+```
+
+### CLI Integration
+
+```bash
+$ ragclaw index --embedder bge ./docs
+
+⚠️  Warning: BGE-M3 requires ~2.3GB RAM
+   Available: 3.1GB — may run slowly
+   Consider: ragclaw index --embedder minilm ./docs
+
+Continue? [y/N]
+```
+
+### `ragclaw doctor` Command
+
+```bash
+$ ragclaw doctor
+
+System Check:
+  RAM: 8GB total, 5.2GB available ✓
+  Disk: 120GB free ✓
+  Node: v22.0.0 ✓
+
+Embedder Compatibility:
+  minilm  (~90MB)   ✓ recommended for this system
+  nomic   (~600MB)  ✓ runs well
+  mxbai   (~1.4GB)  ✓ runs well  
+  bge     (~2.3GB)  ⚠️ may be slow with current RAM
+```
 
 ## Plugin Ideas
 
