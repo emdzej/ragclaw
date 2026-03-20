@@ -1,5 +1,5 @@
 import type { RagClawPlugin, Extractor, ExtractedContent, Source } from "@emdzej/ragclaw-core";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 /**
  * GitHub content types
@@ -12,6 +12,11 @@ interface ParsedGitHubUrl {
   type: GitHubContentType;
   number?: number;
 }
+
+/**
+ * Valid characters for GitHub owner and repository names.
+ */
+const SAFE_SLUG = /^[A-Za-z0-9._-]+$/;
 
 /**
  * Parse GitHub URL scheme
@@ -35,6 +40,10 @@ function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
 
   const owner = parts[0];
   const repo = parts[1];
+
+  // Validate owner and repo against allowed character set
+  if (!SAFE_SLUG.test(owner) || !SAFE_SLUG.test(repo)) return null;
+
   const type = parts[2] as GitHubContentType | undefined;
   const number = parts[3] ? parseInt(parts[3], 10) : undefined;
 
@@ -43,7 +52,8 @@ function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
   }
 
   if (type === "issues" || type === "pulls" || type === "discussions") {
-    if (number && !isNaN(number)) {
+    if (number !== undefined) {
+      if (!Number.isInteger(number) || number <= 0) return null;
       return { owner, repo, type: type === "issues" ? "issue" : type === "pulls" ? "pr" : type, number };
     }
     return { owner, repo, type };
@@ -53,11 +63,11 @@ function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
 }
 
 /**
- * Execute gh CLI command
+ * Execute gh CLI command safely using execFileSync (no shell interpolation).
  */
-function gh(args: string): string {
+function gh(...args: string[]): string {
   try {
-    return execSync(`gh ${args}`, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
+    return execFileSync("gh", args, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
   } catch (error) {
     throw new Error(`gh CLI failed: ${error}`);
   }
@@ -68,11 +78,11 @@ function gh(args: string): string {
  */
 async function fetchRepo(owner: string, repo: string): Promise<ExtractedContent> {
   // Get repo info
-  const infoJson = gh(`repo view ${owner}/${repo} --json name,description`);
+  const infoJson = gh("repo", "view", `${owner}/${repo}`, "--json", "name,description");
   const info = JSON.parse(infoJson);
 
   // Get README (plain text output includes it)
-  const readmeOutput = gh(`repo view ${owner}/${repo}`);
+  const readmeOutput = gh("repo", "view", `${owner}/${repo}`);
   // Extract content after the header
   const readmeMatch = readmeOutput.match(/^name:\t.+\ndescription:\t.+\n--\n([\s\S]*)$/m);
   const readme = readmeMatch ? readmeMatch[1].trim() : "";
@@ -100,7 +110,7 @@ async function fetchRepo(owner: string, repo: string): Promise<ExtractedContent>
  * Fetch all issues
  */
 async function fetchIssues(owner: string, repo: string): Promise<ExtractedContent> {
-  const issuesJson = gh(`issue list -R ${owner}/${repo} --json number,title,body,author,labels,state,createdAt --limit 100`);
+  const issuesJson = gh("issue", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", "100");
   const issues = JSON.parse(issuesJson);
 
   let text = `# Issues: ${owner}/${repo}\n\n`;
@@ -132,7 +142,7 @@ async function fetchIssues(owner: string, repo: string): Promise<ExtractedConten
  * Fetch single issue with comments
  */
 async function fetchIssue(owner: string, repo: string, number: number): Promise<ExtractedContent> {
-  const issueJson = gh(`issue view ${number} -R ${owner}/${repo} --json number,title,body,author,labels,state,createdAt,comments`);
+  const issueJson = gh("issue", "view", String(number), "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt,comments");
   const issue = JSON.parse(issueJson);
 
   let text = `# Issue #${issue.number}: ${issue.title}\n\n`;
@@ -169,7 +179,7 @@ async function fetchIssue(owner: string, repo: string, number: number): Promise<
  * Fetch all PRs
  */
 async function fetchPulls(owner: string, repo: string): Promise<ExtractedContent> {
-  const prsJson = gh(`pr list -R ${owner}/${repo} --json number,title,body,author,labels,state,createdAt --limit 100`);
+  const prsJson = gh("pr", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", "100");
   const prs = JSON.parse(prsJson);
 
   let text = `# Pull Requests: ${owner}/${repo}\n\n`;
@@ -201,7 +211,7 @@ async function fetchPulls(owner: string, repo: string): Promise<ExtractedContent
  * Fetch single PR with comments and reviews
  */
 async function fetchPR(owner: string, repo: string, number: number): Promise<ExtractedContent> {
-  const prJson = gh(`pr view ${number} -R ${owner}/${repo} --json number,title,body,author,labels,state,createdAt,comments,reviews`);
+  const prJson = gh("pr", "view", String(number), "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt,comments,reviews");
   const pr = JSON.parse(prJson);
 
   let text = `# PR #${pr.number}: ${pr.title}\n\n`;
@@ -250,7 +260,7 @@ async function fetchPR(owner: string, repo: string, number: number): Promise<Ext
  */
 async function fetchDiscussions(owner: string, repo: string): Promise<ExtractedContent> {
   // gh CLI doesn't have direct discussions support, use API
-  const discussionsJson = gh(`api repos/${owner}/${repo}/discussions --paginate`);
+  const discussionsJson = gh("api", `repos/${owner}/${repo}/discussions`, "--paginate");
   const discussions = JSON.parse(discussionsJson);
 
   let text = `# Discussions: ${owner}/${repo}\n\n`;

@@ -13,7 +13,8 @@ Implementation details are decided task-by-task before work begins.
 - **Finding:** F-01 (High)
 - **File(s):** `plugins/ragclaw-plugin-github/src/index.ts`
 - **Problem:** Shell commands are constructed by interpolating user-derived strings (owner, repo, number parsed from `github://` URIs) into a template string passed to `execSync`. This allows command injection.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Replaced `execSync` (shell string) with `execFileSync` (args array) — eliminates shell interpretation entirely. Added `SAFE_SLUG` regex validation for owner/repo and `Number.isInteger` + positive check for issue/PR numbers as defence in depth.
 
 ---
 
