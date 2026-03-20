@@ -8,7 +8,18 @@
     "build": "tsc",
     "dev": "tsc --watch"
   },
-  "keywords": ["ragclaw", "ragclaw-plugin", "youtube", "transcripts"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emdzej/ragclaw.git",
+    "directory": "plugins/ragclaw-plugin-youtube"
+  },
+  "homepage": "https://github.com/emdzej/ragclaw#readme",
+  "bugs": {
+    "url": "https://github.com/emdzej/ragclaw/issues"
+  },
+  "author": "Michał Jaskólski",
+  "keywords": ["ragclaw", "ragclaw-plugin", "youtube", "transcripts", "video"],
   "peerDependencies": {
     "@emdzej/ragclaw-core": ">=0.1.0"
   },
@@ -21,7 +32,6 @@
     "schemes": ["youtube", "yt"]
   },
   "publishConfig": {
-    "access": "public",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }
