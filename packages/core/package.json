@@ -17,6 +17,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "optionalDependencies": {
+    "sqlite-vec": "^0.1.6"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

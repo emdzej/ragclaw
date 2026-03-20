@@ -73,6 +73,7 @@ export class Store {
   private db: Database.Database | null = null;
   private dbPath: string = "";
   private hasVec: boolean = false;
+  private vecLoadedFrom: "npm" | "system" | null = null;
   private config: Required<StoreConfig>;
 
   constructor(config: StoreConfig = {}) {
@@ -95,13 +96,17 @@ export class Store {
     this.migrateLegacyMeta();
 
     // Try to load sqlite-vec extension
-    this.hasVec = this.tryLoadVec();
+    await this.tryLoadVec();
 
     if (!this.hasVec) {
       // Emit once at open time so users know about the performance trade-off.
       console.warn(
-        "[ragclaw] sqlite-vec extension not available — vector search will use a JS fallback. " +
-        "For best performance, install the sqlite-vec extension."
+        "[ragclaw] sqlite-vec is not available — vector search will fall back to a slower JS implementation.\n" +
+        "  To enable fast native vector search, install the sqlite-vec package:\n" +
+        "    npm install -g @emdzej/ragclaw-cli   (already bundles sqlite-vec)\n" +
+        "    — or —\n" +
+        "    npm install sqlite-vec               (for programmatic use of @emdzej/ragclaw-core)\n" +
+        "  The JS fallback is functionally correct but becomes noticeably slow above ~5 000 chunks."
       );
     }
   }
@@ -131,8 +136,8 @@ export class Store {
     }
   }
 
-  private tryLoadVec(): boolean {
-    if (!this.db) return false;
+  private async tryLoadVec(): Promise<void> {
+    if (!this.db) return;
 
     // Read stored dimensions — fall back to 768 if not set yet
     const dimRow = this.db
@@ -140,6 +145,19 @@ export class Store {
       .get() as { value: string } | undefined;
     const dim = dimRow ? parseInt(dimRow.value, 10) : 768;
 
+    // ── Step 1: try loading via the sqlite-vec npm package ───────────────────
+    // The package ships prebuilt binaries and calls db.loadExtension() internally.
+    try {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore — optional dependency; may not be installed
+      const sqliteVec = await import("sqlite-vec");
+      sqliteVec.load(this.db);
+      this.vecLoadedFrom = "npm";
+    } catch {
+      // sqlite-vec npm package not installed — that's fine, try system extension next.
+    }
+
+    // ── Step 2: verify vec0 actually works (also handles system-installed ext) ─
     try {
       this.db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
@@ -147,10 +165,12 @@ export class Store {
           embedding FLOAT[${dim}]
         );
       `);
-      return true;
+      this.hasVec = true;
+      if (!this.vecLoadedFrom) this.vecLoadedFrom = "system";
     } catch {
-      // Extension not available, will use JS fallback
-      return false;
+      // Extension not available either way — will use JS fallback.
+      this.hasVec = false;
+      this.vecLoadedFrom = null;
     }
   }
 
@@ -457,8 +477,10 @@ export class Store {
     // Warn once per search when the dataset is large.
     if (rows.length > 5_000) {
       console.warn(
-        `[ragclaw] JS fallback vector search is scanning ${rows.length.toLocaleString()} chunks. ` +
-        `Install the sqlite-vec extension for significantly faster search at scale.`
+        `[ragclaw] JS fallback vector search is scanning ${rows.length.toLocaleString()} chunks — ` +
+        `this will be slow. Install the sqlite-vec package for native ANN search:\n` +
+        `  npm install -g @emdzej/ragclaw-cli   (already bundles sqlite-vec)\n` +
+        `  npm install sqlite-vec               (for programmatic use)`
       );
     }
 
@@ -605,5 +627,10 @@ export class Store {
 
   get hasVectorSupport(): boolean {
     return this.hasVec;
+  }
+
+  /** Where the sqlite-vec extension was loaded from, or null if unavailable. */
+  get vectorExtensionSource(): "npm" | "system" | null {
+    return this.vecLoadedFrom;
   }
 }

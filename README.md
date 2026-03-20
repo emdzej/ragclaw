@@ -363,6 +363,36 @@ All processing happens locally. No external APIs.
 
 ---
 
+## Vector Search Performance
+
+RagClaw uses [sqlite-vec](https://alexgarcia.xyz/sqlite-vec/) for fast native vector search. If it is not available, a pure-JS fallback is used — functionally correct but noticeably slower above ~5 000 chunks.
+
+### Auto-bundled (CLI and MCP)
+
+The CLI and MCP packages declare `sqlite-vec` as an optional dependency. Installing them globally will automatically install the prebuilt binary for your platform:
+
+```bash
+npm install -g @emdzej/ragclaw-cli   # sqlite-vec is bundled
+```
+
+### Programmatic use (core only)
+
+If you use `@emdzej/ragclaw-core` directly, install `sqlite-vec` alongside it:
+
+```bash
+npm install sqlite-vec
+```
+
+### Check status
+
+```bash
+ragclaw doctor
+```
+
+The doctor command shows whether sqlite-vec is loaded and where it came from (npm package or system-installed extension).
+
+---
+
 ## Plugins
 
 Extend RagClaw with custom extractors for additional data sources.

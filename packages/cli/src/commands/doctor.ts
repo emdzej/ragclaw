@@ -1,6 +1,6 @@
 import os from "os";
 import chalk from "chalk";
-import { listPresets, resolvePreset, getConfig, checkSystemRequirements } from "@emdzej/ragclaw-core";
+import { Store, listPresets, resolvePreset, getConfig, checkSystemRequirements } from "@emdzej/ragclaw-core";
 import { PluginLoader } from "../plugins/loader.js";
 
 function formatBytes(bytes: number): string {
@@ -8,6 +8,28 @@ function formatBytes(bytes: number): string {
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
   const mb = bytes / (1024 ** 2);
   return `${mb.toFixed(0)} MB`;
+}
+
+/**
+ * Probe whether sqlite-vec is available and where it comes from.
+ * Uses an in-memory Store so it doesn't touch any real knowledge base.
+ * We suppress the warning that Store emits when vec is unavailable.
+ */
+async function checkSqliteVec(): Promise<{ available: boolean; source: "npm" | "system" | null }> {
+  // Silence the "sqlite-vec not available" warning — we'll report it ourselves.
+  const originalWarn = console.warn;
+  console.warn = () => {};
+
+  try {
+    const store = new Store();
+    await store.open(":memory:");
+    const available = store.hasVectorSupport;
+    const source = store.vectorExtensionSource;
+    await store.close();
+    return { available, source };
+  } finally {
+    console.warn = originalWarn;
+  }
 }
 
 export async function doctorCommand(): Promise<void> {
@@ -21,6 +43,18 @@ export async function doctorCommand(): Promise<void> {
   console.log(chalk.bold("System Check:"));
   console.log(`  RAM:   ${formatBytes(totalRAM)} total, ${formatBytes(freeRAM)} available`);
   console.log(`  Node:  ${nodeVersion}`);
+  console.log();
+
+  // ── sqlite-vec status ──────────────────────────────────────────────────────
+  console.log(chalk.bold("Vector Extension (sqlite-vec):"));
+  const vec = await checkSqliteVec();
+  if (vec.available) {
+    const via = vec.source === "npm" ? "npm package" : "system extension";
+    console.log(`  ${chalk.green("✓")} Available  ${chalk.dim(`(loaded via ${via})`)}`);
+  } else {
+    console.log(`  ${chalk.yellow("!")} Not available — vector search will use a slower JS fallback`);
+    console.log(`    ${chalk.dim("To install:")}  npm install sqlite-vec  ${chalk.dim("(or install @emdzej/ragclaw-cli globally)")}`);
+  }
   console.log();
 
   // ── Embedder compatibility ─────────────────────────────────────────────────

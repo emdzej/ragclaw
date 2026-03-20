@@ -91,6 +91,30 @@ System Check:
   RAM:   16.0 GB total, 9.3 GB available
   Node:  v22.14.0
 
+Vector Extension (sqlite-vec):
+  ✓ Available  (loaded via npm package)
+
+Embedder Compatibility:
+  minilm  (~90 MB)   sentence-transformers/all-MiniLM-L6-v2    384 dim  OK
+  nomic   (~600 MB)  nomic-ai/nomic-embed-text-v1.5            768 dim  OK
+  mxbai   (~1.4 GB)  mixedbread-ai/mxbai-embed-large-v1       1024 dim  OK
+  bge     (~2.3 GB)  BAAI/bge-m3                               1024 dim  WARN may be slow
+
+Current Config:
+  embedder: nomic (default)
+```
+
+`sqlite-vec` is declared as an optional dependency of this package and is bundled automatically when you install `@emdzej/ragclaw-cli` globally. If it shows as unavailable, run:
+
+```bash
+npm install sqlite-vec
+```
+$ ragclaw doctor
+
+System Check:
+  RAM:   16.0 GB total, 9.3 GB available
+  Node:  v22.14.0
+
 Embedder Compatibility:
   minilm  (~90 MB)   sentence-transformers/all-MiniLM-L6-v2    384 dim  OK
   nomic   (~600 MB)  nomic-ai/nomic-embed-text-v1.5            768 dim  OK

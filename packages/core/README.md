@@ -24,6 +24,26 @@ npm install @emdzej/ragclaw-core
 | `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | ~1.4 GB |
 | `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~90 MB |
 
+## Vector Search & sqlite-vec
+
+The Store uses [sqlite-vec](https://alexgarcia.xyz/sqlite-vec/) for fast native vector search when available. If not, it falls back to a pure-JS cosine similarity scan — correct but slow above ~5 000 chunks.
+
+Install `sqlite-vec` alongside this package to enable native search:
+
+```bash
+npm install sqlite-vec
+```
+
+The Store will automatically detect and load it at `open()` time. You can check status programmatically:
+
+```typescript
+const store = new Store();
+await store.open("./kb.sqlite");
+
+console.log(store.hasVectorSupport);      // true | false
+console.log(store.vectorExtensionSource); // "npm" | "system" | null
+```
+
 ## `createEmbedder()` Factory
 
 ```typescript
