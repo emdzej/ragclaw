@@ -27,6 +27,9 @@ ragclaw reindex --embedder mxbai
 # Status (shows embedder name, model, and dims)
 ragclaw status
 
+# List all available embedders (built-in presets + plugin-provided)
+ragclaw embedder list
+
 # Check system and embedder compatibility
 ragclaw doctor
 
@@ -55,6 +58,27 @@ The embedder is resolved in this priority order:
 | `minilm` | sentence-transformers/all-MiniLM-L6-v2 | 384 | 90 MB |
 
 For search, the embedder is always read from the database's stored metadata — no flag needed.
+
+To see all available embedders at any time (built-in presets and any plugin-provided ones), run:
+
+```
+$ ragclaw embedder list
+
+Built-in presets:
+
+  Alias   Model                                   Dims  RAM       Status
+  ──────────────────────────────────────────────────────────────────────
+  * nomic   nomic-ai/nomic-embed-text-v1.5          768   ~600 MB   ✓ ok
+    bge     BAAI/bge-m3                             1024  ~2.3 GB   ✓ ok
+    mxbai   mixedbread-ai/mxbai-embed-large-v1      1024  ~1.4 GB   ✓ ok
+    minilm  sentence-transformers/all-MiniLM-L6-v2  384   ~90 MB    ✓ ok
+
+No plugin-provided embedders found.
+
+* = currently configured    Use -e/--embedder <alias> to select.
+```
+
+When plugins that provide a custom embedder (e.g. an Ollama or OpenAI adapter) are enabled, they appear in a second section below the built-in presets.
 
 ## System Requirements
 

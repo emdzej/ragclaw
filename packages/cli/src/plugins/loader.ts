@@ -135,6 +135,20 @@ export class PluginLoader {
   }
 
   /**
+   * Returns all embedders provided by loaded plugins, each paired with the
+   * name of the plugin that provides it.
+   */
+  getEmbedders(): Array<{ pluginName: string; embedder: EmbedderPlugin }> {
+    const result: Array<{ pluginName: string; embedder: EmbedderPlugin }> = [];
+    for (const { manifest, plugin } of this.loadedPlugins) {
+      if (plugin.embedder) {
+        result.push({ pluginName: manifest.name, embedder: plugin.embedder });
+      }
+    }
+    return result;
+  }
+
+  /**
    * Get all chunkers from loaded plugins
    */
   getChunkers(): Chunker[] {

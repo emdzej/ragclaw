@@ -11,6 +11,7 @@ import { reindex } from "./commands/reindex.js";
 import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
 import { configList, configGet, configSet } from "./commands/config.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { embedderList } from "./commands/embedder.js";
 
 const program = new Command();
 
@@ -161,5 +162,15 @@ program
   .command("doctor")
   .description("Check system compatibility and embedder requirements")
   .action(doctorCommand);
+
+// Embedder commands
+const embedderCmd = program
+  .command("embedder")
+  .description("Manage and inspect embedders");
+
+embedderCmd
+  .command("list")
+  .description("List all available embedders (built-in presets and plugin-provided)")
+  .action(embedderList);
 
 program.parse();

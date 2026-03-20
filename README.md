@@ -68,6 +68,9 @@ ragclaw search "how to configure auth"
 
 # Check system and embedder compatibility
 ragclaw doctor
+
+# List all available embedders (built-in presets + plugin-provided)
+ragclaw embedder list
 ```
 
 ## Supported Formats
@@ -85,18 +88,19 @@ ragclaw doctor
 ## CLI Commands
 
 ```bash
-ragclaw add <source>       # Index file, directory, or URL
-ragclaw search <query>     # Search knowledge base
-ragclaw reindex            # Re-process changed files
-ragclaw status             # Show KB statistics (incl. embedder info)
-ragclaw list               # List indexed sources
-ragclaw remove <source>    # Remove from index
-ragclaw doctor             # Check system & embedder compatibility
-ragclaw plugin list        # List plugins with enabled/disabled status
-ragclaw plugin enable <n>  # Enable a plugin (or --all)
-ragclaw plugin disable <n> # Disable a plugin
-ragclaw config list        # Show all config values and sources
-ragclaw config get <key>   # Show a single config value
+ragclaw add <source>           # Index file, directory, or URL
+ragclaw search <query>         # Search knowledge base
+ragclaw reindex                # Re-process changed files
+ragclaw status                 # Show KB statistics (incl. embedder info)
+ragclaw list                   # List indexed sources
+ragclaw remove <source>        # Remove from index
+ragclaw doctor                 # Check system & embedder compatibility
+ragclaw embedder list          # List all available embedders (presets + plugins)
+ragclaw plugin list            # List plugins with enabled/disabled status
+ragclaw plugin enable <n>      # Enable a plugin (or --all)
+ragclaw plugin disable <n>     # Disable a plugin
+ragclaw config list            # Show all config values and sources
+ragclaw config get <key>       # Show a single config value
 ragclaw config set <key> <value>  # Persist a config value
 ```
 
