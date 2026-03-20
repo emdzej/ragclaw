@@ -34,6 +34,7 @@ export {
   getConfig,
   resetConfigCache,
   getDbPath,
+  sanitizeDbName,
   getPluginsDir,
   getDataDir,
   ensureDataDir,

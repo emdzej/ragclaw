@@ -282,11 +282,43 @@ export function resetConfigCache(): void {
 }
 
 /**
- * Get database path for a knowledge base
+ * Safe character set for knowledge base names: letters, digits, hyphens,
+ * underscores, 1–64 characters.
+ */
+const SAFE_DB_NAME = /^[a-zA-Z0-9_-]{1,64}$/;
+
+/**
+ * Validate and return a safe knowledge base name.
+ * Rejects path separators, `..`, empty strings, and any character outside
+ * the `[a-zA-Z0-9_-]` set.  Max length 64.
+ *
+ * @throws {Error} if the name is invalid
+ */
+export function sanitizeDbName(name: string): string {
+  if (!SAFE_DB_NAME.test(name)) {
+    throw new Error(
+      `Invalid knowledge base name: "${name}". ` +
+      `Names may contain only letters, digits, hyphens, and underscores (max 64 chars).`,
+    );
+  }
+  return name;
+}
+
+/**
+ * Get database path for a knowledge base.
+ *
+ * The name is validated via `sanitizeDbName()` and the resolved path is
+ * checked for containment within `dataDir` as defence in depth.
  */
 export function getDbPath(name: string): string {
+  const safeName = sanitizeDbName(name);
   const { dataDir } = getConfig();
-  return join(dataDir, `${name}.sqlite`);
+  const dbPath = resolve(dataDir, `${safeName}.sqlite`);
+  const resolvedDataDir = resolve(dataDir);
+  if (!dbPath.startsWith(resolvedDataDir + "/") && dbPath !== resolvedDataDir) {
+    throw new Error(`Knowledge base path escapes data directory: ${dbPath}`);
+  }
+  return dbPath;
 }
 
 /**

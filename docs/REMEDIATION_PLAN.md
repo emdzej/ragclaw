@@ -106,9 +106,10 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 ### TASK-05 — Sanitise knowledge base names and enforce path containment
 
 - **Finding:** F-05 (Medium)
-- **File(s):** `packages/cli/src/config.ts`, `packages/mcp/src/index.ts`
+- **File(s):** `packages/core/src/config.ts`, `packages/core/src/index.ts`, `packages/cli/src/config.ts`
 - **Problem:** Knowledge base names are interpolated directly into filesystem paths with no character validation. A crafted name could result in a DB file outside the intended data directory.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Added `sanitizeDbName()` that validates names against `[a-zA-Z0-9_-]{1,64}` regex — rejects path separators, `..`, empty strings, and any unsafe characters. Called inside `getDbPath()` so all 24 call sites (CLI + MCP) are protected automatically. Defence-in-depth path containment check verifies the resolved path stays within `dataDir` after `join()`. Exported from `@emdzej/ragclaw-core` and CLI barrel.
 
 ---
 
