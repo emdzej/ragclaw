@@ -1,6 +1,6 @@
 {
   "name": "ragclaw-plugin-youtube",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "RagClaw plugin for indexing YouTube video transcripts",
   "type": "module",
   "main": "dist/index.js",
@@ -21,7 +21,7 @@
   "author": "Michał Jaskólski",
   "keywords": ["ragclaw", "ragclaw-plugin", "youtube", "transcripts", "video"],
   "peerDependencies": {
-    "@emdzej/ragclaw-core": ">=0.1.0"
+    "@emdzej/ragclaw-core": ">=0.2.0"
   },
   "devDependencies": {
     "@emdzej/ragclaw-core": "workspace:*",

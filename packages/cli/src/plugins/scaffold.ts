@@ -15,10 +15,10 @@ const PLUGIN_TEMPLATE_PACKAGE_JSON = (name: string) => `{
   },
   "keywords": ["ragclaw", "ragclaw-plugin"],
   "peerDependencies": {
-    "@emdzej/ragclaw-core": ">=0.1.0"
+    "@emdzej/ragclaw-core": ">=0.2.0"
   },
   "devDependencies": {
-    "@emdzej/ragclaw-core": "^0.1.0",
+    "@emdzej/ragclaw-core": "^0.2.0",
     "typescript": "^5.8.0"
   },
   "ragclaw": {

@@ -258,7 +258,7 @@ class YouTubeExtractor implements Extractor {
  */
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-youtube",
-  version: "0.1.0",
+  version: "0.2.0",
   
   extractors: [new YouTubeExtractor()],
   

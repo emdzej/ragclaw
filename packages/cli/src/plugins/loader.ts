@@ -9,6 +9,7 @@ import type {
   PluginLoaderOptions,
   Extractor,
   Chunker,
+  Source,
 } from "@emdzej/ragclaw-core";
 import { getPluginsDir } from "../config.js";
 
@@ -160,6 +161,21 @@ export class PluginLoader {
       }
     }
     return extensions;
+  }
+
+  /**
+   * Attempt to expand a source via loaded plugins.
+   * Returns the expanded sources if a plugin handled it, or `null` if no
+   * plugin provides expansion for this source.
+   */
+  async expandSource(source: Source): Promise<Source[] | null> {
+    for (const { plugin } of this.loadedPlugins) {
+      if (plugin.expand) {
+        const expanded = await plugin.expand(source);
+        if (expanded) return expanded;
+      }
+    }
+    return null;
   }
 
   /**

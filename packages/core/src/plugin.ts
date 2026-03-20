@@ -1,4 +1,4 @@
-import type { Extractor, Chunker } from "./types.js";
+import type { Extractor, Chunker, Source } from "./types.js";
 
 /**
  * Describes a single config key that a plugin accepts.
@@ -43,6 +43,15 @@ export interface RagClawPlugin {
   
   /** Optional cleanup function */
   dispose?: () => Promise<void>;
+
+  /**
+   * Optional source expansion.  When a plugin handles a compound source
+   * (e.g. an Obsidian vault URL), `expand()` turns it into individual
+   * sources (one per note) so the caller can index them independently.
+   * Return `null`/`undefined` to signal that no expansion is needed and
+   * the source should be processed as-is.
+   */
+  expand?: (source: Source) => Promise<Source[] | null | undefined>;
 
   /** Optional schema describing config keys the plugin accepts.
    *  Shown by `ragclaw config list` for discoverability. */

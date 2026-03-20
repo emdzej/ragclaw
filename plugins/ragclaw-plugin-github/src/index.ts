@@ -344,7 +344,7 @@ class GitHubExtractor implements Extractor {
  */
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-github",
-  version: "0.1.0",
+  version: "0.2.0",
   extractors: [new GitHubExtractor()],
   schemes: ["github", "gh"],
 

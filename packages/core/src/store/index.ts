@@ -85,6 +85,14 @@ export class Store {
 
     // Try to load sqlite-vec extension
     this.hasVec = this.tryLoadVec();
+
+    if (!this.hasVec) {
+      // Emit once at open time so users know about the performance trade-off.
+      console.warn(
+        "[ragclaw] sqlite-vec extension not available — vector search will use a JS fallback. " +
+        "For best performance, install the sqlite-vec extension."
+      );
+    }
   }
 
   private tryLoadVec(): boolean {
@@ -348,28 +356,66 @@ export class Store {
   private vectorSearchFallback(embedding: Float32Array, limit: number): SearchResult[] {
     if (!this.db) throw new Error("Store not opened");
 
-    const rows = this.db.prepare(`
+    // ── Pass 1: score every embedding in a tight loop ──────────────────
+    // Only fetch id + raw embedding blob to minimise memory and avoid
+    // JSON.parse / rowToChunk overhead for the vast majority of rows that
+    // won't make it into the final result set.
+    const rows = this.db.prepare(
+      "SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL"
+    ).all() as { id: string; embedding: Buffer }[];
+
+    if (rows.length === 0) return [];
+
+    // Warn once per search when the dataset is large.
+    if (rows.length > 5_000) {
+      console.warn(
+        `[ragclaw] JS fallback vector search is scanning ${rows.length.toLocaleString()} chunks. ` +
+        `Install the sqlite-vec extension for significantly faster search at scale.`
+      );
+    }
+
+    // Score all rows — keep only the top-K ids.
+    const scored: { id: string; similarity: number }[] = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const buf = rows[i].embedding;
+      const chunkEmbedding = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+      scored[i] = { id: rows[i].id, similarity: cosineSimilarity(embedding, chunkEmbedding) };
+    }
+
+    scored.sort((a, b) => b.similarity - a.similarity);
+    const topK = scored.slice(0, limit);
+
+    if (topK.length === 0) return [];
+
+    // ── Pass 2: hydrate only the winners ───────────────────────────────
+    const placeholders = topK.map(() => "?").join(", ");
+    const ids = topK.map((r) => r.id);
+    const fullRows = this.db.prepare(`
       SELECT c.*, s.path AS source_path
       FROM chunks c
       JOIN sources s ON s.id = c.source_id
-      WHERE c.embedding IS NOT NULL
-    `).all() as Record<string, unknown>[];
+      WHERE c.id IN (${placeholders})
+    `).all(...ids) as Record<string, unknown>[];
 
-    const results: SearchResult[] = rows.map((row) => {
-      // SQLite returns Buffer, need to convert to Float32Array properly
-      const buf = row.embedding as Buffer;
-      const chunkEmbedding = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
-      const similarity = cosineSimilarity(embedding, chunkEmbedding);
+    // Index by id for quick lookup.
+    const rowById = new Map<string, Record<string, unknown>>();
+    for (const row of fullRows) {
+      rowById.set(row.id as string, row);
+    }
 
-      return {
+    // Build results in scored order.
+    const results: SearchResult[] = [];
+    for (const { id, similarity } of topK) {
+      const row = rowById.get(id);
+      if (!row) continue; // shouldn't happen
+      results.push({
         chunk: this.rowToChunk(row),
         score: similarity,
         scoreVector: similarity,
-      };
-    });
+      });
+    }
 
-    results.sort((a, b) => b.score - a.score);
-    return results.slice(0, limit);
+    return results;
   }
 
   private async keywordSearch(text: string, limit: number): Promise<SearchResult[]> {

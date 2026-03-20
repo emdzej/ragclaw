@@ -1,15 +1,19 @@
 import type { RagClawPlugin, Extractor, ExtractedContent, Source, PluginConfigKey } from "@emdzej/ragclaw-core";
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFile, readdir, stat } from "fs/promises";
+import { existsSync } from "fs";
 import { join, basename, relative, extname } from "path";
 import { homedir } from "os";
 
-/**
- * Default Obsidian vault locations by platform
- */
+// ---------------------------------------------------------------------------
+// Configurable limits (overridable via plugin config)
+// ---------------------------------------------------------------------------
 
-/** Configurable limits (overridable via plugin config). */
 let MAX_NOTES = Infinity;
 let MAX_NOTE_SIZE = Infinity;
+
+// ---------------------------------------------------------------------------
+// Default vault locations
+// ---------------------------------------------------------------------------
 
 function getDefaultVaultLocations(): string[] {
   const home = homedir();
@@ -35,9 +39,10 @@ function getDefaultVaultLocations(): string[] {
   }
 }
 
-/**
- * Find vault path by name
- */
+// ---------------------------------------------------------------------------
+// Vault discovery (sync — uses existsSync only, no heavy I/O)
+// ---------------------------------------------------------------------------
+
 function findVault(vaultName: string): string | null {
   // Check if it's already an absolute path
   if (existsSync(vaultName) && existsSync(join(vaultName, ".obsidian"))) {
@@ -61,13 +66,14 @@ function findVault(vaultName: string): string | null {
   return null;
 }
 
-/**
- * Recursively find all markdown files in vault, respecting MAX_NOTES.
- */
-function findMarkdownFiles(dir: string, files: string[] = []): string[] {
+// ---------------------------------------------------------------------------
+// Async recursive markdown file discovery
+// ---------------------------------------------------------------------------
+
+async function findMarkdownFiles(dir: string, files: string[] = []): Promise<string[]> {
   if (files.length >= MAX_NOTES) return files;
 
-  const entries = readdirSync(dir, { withFileTypes: true });
+  const entries = await readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (files.length >= MAX_NOTES) break;
@@ -80,7 +86,7 @@ function findMarkdownFiles(dir: string, files: string[] = []): string[] {
     if (entry.name === "node_modules" || entry.name === ".git") continue;
 
     if (entry.isDirectory()) {
-      findMarkdownFiles(fullPath, files);
+      await findMarkdownFiles(fullPath, files);
     } else if (entry.isFile() && extname(entry.name) === ".md") {
       files.push(fullPath);
     }
@@ -89,9 +95,11 @@ function findMarkdownFiles(dir: string, files: string[] = []): string[] {
   return files;
 }
 
-/**
- * Parse Obsidian wikilinks and convert to readable format
- */
+// ---------------------------------------------------------------------------
+// Content processing helpers
+// ---------------------------------------------------------------------------
+
+/** Convert Obsidian wikilinks, embeds, and tags to readable format. */
 function processObsidianContent(content: string): string {
   // Convert [[wikilinks]] to readable format
   let processed = content.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, link, alias) => {
@@ -111,9 +119,7 @@ function processObsidianContent(content: string): string {
   return processed;
 }
 
-/**
- * Extract YAML frontmatter
- */
+/** Extract YAML frontmatter from note content. */
 function extractFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) {
@@ -121,15 +127,13 @@ function extractFrontmatter(content: string): { frontmatter: Record<string, unkn
   }
 
   try {
-    // Simple YAML parsing for common cases
     const yaml = match[1];
     const frontmatter: Record<string, unknown> = {};
-    
+
     for (const line of yaml.split("\n")) {
       const keyValue = line.match(/^(\w+):\s*(.*)$/);
       if (keyValue) {
         const [, key, value] = keyValue;
-        // Parse arrays
         if (value.startsWith("[") && value.endsWith("]")) {
           frontmatter[key] = value.slice(1, -1).split(",").map(s => s.trim());
         } else {
@@ -144,14 +148,16 @@ function extractFrontmatter(content: string): { frontmatter: Record<string, unkn
   }
 }
 
-/**
- * Parse Obsidian URL
- * Formats:
- *   obsidian://vault-name           - entire vault
- *   obsidian://vault-name/folder    - specific folder
- *   obsidian://vault-name/note.md   - specific note
- *   obsidian:///absolute/path       - absolute path
- */
+// ---------------------------------------------------------------------------
+// Obsidian URL parsing
+// ---------------------------------------------------------------------------
+//
+// Formats:
+//   obsidian://vault-name           - entire vault
+//   obsidian://vault-name/folder    - specific folder
+//   obsidian://vault-name/note.md   - specific note
+//   obsidian:///absolute/path       - absolute path
+
 interface ParsedObsidianUrl {
   vaultPath: string;
   subPath?: string;
@@ -185,16 +191,15 @@ function parseObsidianUrl(source: string): ParsedObsidianUrl | null {
   return { vaultPath, subPath };
 }
 
-/**
- * Get source URL string
- */
+/** Get source URL string from a Source. */
 function getSourceUrl(source: Source): string {
   return source.url || source.path || "";
 }
 
-/**
- * Obsidian Extractor
- */
+// ---------------------------------------------------------------------------
+// Extractor — handles a single note (file-level source)
+// ---------------------------------------------------------------------------
+
 class ObsidianExtractor implements Extractor {
   name = "obsidian";
 
@@ -213,17 +218,19 @@ class ObsidianExtractor implements Extractor {
     const { vaultPath, subPath } = parsed;
     const targetPath = subPath ? join(vaultPath, subPath) : vaultPath;
 
-    // Check if target is a single file
-    if (existsSync(targetPath) && statSync(targetPath).isFile()) {
+    const targetStat = await stat(targetPath);
+
+    if (targetStat.isFile()) {
       return this.extractNote(targetPath, vaultPath);
     }
 
-    // Extract entire vault or folder
+    // Vault/folder — fallback for callers that don't use expand().
+    // This concatenates all notes into one blob (legacy behaviour).
     return this.extractVault(targetPath, vaultPath);
   }
 
-  private extractNote(notePath: string, vaultPath: string): ExtractedContent {
-    const raw = readFileSync(notePath, "utf-8");
+  private async extractNote(notePath: string, vaultPath: string): Promise<ExtractedContent> {
+    const raw = await readFile(notePath, "utf-8");
     const { frontmatter, body } = extractFrontmatter(raw);
     const processed = processObsidianContent(body);
     const relativePath = relative(vaultPath, notePath);
@@ -231,7 +238,7 @@ class ObsidianExtractor implements Extractor {
 
     let text = `# ${noteName}\n\n`;
     text += `**Path:** ${relativePath}\n\n`;
-    
+
     if (frontmatter) {
       if (frontmatter.tags) {
         text += `**Tags:** ${Array.isArray(frontmatter.tags) ? frontmatter.tags.join(", ") : frontmatter.tags}\n`;
@@ -258,8 +265,8 @@ class ObsidianExtractor implements Extractor {
     };
   }
 
-  private extractVault(targetPath: string, vaultPath: string): ExtractedContent {
-    const files = findMarkdownFiles(targetPath);
+  private async extractVault(targetPath: string, vaultPath: string): Promise<ExtractedContent> {
+    const files = await findMarkdownFiles(targetPath);
     const vaultName = basename(vaultPath);
     const isSubfolder = targetPath !== vaultPath;
 
@@ -270,7 +277,7 @@ class ObsidianExtractor implements Extractor {
     text += `**Notes:** ${files.length}\n\n---\n\n`;
 
     for (const file of files) {
-      const raw = readFileSync(file, "utf-8");
+      const raw = await readFile(file, "utf-8");
 
       // Skip notes that exceed the configured size limit
       if (raw.length > MAX_NOTE_SIZE) continue;
@@ -282,11 +289,11 @@ class ObsidianExtractor implements Extractor {
 
       text += `## ${noteName}\n\n`;
       text += `**Path:** ${relativePath}\n`;
-      
+
       if (frontmatter?.tags) {
         text += `**Tags:** ${Array.isArray(frontmatter.tags) ? frontmatter.tags.join(", ") : frontmatter.tags}\n`;
       }
-      
+
       text += "\n";
       text += processed;
       text += "\n\n---\n\n";
@@ -305,12 +312,59 @@ class ObsidianExtractor implements Extractor {
   }
 }
 
-/**
- * Plugin definition
- */
+// ---------------------------------------------------------------------------
+// expand() — turn a vault/folder URL into individual note Sources
+// ---------------------------------------------------------------------------
+
+async function expandObsidian(source: Source): Promise<Source[] | null> {
+  const url = getSourceUrl(source);
+  const parsed = parseObsidianUrl(url);
+  if (!parsed) return null;
+
+  const { vaultPath, subPath } = parsed;
+  const targetPath = subPath ? join(vaultPath, subPath) : vaultPath;
+
+  const targetStat = await stat(targetPath);
+
+  // Single file — no expansion needed
+  if (targetStat.isFile()) return null;
+
+  // Discover notes
+  const files = await findMarkdownFiles(targetPath);
+
+  // Build per-note Sources with obsidian:// URLs so the extractor can
+  // resolve the vault root for metadata.
+  const scheme = url.startsWith("vault://") ? "vault" : "obsidian";
+  const sources: Source[] = [];
+
+  for (const file of files) {
+    // Check note size limit before creating the source.
+    // We stat the file here to avoid reading its full content.
+    const fileStat = await stat(file);
+    if (fileStat.size > MAX_NOTE_SIZE) continue;
+
+    // Use the absolute-path form: obsidian:///absolute/vault/path/note.md
+    // but with subPath so the extractor can resolve it properly.
+    const relativeToVault = relative(vaultPath, file);
+    // Reconstruct a URL that parseObsidianUrl can resolve back.
+    // For absolute vaults (obsidian:///path), keep using absolute:
+    const noteUrl = parsed.vaultPath.startsWith("/")
+      ? `${scheme}://${join(parsed.vaultPath, relativeToVault)}`
+      : `${scheme}://${url.replace(/^(?:obsidian|vault):\/\//, "").split("/")[0]}/${relativeToVault}`;
+
+    sources.push({ type: "url", url: noteUrl, name: basename(file, ".md") });
+  }
+
+  return sources;
+}
+
+// ---------------------------------------------------------------------------
+// Plugin definition
+// ---------------------------------------------------------------------------
+
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-obsidian",
-  version: "0.1.0",
+  version: "0.2.0",
   extractors: [new ObsidianExtractor()],
   schemes: ["obsidian", "vault"],
 
@@ -329,6 +383,10 @@ const plugin: RagClawPlugin = {
       const n = parseInt(config.maxNoteSize, 10);
       if (Number.isFinite(n) && n > 0) MAX_NOTE_SIZE = n;
     }
+  },
+
+  async expand(source: Source): Promise<Source[] | null> {
+    return expandObsidian(source);
   },
 };
 

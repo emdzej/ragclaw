@@ -1,28 +1,16 @@
 import { existsSync, statSync } from "fs";
-import { readdir, stat } from "fs/promises";
+import { readdir } from "fs/promises";
 import { join, resolve, extname } from "path";
-import { createHash } from "crypto";
 import chalk from "chalk";
 import ora from "ora";
 import {
   Store,
-  Embedder,
-  SemanticChunker,
-  CodeChunker,
-  MarkdownExtractor,
-  TextExtractor,
-  PdfExtractor,
-  DocxExtractor,
-  WebExtractor,
-  CodeExtractor,
-  ImageExtractor,
+  IndexingService,
   isPathAllowed,
   isUrlAllowed,
-  hashFile,
 } from "@emdzej/ragclaw-core";
-import type { Source, Extractor, ChunkRecord, Chunker, RagclawConfig } from "@emdzej/ragclaw-core";
+import type { Source, RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, ensureDataDir, getConfig } from "../config.js";
-import { mkdir } from "fs/promises";
 import { PluginLoader } from "../plugins/loader.js";
 
 interface AddOptions {
@@ -106,41 +94,43 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   await pluginLoader.loadAll();
   const pluginExtractors = pluginLoader.getExtractors();
 
-  let embedder: Embedder;
+  // Create the indexing service — owns extractors, chunkers, embedder
+  const indexingService = new IndexingService({
+    extraExtractors: pluginExtractors,
+    extractorLimits: config.extractorLimits,
+    onModelProgress: (progress: number) => {
+      spinner.text = `Downloading model... ${Math.round(progress * 100)}%`;
+    },
+  });
+
   try {
-    embedder = new Embedder({
-      onProgress: (progress) => {
-        spinner.text = `Downloading model... ${Math.round(progress * 100)}%`;
-      },
-    });
-    // Warm up the model
-    await embedder.embed("test");
+    await indexingService.init();
     spinner.succeed("Model loaded");
   } catch (error) {
     spinner.fail("Failed to load model");
     throw error;
   }
 
-  const extractors: Extractor[] = [
-    ...pluginExtractors, // Plugin extractors first (higher priority)
-    new MarkdownExtractor(),
-    new PdfExtractor({ limits: config.extractorLimits }),
-    new DocxExtractor(),
-    new WebExtractor(config.extractorLimits),
-    new CodeExtractor(),
-    new ImageExtractor({ limits: config.extractorLimits }),
-    new TextExtractor(), // Fallback, keep last
-  ];
-  const semanticChunker = new SemanticChunker();
-  const codeChunker = new CodeChunker();
-
   try {
     const sources = await collectSources(source, options, config);
-    console.log(chalk.dim(`Found ${sources.length} source(s) to process`));
+
+    // Let plugins expand compound sources (e.g. vault URL → individual notes)
+    const expandedSources: Source[] = [];
+    for (const src of sources) {
+      const expanded = await pluginLoader.expandSource(src);
+      if (expanded) {
+        expandedSources.push(...expanded);
+      } else {
+        expandedSources.push(src);
+      }
+    }
+
+    console.log(chalk.dim(`Found ${expandedSources.length} source(s) to process`));
 
     let totalChunks = 0;
+    let indexed = 0;
 
-    for (const src of sources) {
+    for (const src of expandedSources) {
       const displayPath = src.path || src.url || "unknown";
       const fileSpinner = ora(`Processing ${displayPath}`).start();
 
@@ -162,100 +152,31 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
           }
         }
 
-        // Find matching extractor
-        const extractor = extractors.find((e) => e.canHandle(src));
-        if (!extractor) {
-          fileSpinner.warn(`Skipping ${displayPath} (unsupported format)`);
-          continue;
-        }
+        const outcome = await indexingService.indexSource(store, src);
 
-        // For URLs, we need different handling
-        const isUrl = src.type === "url";
-        const sourcePath = isUrl ? src.url! : src.path!;
-
-        // Check if already indexed (for URLs, always re-fetch)
-        const existing = await store.getSource(sourcePath);
-
-        // For files, check content hash to skip unchanged
-        let contentHash: string;
-        if (!isUrl) {
-          contentHash = await hashFile(src.path!);
-
-          if (existing && existing.contentHash === contentHash) {
+        switch (outcome.status) {
+          case "indexed":
+            totalChunks += outcome.chunks;
+            indexed++;
+            fileSpinner.succeed(`Indexed ${displayPath} (${outcome.chunks} chunks)`);
+            break;
+          case "unchanged":
             fileSpinner.info(`Skipping ${displayPath} (unchanged)`);
-            continue;
-          }
-        } else {
-          // For URLs, use timestamp-based hash (always re-index)
-          contentHash = createHash("sha256").update(sourcePath + Date.now()).digest("hex");
+            break;
+          case "skipped":
+            fileSpinner.warn(`Skipping ${displayPath} (${outcome.reason})`);
+            break;
+          case "error":
+            fileSpinner.fail(`Failed to process ${displayPath}: ${outcome.error}`);
+            break;
         }
-
-        // Remove old chunks if re-indexing
-        if (existing) {
-          await store.removeChunksBySource(existing.id);
-        }
-
-        // Extract content
-        const extracted = await extractor.extract(src);
-
-        // Choose chunker based on content type
-        const chunker: Chunker = extracted.sourceType === "code" ? codeChunker : semanticChunker;
-
-        // Chunk content
-        const sourceId = existing?.id ?? "";
-        const chunks = await chunker.chunk(extracted, sourceId, sourcePath);
-
-        // Generate embeddings
-        const embeddings = await embedder.embedBatch(chunks.map((c) => c.text));
-
-        // Create/update source record
-        const now = Date.now();
-        let mtime: number | undefined;
-        
-        if (!isUrl) {
-          const fileStat = await stat(src.path!);
-          mtime = fileStat.mtimeMs;
-        }
-
-        let finalSourceId: string;
-        if (existing) {
-          await store.updateSource(existing.id, {
-            contentHash,
-            mtime,
-            indexedAt: now,
-            metadata: extracted.metadata,
-          });
-          finalSourceId = existing.id;
-        } else {
-          finalSourceId = await store.addSource({
-            path: sourcePath,
-            type: src.type,
-            contentHash,
-            mtime,
-            indexedAt: now,
-            metadata: extracted.metadata,
-          });
-        }
-
-        // Store chunks with embeddings
-        const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
-          ...chunk,
-          sourceId: finalSourceId,
-          embedding: embeddings[i],
-          createdAt: now,
-        }));
-
-        await store.addChunks(chunkRecords);
-        totalChunks += chunkRecords.length;
-
-        fileSpinner.succeed(`Indexed ${displayPath} (${chunkRecords.length} chunks)`);
       } catch (error) {
         fileSpinner.fail(`Failed to process ${displayPath}: ${error}`);
       }
     }
 
     console.log();
-    console.log(chalk.green(`✓ Indexed ${sources.length} source(s), ${totalChunks} chunks`));
+    console.log(chalk.green(`✓ Indexed ${indexed} source(s), ${totalChunks} chunks`));
   } finally {
     await store.close();
   }

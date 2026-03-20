@@ -56,3 +56,13 @@ export { hashFile } from "./utils/hash.js";
 
 // Security guards
 export { isPathAllowed, isUrlAllowed } from "./guards.js";
+
+// Indexing service
+export {
+  IndexingService,
+  type IndexingServiceConfig,
+  type IndexOutcome,
+  type ReindexOutcome,
+  type IndexSourceOptions,
+  type ReindexSourceOptions,
+} from "./indexing.js";

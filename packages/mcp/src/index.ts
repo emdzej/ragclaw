@@ -7,30 +7,20 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { join } from "path";
 import { existsSync } from "fs";
 import { mkdir, readdir, stat } from "fs/promises";
-import { createHash } from "crypto";
-import { extname, resolve, basename } from "path";
+import { extname, resolve, join } from "path";
 
 import {
   Store,
   Embedder,
-  SemanticChunker,
-  CodeChunker,
-  MarkdownExtractor,
-  TextExtractor,
-  PdfExtractor,
-  DocxExtractor,
-  WebExtractor,
-  CodeExtractor,
+  IndexingService,
   getConfig,
   getDbPath,
   isPathAllowed,
   isUrlAllowed,
-  hashFile,
 } from "@emdzej/ragclaw-core";
-import type { Source, Extractor, ChunkRecord, Chunker, RagclawConfig } from "@emdzej/ragclaw-core";
+import type { Source } from "@emdzej/ragclaw-core";
 
 const config = getConfig();
 const RAGCLAW_DIR = config.dataDir;
@@ -164,19 +154,38 @@ const TOOLS: Tool[] = [
   },
 ];
 
-// Cached embedder (expensive to initialize)
+// ---------------------------------------------------------------------------
+// Cached singletons (expensive to initialise)
+// ---------------------------------------------------------------------------
+
+/** Embedder used only for search-time query embedding. */
 let cachedEmbedder: Embedder | null = null;
 
 async function getEmbedder(): Promise<Embedder> {
   if (!cachedEmbedder) {
     cachedEmbedder = new Embedder();
-    // Warm up
-    await cachedEmbedder.embed("test");
+    await cachedEmbedder.embed("warmup");
   }
   return cachedEmbedder;
 }
 
+/** IndexingService used for add/reindex operations. */
+let cachedIndexingService: IndexingService | null = null;
+
+async function getIndexingService(): Promise<IndexingService> {
+  if (!cachedIndexingService) {
+    cachedIndexingService = new IndexingService({
+      extractorLimits: config.extractorLimits,
+    });
+    await cachedIndexingService.init();
+  }
+  return cachedIndexingService;
+}
+
+// ---------------------------------------------------------------------------
 // Tool implementations
+// ---------------------------------------------------------------------------
+
 async function ragSearch(args: {
   query: string;
   db?: string;
@@ -238,19 +247,8 @@ async function ragAdd(args: {
   const store = new Store();
   await store.open(dbPath);
 
-  const extractors: Extractor[] = [
-    new MarkdownExtractor(),
-    new PdfExtractor({ limits: config.extractorLimits }),
-    new DocxExtractor(),
-    new WebExtractor(config.extractorLimits),
-    new CodeExtractor(),
-    new TextExtractor(),
-  ];
-  const semanticChunker = new SemanticChunker();
-  const codeChunker = new CodeChunker();
-
   try {
-    const embedder = await getEmbedder();
+    const indexingService = await getIndexingService();
     const sources = await collectSources(args.source, args.recursive ?? true);
     
     let indexed = 0;
@@ -261,74 +259,20 @@ async function ragAdd(args: {
       const displayPath = src.path || src.url || "unknown";
 
       try {
-        const extractor = extractors.find((e) => e.canHandle(src));
-        if (!extractor) {
-          continue; // Skip unsupported
+        const outcome = await indexingService.indexSource(store, src);
+
+        switch (outcome.status) {
+          case "indexed":
+            indexed++;
+            totalChunks += outcome.chunks;
+            break;
+          case "unchanged":
+          case "skipped":
+            break; // silently skip
+          case "error":
+            errors.push(`${displayPath}: ${outcome.error}`);
+            break;
         }
-
-        const isUrl = src.type === "url";
-        const sourcePath = isUrl ? src.url! : src.path!;
-
-        // Check existing
-        const existing = await store.getSource(sourcePath);
-        
-        let contentHash: string;
-        if (!isUrl) {
-          contentHash = await hashFile(src.path!);
-
-          if (existing && existing.contentHash === contentHash) {
-            continue; // Unchanged
-          }
-        } else {
-          contentHash = createHash("sha256").update(sourcePath + Date.now()).digest("hex");
-        }
-
-        if (existing) {
-          await store.removeChunksBySource(existing.id);
-        }
-
-        const extracted = await extractor.extract(src);
-        const chunker: Chunker = extracted.sourceType === "code" ? codeChunker : semanticChunker;
-        const chunks = await chunker.chunk(extracted, existing?.id ?? "", sourcePath);
-        const embeddings = await embedder.embedBatch(chunks.map((c) => c.text));
-
-        const now = Date.now();
-        let mtime: number | undefined;
-        if (!isUrl) {
-          const fileStat = await stat(src.path!);
-          mtime = fileStat.mtimeMs;
-        }
-
-        let finalSourceId: string;
-        if (existing) {
-          await store.updateSource(existing.id, {
-            contentHash,
-            mtime,
-            indexedAt: now,
-            metadata: extracted.metadata,
-          });
-          finalSourceId = existing.id;
-        } else {
-          finalSourceId = await store.addSource({
-            path: sourcePath,
-            type: src.type,
-            contentHash,
-            mtime,
-            indexedAt: now,
-            metadata: extracted.metadata,
-          });
-        }
-
-        const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
-          ...chunk,
-          sourceId: finalSourceId,
-          embedding: embeddings[i],
-          createdAt: now,
-        }));
-
-        await store.addChunks(chunkRecords);
-        indexed++;
-        totalChunks += chunkRecords.length;
       } catch (e) {
         errors.push(`${displayPath}: ${e}`);
       }
@@ -446,17 +390,6 @@ async function ragReindex(args: {
   const store = new Store();
   await store.open(dbPath);
 
-  const extractors: Extractor[] = [
-    new MarkdownExtractor(),
-    new PdfExtractor({ limits: config.extractorLimits }),
-    new DocxExtractor(),
-    new WebExtractor(config.extractorLimits),
-    new CodeExtractor(),
-    new TextExtractor(),
-  ];
-  const semanticChunker = new SemanticChunker();
-  const codeChunker = new CodeChunker();
-
   try {
     const sources = await store.listSources();
 
@@ -464,7 +397,7 @@ async function ragReindex(args: {
       return "No sources to reindex.";
     }
 
-    const embedder = await getEmbedder();
+    const indexingService = await getIndexingService();
 
     let updated = 0;
     let unchanged = 0;
@@ -473,72 +406,30 @@ async function ragReindex(args: {
 
     for (const source of sources) {
       try {
-        const isUrl = source.type === "url";
-
-        // Check if source still exists
-        if (!isUrl && !existsSync(source.path)) {
-          if (args.prune) {
-            await store.removeSource(source.id);
-            removed++;
-          }
-          continue;
-        }
-
-        // Calculate current hash
-        let currentHash: string | undefined;
-        let currentMtime: number | undefined;
-
-        if (!isUrl) {
-          currentHash = await hashFile(source.path);
-          const fileStat = await stat(source.path);
-          currentMtime = fileStat.mtimeMs;
-        }
-
-        // Skip if unchanged (unless --force)
-        if (!args.force && currentHash && currentHash === source.contentHash) {
-          unchanged++;
-          continue;
-        }
-
-        // Find extractor
-        const src = isUrl
-          ? { type: "url" as const, url: source.path }
-          : { type: "file" as const, path: source.path };
-
-        const extractor = extractors.find((e) => e.canHandle(src));
-        if (!extractor) {
-          errors.push(`${source.path}: No extractor`);
-          continue;
-        }
-
-        // Re-extract and re-chunk
-        const extracted = await extractor.extract(src);
-        const chunker: Chunker = extracted.sourceType === "code" ? codeChunker : semanticChunker;
-        const chunks = await chunker.chunk(extracted, source.id, source.path);
-        const embeddings = await embedder.embedBatch(chunks.map((c) => c.text));
-
-        // Remove old chunks
-        await store.removeChunksBySource(source.id);
-
-        // Update source metadata
-        const now = Date.now();
-        await store.updateSource(source.id, {
-          contentHash: currentHash,
-          mtime: currentMtime,
-          indexedAt: now,
-          metadata: extracted.metadata,
+        const outcome = await indexingService.reindexSource(store, source, {
+          force: args.force,
+          prune: args.prune,
         });
 
-        // Add new chunks
-        const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
-          ...chunk,
-          sourceId: source.id,
-          embedding: embeddings[i],
-          createdAt: now,
-        }));
-
-        await store.addChunks(chunkRecords);
-        updated++;
+        switch (outcome.status) {
+          case "updated":
+            updated++;
+            break;
+          case "unchanged":
+            unchanged++;
+            break;
+          case "removed":
+            removed++;
+            break;
+          case "missing":
+            // not pruned, just skip
+            break;
+          case "skipped":
+            break;
+          case "error":
+            errors.push(`${source.path}: ${outcome.error}`);
+            break;
+        }
       } catch (err) {
         errors.push(`${source.path}: ${err}`);
       }
@@ -643,7 +534,7 @@ async function main() {
   const server = new Server(
     {
       name: "ragclaw-mcp",
-      version: "0.1.0",
+      version: "0.2.0",
     },
     {
       capabilities: {

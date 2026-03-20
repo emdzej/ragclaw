@@ -1,24 +1,13 @@
 import { existsSync } from "fs";
-import { stat } from "fs/promises";
 import ora from "ora";
 import chalk from "chalk";
 import {
   Store,
-  Embedder,
-  SemanticChunker,
-  CodeChunker,
-  MarkdownExtractor,
-  TextExtractor,
-  PdfExtractor,
-  DocxExtractor,
-  WebExtractor,
-  CodeExtractor,
-  ImageExtractor,
+  IndexingService,
   isPathAllowed,
   isUrlAllowed,
-  hashFile,
 } from "@emdzej/ragclaw-core";
-import type { Extractor, Chunker, ChunkRecord, RagclawConfig } from "@emdzej/ragclaw-core";
+import type { RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, getConfig } from "../config.js";
 import { resolve } from "path";
 
@@ -98,21 +87,12 @@ export async function reindex(options: ReindexOptions): Promise<void> {
     }
 
     spinner.text = "Loading embedding model...";
-    const embedder = new Embedder();
-    await embedder.embed("warmup");
-    spinner.succeed("Model loaded");
 
-    const extractors: Extractor[] = [
-      new MarkdownExtractor(),
-      new PdfExtractor({ limits: config.extractorLimits }),
-      new DocxExtractor(),
-      new WebExtractor(config.extractorLimits),
-      new CodeExtractor(),
-      new ImageExtractor({ limits: config.extractorLimits }),
-      new TextExtractor(),
-    ];
-    const semanticChunker = new SemanticChunker();
-    const codeChunker = new CodeChunker();
+    const indexingService = new IndexingService({
+      extractorLimits: config.extractorLimits,
+    });
+    await indexingService.init();
+    spinner.succeed("Model loaded");
 
     const result: ReindexResult = {
       updated: 0,
@@ -130,22 +110,9 @@ export async function reindex(options: ReindexOptions): Promise<void> {
       spinner.text = `Checking ${displayPath}`;
 
       try {
-        // Check if source still exists
-        const isUrl = source.type === "url";
-        
-        if (!isUrl && !existsSync(source.path)) {
-          if (options.prune) {
-            await store.removeSource(source.id);
-            result.removed++;
-            console.log(chalk.yellow(`✗ Removed (not found): ${displayPath}`));
-          } else {
-            console.log(chalk.dim(`⊘ Missing: ${displayPath}`));
-          }
-          continue;
-        }
-
         // Guard enforcement (when enabled)
         if (config.enforceGuards) {
+          const isUrl = source.type === "url";
           if (isUrl) {
             if (!config.allowUrls) {
               result.blocked++;
@@ -168,65 +135,34 @@ export async function reindex(options: ReindexOptions): Promise<void> {
           }
         }
 
-        // Calculate current hash
-        let currentHash: string | undefined;
-        let currentMtime: number | undefined;
-
-        if (!isUrl) {
-          currentHash = await hashFile(source.path);
-          const fileStat = await stat(source.path);
-          currentMtime = fileStat.mtimeMs;
-        }
-
-        // Skip if unchanged (unless --force)
-        if (!options.force && currentHash && currentHash === source.contentHash) {
-          result.unchanged++;
-          continue;
-        }
-
-        // Find extractor
-        const src = isUrl
-          ? { type: "url" as const, url: source.path }
-          : { type: "file" as const, path: source.path };
-
-        const extractor = extractors.find((e) => e.canHandle(src));
-        if (!extractor) {
-          result.errors.push(`${displayPath}: No extractor available`);
-          continue;
-        }
-
-        // Re-extract and re-chunk
-        spinner.text = `Reindexing ${displayPath}`;
-
-        const extracted = await extractor.extract(src);
-        const chunker: Chunker = extracted.sourceType === "code" ? codeChunker : semanticChunker;
-        const chunks = await chunker.chunk(extracted, source.id, source.path);
-        const embeddings = await embedder.embedBatch(chunks.map((c) => c.text));
-
-        // Remove old chunks
-        await store.removeChunksBySource(source.id);
-
-        // Update source metadata
-        const now = Date.now();
-        await store.updateSource(source.id, {
-          contentHash: currentHash,
-          mtime: currentMtime,
-          indexedAt: now,
-          metadata: extracted.metadata,
+        const outcome = await indexingService.reindexSource(store, source, {
+          force: options.force,
+          prune: options.prune,
         });
 
-        // Add new chunks
-        const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
-          ...chunk,
-          sourceId: source.id,
-          embedding: embeddings[i],
-          createdAt: now,
-        }));
-
-        await store.addChunks(chunkRecords);
-        result.updated++;
-        console.log(chalk.green(`✔ Updated: ${displayPath} (${chunkRecords.length} chunks)`));
-
+        switch (outcome.status) {
+          case "updated":
+            result.updated++;
+            console.log(chalk.green(`✔ Updated: ${displayPath} (${outcome.chunks} chunks)`));
+            break;
+          case "unchanged":
+            result.unchanged++;
+            break;
+          case "removed":
+            result.removed++;
+            console.log(chalk.yellow(`✗ Removed (not found): ${displayPath}`));
+            break;
+          case "missing":
+            console.log(chalk.dim(`⊘ Missing: ${displayPath}`));
+            break;
+          case "skipped":
+            console.log(chalk.dim(`⊘ Skipped: ${displayPath} (${outcome.reason})`));
+            break;
+          case "error":
+            result.errors.push(`${displayPath}: ${outcome.error}`);
+            console.log(chalk.red(`✖ Error: ${displayPath}`));
+            break;
+        }
       } catch (err) {
         result.errors.push(`${displayPath}: ${err}`);
         console.log(chalk.red(`✖ Error: ${displayPath}`));
