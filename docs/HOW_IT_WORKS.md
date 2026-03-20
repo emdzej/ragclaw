@@ -127,35 +127,41 @@ An embedding is a list of numbers (a "vector") that represents the *meaning* of 
 "Pizza recipe"         → [-0.82, 0.15, -0.23, 0.67, ...] ← Very different
 ```
 
-These vectors have 768 numbers each (dimensions). You can't read them, but computers can compare them mathematically.
+### Choosing an Embedder
+
+RagClaw ships with four built-in embedding presets:
+
+| Alias | Model | Dims | ~RAM | Good for |
+|-------|-------|------|------|----------|
+| `nomic` (default) | nomic-ai/nomic-embed-text-v1.5 | 768 | ~600 MB | General use |
+| `bge` | BAAI/bge-m3 | 1024 | ~2.3 GB | High-accuracy retrieval |
+| `mxbai` | mixedbread-ai/mxbai-embed-large-v1 | 1024 | ~1.4 GB | Good balance |
+| `minilm` | sentence-transformers/all-MiniLM-L6-v2 | 384 | ~90 MB | Low-memory devices |
+
+Select with `--embedder` or in `config.yaml`:
+```bash
+ragclaw add --embedder minilm ./docs/
+```
+
+Run `ragclaw doctor` to see which presets your machine can run given available RAM.
 
 ### How We Generate Them
 
-We use the **nomic-embed-text-v1.5** model:
+All models run **100% locally** — no API calls, no internet needed after the first download.
 
-- Runs 100% locally (no API calls, no internet needed)
-- ~270MB download (cached after first use)
-- Processes text in ~50ms per chunk
-
-The model was trained on millions of text pairs to learn that "car" and "automobile" are similar, "bank" (money) and "bank" (river) are different based on context, etc.
-
-### The Embedding Process
-
-```
-"OAuth2 is a protocol..."
-        ↓
-   [Tokenize into pieces]
-        ↓
-   [Run through neural network]
-        ↓
-   [768 numbers representing meaning]
-        ↓
-   [0.12, -0.45, 0.78, ..., 0.33]
-```
+The model is trained so that "car" and "automobile" produce similar vectors, while "bank" (money) and "bank" (river) produce different vectors depending on context.
 
 We add prefixes to help the model understand intent:
 - Documents get: `"search_document: OAuth2 is a protocol..."`
 - Queries get: `"search_query: how does oauth work"`
+
+(Note: not all models use prefixes — this is preset-specific.)
+
+### Embedder Tracking
+
+The embedder used to index a database is stored in the database's `store_meta` table. This lets RagClaw:
+- Auto-detect the correct model for search (you never need `--embedder` on `ragclaw search`)
+- Warn you if you try to reindex with a different embedder that would produce incompatible vectors
 
 ---
 
@@ -187,10 +193,23 @@ Everything goes into a **SQLite database** — a single file you can copy anywhe
 │  text: "OAuth2 is a protocol that allows..."               │
 │  start_line: 15                                             │
 │  end_line: 45                                               │
-│  embedding: [0.12, -0.45, 0.78, ...]  ← 768 floats          │
+│  embedding: [0.12, -0.45, 0.78, ...]  ← floats              │
 │  metadata: { heading: "Authentication > OAuth2" }           │
 └─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  store_meta table                                           │
+│  ─────────────────                                          │
+│  embedder_name: "nomic"                    ← preset alias   │
+│  embedder_model: "nomic-ai/nomic-embed..."  ← HF model ID   │
+│  embedder_dimensions: "768"               ← vector dims     │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+The `store_meta` table records which embedder was used when indexing. This allows:
+- `ragclaw search` to automatically load the right model without you specifying it
+- The MCP server to serve multiple databases, each with a different embedder
+- A warning if you try to mix embedders in the same database
 
 ### Full-Text Search Index (FTS5)
 
@@ -276,10 +295,14 @@ This means `ragclaw add ./docs/` is fast the second time — it only processes w
 
 | Scenario | Tip |
 |----------|-----|
-| First run is slow | Model downloads once (~270MB), then cached |
+| First run is slow | Model downloads once, then cached in `~/.cache/huggingface/` |
+| Low RAM device | Use `--embedder minilm` (~90 MB) instead of the default nomic |
+| Need higher accuracy | Use `--embedder bge` (requires ~2.3 GB free RAM) |
 | Large codebase | Code parsing takes time; be patient |
 | Many small files | Batch processing helps; we do this automatically |
 | Scanned PDFs | OCR is slow (~1-2 sec/page); consider pre-processing |
+
+Run `ragclaw doctor` to see a full compatibility table for your machine.
 
 ### Typical Performance
 
@@ -335,7 +358,7 @@ Everything runs on your machine:
 - **Offline:** Works on a plane, in a bunker, wherever
 - **Portable:** Copy the SQLite file anywhere
 
-The only download is the embedding model (~270MB, once).
+The only download is the embedding model (cached after first use; size depends on preset — 90 MB to 2.3 GB).
 
 ---
 
@@ -343,5 +366,6 @@ The only download is the embedding model (~270MB, once).
 
 - [SQLite FTS5](https://www.sqlite.org/fts5.html) — Full-text search in SQLite
 - [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) — Code parsing library
-- [nomic-embed-text](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) — The embedding model we use
+- [nomic-embed-text](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) — The default embedding model
+- [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) — High-quality multilingual embedding model
 - [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity) — The math behind vector comparison

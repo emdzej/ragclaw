@@ -99,22 +99,56 @@ interface Chunk {
 
 Generate vector embeddings for chunks.
 
-**Model:** `nomic-embed-text-v1.5`
-- Dimensions: 768
-- Size: ~270MB (ONNX)
-- Runtime: `@huggingface/transformers`
+**Preset Models:**
 
-**Embedder Interface:**
+| Alias | Model | Dimensions | ~RAM |
+|-------|-------|------------|------|
+| `nomic` (default) | `nomic-ai/nomic-embed-text-v1.5` | 768 | ~600 MB |
+| `bge` | `BAAI/bge-m3` | 1024 | ~2.3 GB |
+| `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | ~1.4 GB |
+| `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~90 MB |
+
+All models run via `@huggingface/transformers` (ONNX runtime, fully local).
+
+**`EmbedderPlugin` Interface:**
 ```typescript
-interface Embedder {
+interface EmbedderPlugin {
   embed(text: string): Promise<Float32Array>;
-  embedBatch(texts: string[]): Promise<Float32Array[]>;
-  dimensions: number;
+  embedQuery(text: string): Promise<Float32Array>;
+  readonly dimensions: number;
+  readonly modelName: string;
+}
+```
+
+**`EmbedderPreset` Interface:**
+```typescript
+interface EmbedderPreset {
+  model: string;          // HuggingFace model ID
+  dim?: number;           // Expected output dimensions (0 = auto-detect)
+  docPrefix?: string;     // Prefix for document embeddings
+  queryPrefix?: string;   // Prefix for query embeddings
+  pooling: "mean" | "cls";
+  normalize: boolean;
+  estimatedRAM?: number;  // Bytes needed at runtime
+}
+```
+
+**Factory:**
+```typescript
+// createEmbedder() — single entry point
+createEmbedder(config?: EmbedderResolvedConfig): EmbedderPlugin
+
+interface EmbedderResolvedConfig {
+  alias?: string;           // Preset alias ("nomic", "bge", ...)
+  model?: string;           // Arbitrary HF model ID
+  dimensions?: number;      // Override dims
+  pluginEmbedder?: EmbedderPlugin;  // Plugin-provided (highest priority)
+  onProgress?: (p: number) => void;
 }
 ```
 
 **Caching:**
-- Model downloaded on first use to `~/.cache/ragclaw/models/`
+- Model downloaded on first use to `~/.cache/huggingface/`
 - Progress indicator during download
 
 ### 4. Store
@@ -146,10 +180,10 @@ CREATE TABLE chunks (
   created_at INTEGER NOT NULL
 );
 
--- Vector search (sqlite-vec extension)
+-- Vector search (sqlite-vec extension, dimension-aware)
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
   id TEXT PRIMARY KEY,
-  embedding FLOAT[768]
+  embedding FLOAT[N]               -- N = embedder dimensions (e.g. 768)
 );
 
 -- Full-text search (FTS5)
@@ -160,9 +194,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
   content_rowid=rowid
 );
 
+-- Store metadata (embedder tracking, schema versioning)
+CREATE TABLE IF NOT EXISTS store_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+-- Keys: embedder_name, embedder_model, embedder_dimensions
+
 -- Indexes
 CREATE INDEX idx_chunks_source ON chunks(source_id);
 CREATE INDEX idx_sources_path ON sources(path);
+CREATE INDEX idx_sources_indexed_at ON sources(indexed_at);
 ```
 
 **Store Interface:**
@@ -369,17 +411,16 @@ skills:
 ```typescript
 interface RagClawConfig {
   // Storage
-  dataDir: string;              // Default: ~/.openclaw/ragclaw
+  dataDir: string;              // Default: ~/.local/share/ragclaw
   database: string;             // Default: "default"
-  
-  // Embedding
-  model: string;                // Default: "nomic-embed-text-v1.5"
-  cacheDir: string;             // Default: ~/.cache/ragclaw/models
-  
+
+  // Embedder — string alias ("nomic", "bge") or object config
+  embedder?: string | EmbedderConfigBlock;
+
   // Chunking
   chunkSize: number;            // Default: 512 tokens
   chunkOverlap: number;         // Default: 50 tokens
-  
+
   // Search
   defaultLimit: number;         // Default: 10
   defaultMode: 'vector' | 'keyword' | 'hybrid';  // Default: 'hybrid'
@@ -387,6 +428,13 @@ interface RagClawConfig {
     vector: number;             // Default: 0.7
     keyword: number;            // Default: 0.3
   };
+}
+
+interface EmbedderConfigBlock {
+  plugin?: string;      // Plugin name (for plugin-provided embedders)
+  model?: string;       // HuggingFace model ID
+  dimensions?: number;  // Override dimensions
+  baseUrl?: string;     // API base URL (Ollama, OpenAI-compatible)
 }
 ```
 
@@ -402,7 +450,6 @@ interface RagClawConfig {
 - [ ] Incremental re-indexing (watch mode)
 - [ ] Audio transcription
 - [ ] Multi-database queries
-- [ ] Embedding model selection
 - [ ] Remote/shared databases
 
 ## Completed Enhancements
@@ -415,3 +462,4 @@ interface RagClawConfig {
 - [x] **XDG Base Directory** — Proper paths (`~/.local/share/ragclaw/`, `~/.config/ragclaw/`)
 - [x] **MCP server** — Integration with Codex, Claude Code, OpenCode
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
+- [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command

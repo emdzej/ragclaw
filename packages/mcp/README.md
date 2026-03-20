@@ -37,9 +37,12 @@ mcpServers:
 |------|-------------|
 | `rag_search` | Search knowledge base |
 | `rag_add` | Index file/directory/URL |
-| `rag_status` | Get KB statistics |
+| `rag_reindex` | Re-process changed sources |
+| `rag_status` | Get KB statistics including embedder info |
 | `rag_list` | List indexed sources |
 | `rag_remove` | Remove source from index |
+
+**Note:** The MCP server automatically detects the embedder from each knowledge base's stored metadata. Different databases can use different embedding models — the correct model is loaded per database on first search.
 
 ## Documentation
 

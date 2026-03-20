@@ -14,9 +14,10 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 - **📄 Multi-format** — Markdown, PDF, DOCX, code, web pages, images (OCR)
 - **🔍 Hybrid search** — Vector similarity + BM25 keyword search
 - **🌳 Code-aware** — Tree-sitter AST parsing for semantic code chunks
+- **🧠 Multiple embedders** — nomic, bge, mxbai, minilm, or bring your own via plugins
 - **📱 Portable** — SQLite database, copy anywhere
 - **🔌 MCP server** — Works with Codex, Claude Code, OpenCode
-- **🧩 Extensible** — Plugin system for custom extractors
+- **🧩 Extensible** — Plugin system for custom extractors and embedders
 - **⚡ Incremental** — Only re-indexes changed files
 
 📖 **[How It Works](docs/HOW_IT_WORKS.md)** — Learn about extraction, chunking, embeddings, and search
@@ -58,10 +59,15 @@ cd packages/cli && npm link
 ```bash
 # Index some docs
 ragclaw add ./docs/
-ragclaw add https://docs.example.com
+
+# Index with a specific embedder
+ragclaw add --embedder bge ./docs/
 
 # Search
 ragclaw search "how to configure auth"
+
+# Check system and embedder compatibility
+ragclaw doctor
 ```
 
 ## Supported Formats
@@ -82,9 +88,10 @@ ragclaw search "how to configure auth"
 ragclaw add <source>       # Index file, directory, or URL
 ragclaw search <query>     # Search knowledge base
 ragclaw reindex            # Re-process changed files
-ragclaw status             # Show KB statistics
+ragclaw status             # Show KB statistics (incl. embedder info)
 ragclaw list               # List indexed sources
 ragclaw remove <source>    # Remove from index
+ragclaw doctor             # Check system & embedder compatibility
 ragclaw plugin list        # List plugins with enabled/disabled status
 ragclaw plugin enable <n>  # Enable a plugin (or --all)
 ragclaw plugin disable <n> # Disable a plugin
@@ -99,6 +106,7 @@ ragclaw config set <key> <value>  # Persist a config value
 -d, --db <name>     # Knowledge base name (default: "default")
 -l, --limit <n>     # Max search results
 -m, --mode <mode>   # Search mode: vector|keyword|hybrid
+-e, --embedder <n>  # Embedder preset or model (add/reindex only)
 -f, --force         # Reindex all (ignore hash)
 -p, --prune         # Remove missing sources
 
@@ -138,6 +146,14 @@ dataDir: ~/my-ragclaw-data
 
 # Override plugins directory
 pluginsDir: ~/my-ragclaw-plugins
+
+# Embedder selection (default: nomic)
+# Use a preset alias: nomic | bge | mxbai | minilm
+embedder: nomic
+
+# Or specify a full HuggingFace model:
+# embedder:
+#   model: BAAI/bge-m3
 
 # Enabled plugins (managed via `ragclaw plugin enable/disable`)
 plugins: ragclaw-plugin-github, ragclaw-plugin-obsidian
@@ -182,6 +198,7 @@ ragclaw config set allowedPaths "~/projects, ~/docs" # persist to config.yaml
 RAGCLAW_DATA_DIR          # Override data directory
 RAGCLAW_PLUGINS_DIR       # Override plugins directory
 RAGCLAW_CONFIG_DIR        # Override config directory
+RAGCLAW_EMBEDDER          # Embedder preset alias or model (e.g. "bge")
 RAGCLAW_ALLOWED_PATHS     # Allowed indexing paths (comma-separated)
 RAGCLAW_ALLOW_URLS        # Allow URL sources ("true"/"false")
 RAGCLAW_BLOCK_PRIVATE_URLS # Block private IPs ("true"/"false")
@@ -317,7 +334,7 @@ Once configured, these tools are available to AI agents:
 | `rag_search` | Search knowledge base |
 | `rag_add` | Index file/directory/URL |
 | `rag_reindex` | Re-process changed sources |
-| `rag_status` | Get KB statistics |
+| `rag_status` | Get KB statistics (includes embedder info) |
 | `rag_list` | List indexed sources |
 | `rag_remove` | Remove source from index |
 
@@ -334,9 +351,9 @@ Reindex ragclaw with force=true
 
 1. **Extract** — Pull text from documents (PDF, DOCX, HTML, code, images via OCR)
 2. **Chunk** — Split into semantic units (paragraphs, functions, classes)
-3. **Embed** — Generate 768-dim vectors using `nomic-embed-text-v1.5`
-4. **Store** — SQLite with FTS5 for keyword search
-5. **Search** — Hybrid scoring: 70% vector + 30% BM25
+3. **Embed** — Generate vectors using a configurable local model (default: `nomic-embed-text-v1.5`, 768 dims)
+4. **Store** — SQLite with FTS5 for keyword search; embedder info written to `store_meta`
+5. **Search** — Hybrid scoring: 70% vector + 30% BM25; embedder auto-detected from DB metadata
 
 All processing happens locally. No external APIs.
 
@@ -403,7 +420,7 @@ ragclaw plugin create notion
 ### Plugin Interface
 
 ```typescript
-import type { RagClawPlugin, Extractor } from "@emdzej/ragclaw-core";
+import type { RagClawPlugin, Extractor, EmbedderPlugin } from "@emdzej/ragclaw-core";
 
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-notion",
@@ -411,9 +428,23 @@ const plugin: RagClawPlugin = {
   extractors: [new MyExtractor()],
   schemes: ["notion"],      // URL schemes to handle
   extensions: [".notion"],  // File extensions to handle
+
+  // Optional: provide a custom embedder (Ollama, OpenAI-compatible, etc.)
+  // When set, this takes priority over preset/config selection.
+  embedder: myCustomEmbedder,
 };
 
 export default plugin;
+```
+
+**`EmbedderPlugin` interface:**
+```typescript
+interface EmbedderPlugin {
+  embed(text: string): Promise<Float32Array>;
+  embedQuery(text: string): Promise<Float32Array>;
+  readonly dimensions: number;
+  readonly modelName: string;
+}
 ```
 
 ### Plugin Discovery
