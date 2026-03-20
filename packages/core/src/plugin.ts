@@ -1,4 +1,4 @@
-import type { Extractor, Chunker, Source } from "./types.js";
+import type { Extractor, Chunker, Source, EmbedderPlugin } from "./types.js";
 
 /**
  * Describes a single config key that a plugin accepts.
@@ -31,6 +31,9 @@ export interface RagClawPlugin {
   
   /** Custom chunkers provided by this plugin */
   chunkers?: Chunker[];
+
+  /** Optional embedder provided by this plugin. */
+  embedder?: EmbedderPlugin;
   
   /** URL schemes this plugin handles (e.g., "notion", "slack") */
   schemes?: string[];

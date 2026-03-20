@@ -5,7 +5,18 @@ export * from "./types.js";
 export { Store } from "./store/index.js";
 
 // Embedder
-export { Embedder } from "./embedder/index.js";
+export { HuggingFaceEmbedder, Embedder } from "./embedder/index.js";
+export type { HuggingFaceEmbedderConfig } from "./embedder/index.js";
+
+// Embedder presets & factory
+export {
+  EMBEDDER_PRESETS,
+  DEFAULT_PRESET,
+  resolvePreset,
+  isKnownPreset,
+  listPresets,
+} from "./embedder/presets.js";
+export { createEmbedder, type EmbedderResolvedConfig } from "./embedder/factory.js";
 
 // Chunkers
 export { SemanticChunker } from "./chunkers/semantic.js";
