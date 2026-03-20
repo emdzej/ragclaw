@@ -138,7 +138,8 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 - **Finding:** F-07 (Medium)
 - **File(s):** `.github/workflows/ci.yaml`, `.github/workflows/publish.yaml`
 - **Problem:** All `uses:` references are pinned to mutable version tags (e.g. `actions/checkout@v4`) rather than immutable commit SHAs, exposing the pipeline to upstream tag mutation.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Pinned all 6 `uses:` references (3 in ci.yaml, 3 in publish.yaml) to full commit SHAs with version comments for readability: `actions/checkout@34e1148…` (v4), `actions/setup-node@49933ea…` (v4.4.0), `pnpm/action-setup@fc06bc1…` (v4.4.0). Tags can no longer be silently mutated upstream.
 
 ---
 
@@ -147,7 +148,8 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 - **Finding:** F-07 (Medium)
 - **File(s):** `.github/workflows/ci.yaml`
 - **Problem:** The CI workflow runs lint, build, and tests but has no dependency audit (`pnpm audit`), SCA, SAST (e.g. CodeQL), or secret scanning steps.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Added a `security` job to `ci.yaml` with two steps: (1) `pnpm audit --audit-level=high` for dependency vulnerability scanning, and (2) GitHub CodeQL `init` + `analyze` for JavaScript/TypeScript SAST. The job has `permissions: security-events: write` so CodeQL results upload to the Security tab. All action references are SHA-pinned consistent with TASK-08.
 
 ---
 
@@ -156,9 +158,10 @@ Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-p
 ### TASK-10 — Fix search result source-path attribution
 
 - **Finding:** F-12 (Low/Medium)
-- **File(s):** `packages/core/src/store/index.ts`, `packages/cli/src/commands/search.ts`, `packages/mcp/src/index.ts`
+- **File(s):** `packages/core/src/store/index.ts`
 - **Problem:** `rowToChunk()` sets `sourcePath: ""`. Downstream display code in the CLI and MCP server uses `chunk.sourcePath` directly, so search results show empty or missing source paths.
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Added `JOIN sources s ON s.id = c.source_id` and `SELECT s.path AS source_path` to all three search query paths: `vectorSearchNative()`, `vectorSearchFallback()`, and `keywordSearch()`. Updated `rowToChunk()` to read `source_path` from the joined row (with `?? ""` fallback). No schema migration needed — the path is resolved at query time from the existing `sources` table. CLI and MCP display code required no changes.
 
 ---
 

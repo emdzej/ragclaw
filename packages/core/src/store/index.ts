@@ -326,9 +326,10 @@ export class Store {
     try {
       const embeddingBlob = Buffer.from(embedding.buffer);
       const rows = this.db.prepare(`
-        SELECT c.*, vec_distance_cosine(v.embedding, ?) AS dist
+        SELECT c.*, s.path AS source_path, vec_distance_cosine(v.embedding, ?) AS dist
         FROM chunks_vec v
         JOIN chunks c ON c.id = v.id
+        JOIN sources s ON s.id = c.source_id
         ORDER BY dist ASC
         LIMIT ?
       `).all(embeddingBlob, limit) as Record<string, unknown>[];
@@ -347,7 +348,12 @@ export class Store {
   private vectorSearchFallback(embedding: Float32Array, limit: number): SearchResult[] {
     if (!this.db) throw new Error("Store not opened");
 
-    const rows = this.db.prepare("SELECT * FROM chunks WHERE embedding IS NOT NULL").all() as Record<string, unknown>[];
+    const rows = this.db.prepare(`
+      SELECT c.*, s.path AS source_path
+      FROM chunks c
+      JOIN sources s ON s.id = c.source_id
+      WHERE c.embedding IS NOT NULL
+    `).all() as Record<string, unknown>[];
 
     const results: SearchResult[] = rows.map((row) => {
       // SQLite returns Buffer, need to convert to Float32Array properly
@@ -373,9 +379,10 @@ export class Store {
     const escapedText = text.replace(/['"]/g, '""');
 
     const rows = this.db.prepare(`
-      SELECT c.*, bm25(chunks_fts) AS rank
+      SELECT c.*, s.path AS source_path, bm25(chunks_fts) AS rank
       FROM chunks_fts fts
       JOIN chunks c ON c.id = fts.id
+      JOIN sources s ON s.id = c.source_id
       WHERE chunks_fts MATCH ?
       ORDER BY rank
       LIMIT ?
@@ -429,7 +436,7 @@ export class Store {
     return {
       id: row.id as string,
       sourceId: row.source_id as string,
-      sourcePath: "", // Will be filled from join if needed
+      sourcePath: (row.source_path as string) ?? "",
       text: row.text as string,
       startLine: row.start_line as number | undefined,
       endLine: row.end_line as number | undefined,
