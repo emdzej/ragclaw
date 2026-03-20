@@ -12,6 +12,10 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 - **🧩 Extensible** — Plugin system for custom extractors
 - **⚡ Incremental** — Only re-indexes changed files
 
+## Requirements
+
+- **Node.js 22.x** (LTS) — Node 23+ is not supported due to native module compatibility
+
 ## Quick Start
 
 ### Install from npm
@@ -26,6 +30,9 @@ npm install -g @emdzej/ragclaw-cli
 # Clone
 git clone https://github.com/emdzej/ragclaw.git
 cd ragclaw
+
+# Ensure Node 22 (required for native modules)
+node --version  # Should be v22.x
 
 # Install dependencies
 pnpm install
