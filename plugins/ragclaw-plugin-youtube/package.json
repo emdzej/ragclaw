@@ -19,5 +19,9 @@
   },
   "ragclaw": {
     "schemes": ["youtube", "yt"]
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   }
 }

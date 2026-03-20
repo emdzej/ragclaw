@@ -19,5 +19,9 @@
   },
   "ragclaw": {
     "schemes": ["github", "gh"]
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   }
 }
