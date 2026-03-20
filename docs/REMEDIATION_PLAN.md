@@ -69,7 +69,8 @@ ragclaw config get allowedPaths                              # show single key
 ragclaw config set allowedPaths "/Users/me/projects, /docs"  # persist to config.yaml
 ```
 
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Added `setConfigValue(yamlKey, rawValue)` to core — generic write to config.yaml with validation against `SETTABLE_KEYS` metadata array. Refactored `setEnabledPlugins()` to delegate to `setConfigValue("plugins", ...)`. Created `packages/cli/src/commands/config.ts` with `configList`, `configGet`, `configSet`. Wired `ragclaw config list|get|set` subcommands into `cli.ts`. `config list` shows all keys with resolved values and source (`[env]` / `[default]`). `config set` validates types before writing (positive int for numbers, `"true"/"false"` for booleans).
 
 #### TASK-03d — Enforce path/URL restrictions in MCP server
 

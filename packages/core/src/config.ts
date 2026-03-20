@@ -247,41 +247,79 @@ export function getEnabledPlugins(): string[] {
 }
 
 /**
- * Persist the enabled plugins list to config.yaml.
- * Preserves existing non-plugins config lines.
+ * Metadata for config keys that can be viewed / persisted via `ragclaw config`.
+ *
+ * `yamlKey`  — the key used in config.yaml
+ * `envVar`   — the corresponding environment variable (if any)
+ * `type`     — how to serialise/deserialise the value
+ * `configKey` — the field name on `RagclawConfig`
  */
-export function setEnabledPlugins(plugins: string[]): void {
+export interface ConfigKeyMeta {
+  yamlKey: string;
+  envVar?: string;
+  type: "string" | "string[]" | "boolean" | "number";
+  configKey: keyof RagclawConfig;
+  description: string;
+}
+
+export const SETTABLE_KEYS: ConfigKeyMeta[] = [
+  { yamlKey: "dataDir",          envVar: "RAGCLAW_DATA_DIR",            type: "string",   configKey: "dataDir",          description: "Data directory for knowledge bases" },
+  { yamlKey: "pluginsDir",       envVar: "RAGCLAW_PLUGINS_DIR",         type: "string",   configKey: "pluginsDir",       description: "Local plugins directory" },
+  { yamlKey: "plugins",          envVar: undefined,                     type: "string[]",  configKey: "enabledPlugins",   description: "Enabled plugin names (comma-separated)" },
+  { yamlKey: "scanGlobalNpm",    envVar: undefined,                     type: "boolean",   configKey: "scanGlobalNpm",    description: "Scan global npm packages for plugins" },
+  { yamlKey: "allowedPaths",     envVar: "RAGCLAW_ALLOWED_PATHS",       type: "string[]",  configKey: "allowedPaths",     description: "Allowed filesystem paths for indexing (comma-separated)" },
+  { yamlKey: "allowUrls",        envVar: "RAGCLAW_ALLOW_URLS",          type: "boolean",   configKey: "allowUrls",        description: "Allow URL sources" },
+  { yamlKey: "blockPrivateUrls", envVar: "RAGCLAW_BLOCK_PRIVATE_URLS",  type: "boolean",   configKey: "blockPrivateUrls", description: "Block fetches to private/reserved IPs" },
+  { yamlKey: "maxDepth",         envVar: "RAGCLAW_MAX_DEPTH",           type: "number",    configKey: "maxDepth",         description: "Max directory recursion depth" },
+  { yamlKey: "maxFiles",         envVar: "RAGCLAW_MAX_FILES",           type: "number",    configKey: "maxFiles",         description: "Max files per directory source" },
+];
+
+/**
+ * Persist a single config key to config.yaml.
+ * The `rawValue` is the string as the user typed it (e.g. "true", "10",
+ * "/a, /b").  It is written to the YAML file as-is.
+ *
+ * Throws if `yamlKey` is not in SETTABLE_KEYS.
+ */
+export function setConfigValue(yamlKey: string, rawValue: string): void {
+  const meta = SETTABLE_KEYS.find((k) => k.yamlKey === yamlKey);
+  if (!meta) {
+    throw new Error(`Unknown config key: "${yamlKey}". Valid keys: ${SETTABLE_KEYS.map((k) => k.yamlKey).join(", ")}`);
+  }
+
   const config = getConfig();
   const configFile = getConfigFilePath();
 
   // Ensure config directory exists
-  const dir = config.configDir;
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+  if (!existsSync(config.configDir)) {
+    mkdirSync(config.configDir, { recursive: true });
   }
 
-  // Read existing config (if any) and replace/add the plugins line
+  // Read existing lines
   let lines: string[] = [];
   if (existsSync(configFile)) {
     lines = readFileSync(configFile, "utf-8").split("\n");
   }
 
-  const pluginsLine = plugins.length > 0
-    ? `plugins: ${plugins.join(", ")}`
-    : "plugins:";
+  const newLine = rawValue ? `${yamlKey}: ${rawValue}` : `${yamlKey}:`;
 
-  const idx = lines.findIndex((l) => l.trimStart().startsWith("plugins:"));
+  const idx = lines.findIndex((l) => l.trimStart().startsWith(`${yamlKey}:`));
   if (idx !== -1) {
-    lines[idx] = pluginsLine;
+    lines[idx] = newLine;
   } else {
-    // Add after last non-empty line (or at end)
-    lines.push(pluginsLine);
+    lines.push(newLine);
   }
 
   writeFileSync(configFile, lines.join("\n"), "utf-8");
-
-  // Bust the cached config so next getConfig() re-reads
   resetConfigCache();
+}
+
+/**
+ * Persist the enabled plugins list to config.yaml.
+ * Preserves existing non-plugins config lines.
+ */
+export function setEnabledPlugins(plugins: string[]): void {
+  setConfigValue("plugins", plugins.join(", "));
 }
 
 /**

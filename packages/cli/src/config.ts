@@ -14,6 +14,9 @@ export {
   getConfigFilePath,
   getEnabledPlugins,
   setEnabledPlugins,
+  setConfigValue,
+  SETTABLE_KEYS,
   RAGCLAW_DIR,
   type RagclawConfig,
+  type ConfigKeyMeta,
 } from "@emdzej/ragclaw-core";

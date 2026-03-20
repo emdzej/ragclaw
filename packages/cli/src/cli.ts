@@ -9,6 +9,7 @@ import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
 import { reindex } from "./commands/reindex.js";
 import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
+import { configList, configGet, configSet } from "./commands/config.js";
 
 const program = new Command();
 
@@ -113,5 +114,28 @@ pluginCmd
   .description("Disable a plugin so it no longer loads")
   .argument("<name>", "Plugin name")
   .action(pluginDisable);
+
+// Config commands
+const configCmd = program
+  .command("config")
+  .description("View and manage configuration");
+
+configCmd
+  .command("list")
+  .description("Show all config values and their sources")
+  .action(configList);
+
+configCmd
+  .command("get")
+  .description("Show a single config value")
+  .argument("<key>", "Config key (e.g., allowedPaths, maxDepth)")
+  .action(configGet);
+
+configCmd
+  .command("set")
+  .description("Persist a config value to config.yaml")
+  .argument("<key>", "Config key (e.g., allowedPaths, maxDepth)")
+  .argument("<value>", "Value to set")
+  .action(configSet);
 
 program.parse();
