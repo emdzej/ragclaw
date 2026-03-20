@@ -15,24 +15,67 @@ import {
   WebExtractor,
   CodeExtractor,
   ImageExtractor,
+  isPathAllowed,
+  isUrlAllowed,
 } from "@emdzej/ragclaw-core";
-import type { Extractor, Chunker, ChunkRecord } from "@emdzej/ragclaw-core";
-import { getDbPath } from "../config.js";
+import type { Extractor, Chunker, ChunkRecord, RagclawConfig } from "@emdzej/ragclaw-core";
+import { getDbPath, getConfig } from "../config.js";
+import { resolve } from "path";
 
 interface ReindexOptions {
   db: string;
   force?: boolean;
   prune?: boolean;
+  // Security guard overrides (from CLI flags)
+  allowedPaths?: string;
+  allowUrls?: boolean;
+  blockPrivateUrls?: boolean;
+  enforceGuards?: boolean;
 }
 
 interface ReindexResult {
   updated: number;
   unchanged: number;
   removed: number;
+  blocked: number;
   errors: string[];
 }
 
+/**
+ * Build a `Partial<RagclawConfig>` from the CLI flags that were actually
+ * passed.  Only keys whose flags are present are included.
+ */
+function buildOverrides(options: ReindexOptions): Partial<RagclawConfig> | undefined {
+  const o: Partial<RagclawConfig> = {};
+  let hasAny = false;
+
+  if (options.allowedPaths !== undefined) {
+    o.allowedPaths = options.allowedPaths
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => resolve(p));
+    hasAny = true;
+  }
+  if (options.allowUrls !== undefined) {
+    o.allowUrls = options.allowUrls;
+    hasAny = true;
+  }
+  if (options.blockPrivateUrls !== undefined) {
+    o.blockPrivateUrls = options.blockPrivateUrls;
+    hasAny = true;
+  }
+  if (options.enforceGuards !== undefined) {
+    o.enforceGuards = options.enforceGuards;
+    hasAny = true;
+  }
+
+  return hasAny ? o : undefined;
+}
+
 export async function reindex(options: ReindexOptions): Promise<void> {
+  const overrides = buildOverrides(options);
+  const config = getConfig(overrides);
   const dbPath = getDbPath(options.db);
 
   if (!existsSync(dbPath)) {
@@ -75,6 +118,7 @@ export async function reindex(options: ReindexOptions): Promise<void> {
       updated: 0,
       unchanged: 0,
       removed: 0,
+      blocked: 0,
       errors: [],
     };
 
@@ -98,6 +142,30 @@ export async function reindex(options: ReindexOptions): Promise<void> {
             console.log(chalk.dim(`⊘ Missing: ${displayPath}`));
           }
           continue;
+        }
+
+        // Guard enforcement (when enabled)
+        if (config.enforceGuards) {
+          if (isUrl) {
+            if (!config.allowUrls) {
+              result.blocked++;
+              console.log(chalk.yellow(`⊘ Blocked (URLs disabled): ${displayPath}`));
+              continue;
+            }
+            const urlCheck = await isUrlAllowed(source.path, config);
+            if (!urlCheck.allowed) {
+              result.blocked++;
+              console.log(chalk.yellow(`⊘ Blocked: ${urlCheck.reason}`));
+              continue;
+            }
+          } else {
+            const pathCheck = isPathAllowed(source.path, config);
+            if (!pathCheck.allowed) {
+              result.blocked++;
+              console.log(chalk.yellow(`⊘ Blocked: ${pathCheck.reason}`));
+              continue;
+            }
+          }
         }
 
         // Calculate current hash
@@ -177,6 +245,9 @@ export async function reindex(options: ReindexOptions): Promise<void> {
     console.log(`  ${chalk.dim("Unchanged:")} ${result.unchanged}`);
     if (result.removed > 0) {
       console.log(`  ${chalk.yellow("Removed:")} ${result.removed}`);
+    }
+    if (result.blocked > 0) {
+      console.log(`  ${chalk.yellow("Blocked:")} ${result.blocked}`);
     }
     if (result.errors.length > 0) {
       console.log(`  ${chalk.red("Errors:")} ${result.errors.length}`);

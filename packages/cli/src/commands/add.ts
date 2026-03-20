@@ -16,8 +16,10 @@ import {
   WebExtractor,
   CodeExtractor,
   ImageExtractor,
+  isPathAllowed,
+  isUrlAllowed,
 } from "@emdzej/ragclaw-core";
-import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
+import type { Source, Extractor, ChunkRecord, Chunker, RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, ensureDataDir, getConfig } from "../config.js";
 import { mkdir } from "fs/promises";
 import { PluginLoader } from "../plugins/loader.js";
@@ -28,9 +30,59 @@ interface AddOptions {
   recursive: boolean;
   include?: string;
   exclude?: string;
+  // Security guard overrides (from CLI flags)
+  allowedPaths?: string;
+  maxDepth?: string;
+  maxFiles?: string;
+  allowUrls?: boolean;
+  blockPrivateUrls?: boolean;
+  enforceGuards?: boolean;
+}
+
+/**
+ * Build a `Partial<RagclawConfig>` from the CLI flags that were actually
+ * passed.  Only keys whose flags are present are included — this ensures
+ * `getConfig(overrides)` only overrides what the user explicitly set.
+ */
+function buildOverrides(options: AddOptions): Partial<RagclawConfig> | undefined {
+  const o: Partial<RagclawConfig> = {};
+  let hasAny = false;
+
+  if (options.allowedPaths !== undefined) {
+    o.allowedPaths = options.allowedPaths
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => resolve(p));
+    hasAny = true;
+  }
+  if (options.maxDepth !== undefined) {
+    const n = parseInt(options.maxDepth, 10);
+    if (Number.isFinite(n) && n > 0) { o.maxDepth = n; hasAny = true; }
+  }
+  if (options.maxFiles !== undefined) {
+    const n = parseInt(options.maxFiles, 10);
+    if (Number.isFinite(n) && n > 0) { o.maxFiles = n; hasAny = true; }
+  }
+  if (options.allowUrls !== undefined) {
+    o.allowUrls = options.allowUrls;
+    hasAny = true;
+  }
+  if (options.blockPrivateUrls !== undefined) {
+    o.blockPrivateUrls = options.blockPrivateUrls;
+    hasAny = true;
+  }
+  if (options.enforceGuards !== undefined) {
+    o.enforceGuards = options.enforceGuards;
+    hasAny = true;
+  }
+
+  return hasAny ? o : undefined;
 }
 
 export async function addCommand(source: string, options: AddOptions): Promise<void> {
+  const overrides = buildOverrides(options);
+  const config = getConfig(overrides);
   const dbPath = getDbPath(options.db);
 
   // Auto-create database if it doesn't exist
@@ -45,7 +97,6 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   const spinner = ora("Loading embedding model...").start();
 
   // Load plugins (only those explicitly enabled in config)
-  const config = getConfig();
   const pluginLoader = new PluginLoader({
     enabledPlugins: config.enabledPlugins,
     scanGlobalNpm: config.scanGlobalNpm,
@@ -82,7 +133,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   const codeChunker = new CodeChunker();
 
   try {
-    const sources = await collectSources(source, options);
+    const sources = await collectSources(source, options, config);
     console.log(chalk.dim(`Found ${sources.length} source(s) to process`));
 
     let totalChunks = 0;
@@ -92,6 +143,23 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
       const fileSpinner = ora(`Processing ${displayPath}`).start();
 
       try {
+        // Guard enforcement (when enabled)
+        if (config.enforceGuards) {
+          if (src.type === "url") {
+            const urlCheck = await isUrlAllowed(src.url!, config);
+            if (!urlCheck.allowed) {
+              fileSpinner.warn(`Blocked: ${urlCheck.reason}`);
+              continue;
+            }
+          } else if (src.path) {
+            const pathCheck = isPathAllowed(src.path, config);
+            if (!pathCheck.allowed) {
+              fileSpinner.warn(`Blocked: ${pathCheck.reason}`);
+              continue;
+            }
+          }
+        }
+
         // Find matching extractor
         const extractor = extractors.find((e) => e.canHandle(src));
         if (!extractor) {
@@ -194,7 +262,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   }
 }
 
-async function collectSources(source: string, options: AddOptions): Promise<Source[]> {
+async function collectSources(source: string, options: AddOptions, config: RagclawConfig): Promise<Source[]> {
   const resolved = resolve(source);
 
   if (!existsSync(resolved)) {
@@ -212,17 +280,32 @@ async function collectSources(source: string, options: AddOptions): Promise<Sour
   }
 
   if (stats.isDirectory() && options.recursive) {
-    return collectFilesRecursive(resolved, options);
+    return collectFilesRecursive(resolved, options, config);
   }
 
   return [];
 }
 
-async function collectFilesRecursive(dir: string, options: AddOptions): Promise<Source[]> {
-  const sources: Source[] = [];
+async function collectFilesRecursive(
+  dir: string,
+  options: AddOptions,
+  config: RagclawConfig,
+  depth: number = 0,
+  collected: Source[] = [],
+): Promise<Source[]> {
+  // Enforce maxDepth when guards are active
+  if (config.enforceGuards && depth >= config.maxDepth) {
+    return collected;
+  }
+
   const entries = await readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
+    // Enforce maxFiles when guards are active
+    if (config.enforceGuards && collected.length >= config.maxFiles) {
+      return collected;
+    }
+
     const fullPath = join(dir, entry.name);
 
     // Skip hidden files and common excludes
@@ -231,8 +314,7 @@ async function collectFilesRecursive(dir: string, options: AddOptions): Promise<
     if (options.exclude && entry.name.match(new RegExp(options.exclude))) continue;
 
     if (entry.isDirectory()) {
-      const nested = await collectFilesRecursive(fullPath, options);
-      sources.push(...nested);
+      await collectFilesRecursive(fullPath, options, config, depth + 1, collected);
     } else if (entry.isFile()) {
       const ext = extname(entry.name).toLowerCase();
 
@@ -248,10 +330,10 @@ async function collectFilesRecursive(dir: string, options: AddOptions): Promise<
         ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
       ];
       if (supportedExts.includes(ext)) {
-        sources.push({ type: "file", path: fullPath });
+        collected.push({ type: "file", path: fullPath });
       }
     }
   }
 
-  return sources;
+  return collected;
 }

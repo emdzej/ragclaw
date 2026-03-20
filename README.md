@@ -81,6 +81,9 @@ ragclaw remove <source>    # Remove from index
 ragclaw plugin list        # List plugins with enabled/disabled status
 ragclaw plugin enable <n>  # Enable a plugin (or --all)
 ragclaw plugin disable <n> # Disable a plugin
+ragclaw config list        # Show all config values and sources
+ragclaw config get <key>   # Show a single config value
+ragclaw config set <key> <value>  # Persist a config value
 ```
 
 ### Options
@@ -91,6 +94,17 @@ ragclaw plugin disable <n> # Disable a plugin
 -m, --mode <mode>   # Search mode: vector|keyword|hybrid
 -f, --force         # Reindex all (ignore hash)
 -p, --prune         # Remove missing sources
+
+# Security flags (for `add` and `reindex`)
+--enforce-guards          # Enforce path/URL security guards (default: off)
+--no-enforce-guards       # Skip security guards (default)
+--allowed-paths <paths>   # Restrict to these paths (comma-separated)
+--max-depth <n>           # Max directory recursion depth
+--max-files <n>           # Max files per directory source
+--allow-urls              # Allow URL sources
+--no-allow-urls           # Disallow URL sources
+--block-private-urls      # Block private/reserved IPs
+--no-block-private-urls   # Allow private/reserved IPs
 ```
 
 ## Storage & Portability
@@ -123,16 +137,52 @@ plugins: ragclaw-plugin-github, ragclaw-plugin-obsidian
 
 # Allow scanning global npm packages for plugins (default: false)
 scanGlobalNpm: true
+
+# Restrict indexing to specific paths (comma-separated, default: unrestricted)
+# When set, only files under these paths can be indexed.
+# The MCP server defaults to the working directory when no paths are configured.
+allowedPaths: ~/projects, ~/docs
+
+# Allow URL sources (default: true)
+allowUrls: true
+
+# Block fetches to private/reserved IP ranges (default: true)
+blockPrivateUrls: true
+
+# Maximum directory recursion depth (default: 10)
+maxDepth: 10
+
+# Maximum files collected from a single directory source (default: 1000)
+maxFiles: 1000
+
+# Enforce path/URL guards in the CLI (default: false)
+# Enable when the CLI is invoked autonomously (e.g., by a script or AI agent)
+# The MCP server always enforces guards regardless of this setting.
+enforceGuards: false
+```
+
+You can also manage configuration from the CLI:
+
+```bash
+ragclaw config list                                  # show all values + sources
+ragclaw config get maxDepth                          # show single key
+ragclaw config set allowedPaths "~/projects, ~/docs" # persist to config.yaml
 ```
 
 ### Environment Variables
 
 ```bash
-RAGCLAW_DATA_DIR      # Override data directory
-RAGCLAW_PLUGINS_DIR   # Override plugins directory
-RAGCLAW_CONFIG_DIR    # Override config directory
-XDG_DATA_HOME         # XDG data home (default: ~/.local/share)
-XDG_CONFIG_HOME       # XDG config home (default: ~/.config)
+RAGCLAW_DATA_DIR          # Override data directory
+RAGCLAW_PLUGINS_DIR       # Override plugins directory
+RAGCLAW_CONFIG_DIR        # Override config directory
+RAGCLAW_ALLOWED_PATHS     # Allowed indexing paths (comma-separated)
+RAGCLAW_ALLOW_URLS        # Allow URL sources ("true"/"false")
+RAGCLAW_BLOCK_PRIVATE_URLS # Block private IPs ("true"/"false")
+RAGCLAW_MAX_DEPTH         # Max directory recursion depth
+RAGCLAW_MAX_FILES         # Max files per directory source
+RAGCLAW_ENFORCE_GUARDS    # Enforce CLI security guards ("true"/"false")
+XDG_DATA_HOME             # XDG data home (default: ~/.local/share)
+XDG_CONFIG_HOME           # XDG config home (default: ~/.config)
 ```
 
 ### Backwards Compatibility

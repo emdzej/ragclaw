@@ -33,7 +33,7 @@ Implementation details are decided task-by-task before work begins.
 - **Finding:** F-03 (High)
 - **File(s):** `packages/mcp/src/index.ts`, `packages/core/src/extractors/web.ts`, `packages/core/src/config.ts` (new), `packages/cli/src/config.ts`, `packages/cli/src/cli.ts`
 - **Problem:** The MCP `rag_add` tool accepts arbitrary local filesystem paths, recursive directories, and remote URLs with no scope restrictions. Sensitive files can be indexed and later retrieved via `rag_search` excerpts. Additionally, config logic is duplicated between CLI and MCP, making it hard to share settings.
-- **Status:** `pending`
+- **Status:** `done`
 
 This task is broken into sub-tasks due to scope:
 
@@ -76,11 +76,15 @@ ragclaw config set allowedPaths "/Users/me/projects, /docs"  # persist to config
 
 Replace MCP's duplicated config code with shared config import. Add `isPathAllowed()` (checks resolved path against `allowedPaths`, defaults to cwd), `isUrlAllowed()` (blocks private/reserved IP ranges when `blockPrivateUrls` is true), and recursion limits (`maxDepth`, `maxFiles`) in `collectSources` / `collectFilesRecursive`. Return clear error messages explaining why a path/URL was blocked and how to adjust.
 
-- **Status:** `pending`
+- **Status:** `done`
+- **Resolution:** Created `packages/core/src/guards.ts` with `isPathAllowed()` and `isUrlAllowed()`. `isPathAllowed` resolves the target and checks it starts with one of the `allowedPaths` entries (or `fallbackCwd` when the list is empty — used by MCP to default to cwd). `isUrlAllowed` performs DNS resolution and rejects private/reserved IP ranges (127.x, 10.x, 172.16–31.x, 192.168.x, 169.254.x, 100.64–127.x, 198.18–19.x, ::1, fe80::, fc/fd ULA, IPv4-mapped). Exported from `@emdzej/ragclaw-core`. MCP `collectSources()` calls both guards before processing; `collectFilesRecursive()` enforces `maxDepth` and `maxFiles` from config.
 
 #### TASK-03e — Pass CLI flag overrides through to `add` and `reindex` commands
 
-Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-private-urls` / `--no-block-private-urls` flags into `ragclaw add` and `ragclaw reindex` so per-invocation overrides work for the CLI as well.
+Wire `--allowed-paths`, `--max-depth`, `--max-files`, `--allow-urls`, `--block-private-urls` / `--no-block-private-urls`, and `--enforce-guards` / `--no-enforce-guards` flags into `ragclaw add` and `ragclaw reindex` so per-invocation overrides work for the CLI as well.
+
+- **Status:** `done`
+- **Resolution:** Added `enforceGuards` boolean to `RagclawConfig` (default `false`), with config-file, env-var (`RAGCLAW_ENFORCE_GUARDS`), and CLI-flag resolution. When `enforceGuards` is false (default), CLI skips all path/URL guards — the user is trusted. When true, CLI enforces the same guards as MCP: `isPathAllowed()`, `isUrlAllowed()`, `maxDepth`, `maxFiles`. Both `add` and `reindex` commands accept all security flags and build a `Partial<RagclawConfig>` that's passed to `getConfig(overrides)`. The `reindex` summary now includes a "Blocked" count when guards reject sources.
 
 ---
 

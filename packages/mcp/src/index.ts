@@ -26,10 +26,13 @@ import {
   CodeExtractor,
   getConfig,
   getDbPath,
+  isPathAllowed,
+  isUrlAllowed,
 } from "@emdzej/ragclaw-core";
-import type { Source, Extractor, ChunkRecord, Chunker } from "@emdzej/ragclaw-core";
+import type { Source, Extractor, ChunkRecord, Chunker, RagclawConfig } from "@emdzej/ragclaw-core";
 
-const RAGCLAW_DIR = getConfig().dataDir;
+const config = getConfig();
+const RAGCLAW_DIR = config.dataDir;
 
 // Tool definitions
 const TOOLS: Tool[] = [
@@ -562,14 +565,25 @@ async function ragReindex(args: {
   }
 }
 
-// Helper to collect sources
+// Helper to collect sources (with security enforcement)
 async function collectSources(source: string, recursive: boolean): Promise<Source[]> {
   // URL
   if (source.startsWith("http://") || source.startsWith("https://")) {
+    const urlCheck = await isUrlAllowed(source, config);
+    if (!urlCheck.allowed) {
+      throw new Error(urlCheck.reason);
+    }
     return [{ type: "url", url: source }];
   }
 
   const resolved = resolve(source);
+
+  // Path allowlist check (MCP defaults to cwd if allowedPaths is empty)
+  const pathCheck = isPathAllowed(resolved, config, process.cwd());
+  if (!pathCheck.allowed) {
+    throw new Error(pathCheck.reason);
+  }
+
   if (!existsSync(resolved)) {
     throw new Error(`Source not found: ${source}`);
   }
@@ -580,14 +594,29 @@ async function collectSources(source: string, recursive: boolean): Promise<Sourc
   }
 
   if (stats.isDirectory() && recursive) {
-    return collectFilesRecursive(resolved);
+    const collected: Source[] = [];
+    await collectFilesRecursive(resolved, collected, 0, config.maxDepth, config.maxFiles);
+    return collected;
   }
 
   return [];
 }
 
-async function collectFilesRecursive(dir: string): Promise<Source[]> {
-  const sources: Source[] = [];
+async function collectFilesRecursive(
+  dir: string,
+  collected: Source[],
+  currentDepth: number,
+  maxDepth: number,
+  maxFiles: number,
+): Promise<void> {
+  if (currentDepth >= maxDepth) {
+    return; // depth limit reached
+  }
+
+  if (collected.length >= maxFiles) {
+    return; // file count limit reached
+  }
+
   const entries = await readdir(dir, { withFileTypes: true });
 
   const supportedExts = [
@@ -596,23 +625,22 @@ async function collectFilesRecursive(dir: string): Promise<Source[]> {
   ];
 
   for (const entry of entries) {
+    if (collected.length >= maxFiles) return;
+
     const fullPath = join(dir, entry.name);
 
     if (entry.name.startsWith(".")) continue;
     if (entry.name === "node_modules") continue;
 
     if (entry.isDirectory()) {
-      const nested = await collectFilesRecursive(fullPath);
-      sources.push(...nested);
+      await collectFilesRecursive(fullPath, collected, currentDepth + 1, maxDepth, maxFiles);
     } else if (entry.isFile()) {
       const ext = extname(entry.name).toLowerCase();
       if (supportedExts.includes(ext)) {
-        sources.push({ type: "file", path: fullPath });
+        collected.push({ type: "file", path: fullPath });
       }
     }
   }
-
-  return sources;
 }
 
 // Main server

@@ -61,6 +61,13 @@ export interface RagclawConfig {
 
   /** Maximum number of files collected from a single directory source (default: 1000). */
   maxFiles: number;
+
+  /** Whether the CLI should enforce path/URL guards (default: false).
+   *  When true the CLI behaves like MCP — `isPathAllowed()`, `isUrlAllowed()`,
+   *  `maxDepth` and `maxFiles` are checked.  Useful when the CLI is invoked
+   *  autonomously rather than by a human user.
+   *  MCP always enforces guards regardless of this setting. */
+  enforceGuards: boolean;
 }
 
 let cachedConfig: RagclawConfig | null = null;
@@ -90,6 +97,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   let blockPrivateUrls = true;
   let maxDepth = 10;
   let maxFiles = 1000;
+  let enforceGuards = false;
 
   // Check for legacy path (backwards compatibility)
   if (existsSync(LEGACY_DIR)) {
@@ -133,6 +141,9 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
         const n = parseInt(parsed.maxFiles, 10);
         if (Number.isFinite(n) && n > 0) maxFiles = n;
       }
+      if (parsed.enforceGuards) {
+        enforceGuards = parsed.enforceGuards === "true";
+      }
     } catch {
       // Ignore config parse errors
     }
@@ -169,10 +180,14 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
     const n = parseInt(process.env.RAGCLAW_MAX_FILES, 10);
     if (Number.isFinite(n) && n > 0) maxFiles = n;
   }
+  if (process.env.RAGCLAW_ENFORCE_GUARDS !== undefined) {
+    enforceGuards = process.env.RAGCLAW_ENFORCE_GUARDS === "true";
+  }
 
   let config: RagclawConfig = {
     configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm,
     allowedPaths, allowUrls, blockPrivateUrls, maxDepth, maxFiles,
+    enforceGuards,
   };
 
   // CLI-flag overrides (highest priority)
@@ -272,6 +287,7 @@ export const SETTABLE_KEYS: ConfigKeyMeta[] = [
   { yamlKey: "blockPrivateUrls", envVar: "RAGCLAW_BLOCK_PRIVATE_URLS",  type: "boolean",   configKey: "blockPrivateUrls", description: "Block fetches to private/reserved IPs" },
   { yamlKey: "maxDepth",         envVar: "RAGCLAW_MAX_DEPTH",           type: "number",    configKey: "maxDepth",         description: "Max directory recursion depth" },
   { yamlKey: "maxFiles",         envVar: "RAGCLAW_MAX_FILES",           type: "number",    configKey: "maxFiles",         description: "Max files per directory source" },
+  { yamlKey: "enforceGuards",    envVar: "RAGCLAW_ENFORCE_GUARDS",      type: "boolean",   configKey: "enforceGuards",    description: "Enforce path/URL guards in CLI (for autonomous use)" },
 ];
 
 /**
