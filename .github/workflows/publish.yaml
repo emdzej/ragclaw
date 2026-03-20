@@ -3,6 +3,12 @@ name: Publish
 on:
   release:
     types: [published]
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.2.1)'
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -32,7 +38,11 @@ jobs:
 
       - name: Set version from release tag
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           # Update all package versions (@emdzej/* and plugins)
           pnpm --filter "@emdzej/*" exec npm pkg set version="$VERSION"
