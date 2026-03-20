@@ -102,7 +102,7 @@ Generate vector embeddings for chunks.
 **Model:** `nomic-embed-text-v1.5`
 - Dimensions: 768
 - Size: ~270MB (ONNX)
-- Runtime: `@xenova/transformers`
+- Runtime: `@huggingface/transformers`
 
 **Embedder Interface:**
 ```typescript
@@ -342,9 +342,12 @@ skills:
 
 ## Dependencies
 
+### Runtime Requirements
+- **Node.js 22.x** (LTS) — Node 23+ not supported due to native module compatibility (tree-sitter, better-sqlite3)
+
 ### Core (required)
 - `better-sqlite3` — SQLite binding
-- `@xenova/transformers` — ONNX runtime for embeddings
+- `@huggingface/transformers` — ONNX runtime for embeddings
 
 ### Extractors (optional, loaded on demand)
 - `pdfjs-dist` — PDF extraction
@@ -397,8 +400,18 @@ interface RagClawConfig {
 ## Future Enhancements
 
 - [ ] Incremental re-indexing (watch mode)
-- [ ] Image OCR extraction
 - [ ] Audio transcription
 - [ ] Multi-database queries
 - [ ] Embedding model selection
 - [ ] Remote/shared databases
+
+## Completed Enhancements
+
+- [x] **Image OCR extraction** — Using `tesseract.js` for images and scanned PDFs
+- [x] **Plugin system** — Extensible architecture for custom extractors (`ragclaw-plugin-*`)
+- [x] **YouTube plugin** — Index video transcripts via `youtube://` scheme
+- [x] **GitHub plugin** — Index repos, issues, PRs via `github://` scheme
+- [x] **Obsidian plugin** — Index vaults and notes via `obsidian://` scheme
+- [x] **XDG Base Directory** — Proper paths (`~/.local/share/ragclaw/`, `~/.config/ragclaw/`)
+- [x] **MCP server** — Integration with Codex, Claude Code, OpenCode
+- [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
