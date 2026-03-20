@@ -8,6 +8,7 @@ import {
   IndexingService,
   isPathAllowed,
   isUrlAllowed,
+  createEmbedder,
 } from "@emdzej/ragclaw-core";
 import type { Source, RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, ensureDataDir, getConfig } from "../config.js";
@@ -19,6 +20,8 @@ interface AddOptions {
   recursive: boolean;
   include?: string;
   exclude?: string;
+  /** Embedder preset alias or HuggingFace model ID (e.g. "bge", "nomic"). */
+  embedder?: string;
   // Security guard overrides (from CLI flags)
   allowedPaths?: string;
   maxDepth?: string;
@@ -94,13 +97,27 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   await pluginLoader.loadAll();
   const pluginExtractors = pluginLoader.getExtractors();
 
+  // Resolve embedder: CLI flag > config file > plugin-provided > default (nomic)
+  // Resolution order (Phase 6 spec):
+  //   1. --embedder CLI flag (alias or HF model)
+  //   2. config file `embedder:` field (string alias only)
+  //   3. plugin-provided embedder (first one wins)
+  //   4. default: nomic
+  const pluginEmbedder = pluginLoader.getEmbedder();
+  const embedderAlias = options.embedder
+    ?? (typeof config.embedder === "string" ? config.embedder : undefined);
+
+  const onProgress = (p: number) => { spinner.text = `Downloading model... ${Math.round(p * 100)}%`; };
+  const embedder = embedderAlias
+    ? createEmbedder({ alias: embedderAlias, onProgress })
+    : pluginEmbedder
+      ?? createEmbedder({ onProgress });
+
   // Create the indexing service — owns extractors, chunkers, embedder
   const indexingService = new IndexingService({
     extraExtractors: pluginExtractors,
     extractorLimits: config.extractorLimits,
-    onModelProgress: (progress: number) => {
-      spinner.text = `Downloading model... ${Math.round(progress * 100)}%`;
-    },
+    embedder,
   });
 
   try {

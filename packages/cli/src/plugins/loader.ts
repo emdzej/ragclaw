@@ -10,6 +10,7 @@ import type {
   Extractor,
   Chunker,
   Source,
+  EmbedderPlugin,
 } from "@emdzej/ragclaw-core";
 import { getPluginsDir } from "../config.js";
 
@@ -120,6 +121,17 @@ export class PluginLoader {
       }
     }
     return extractors;
+  }
+
+  /**
+   * Returns the first embedder provided by a loaded plugin, or `null`.
+   * Resolution priority follows load order (first enabled plugin wins).
+   */
+  getEmbedder(): EmbedderPlugin | null {
+    for (const { plugin } of this.loadedPlugins) {
+      if (plugin.embedder) return plugin.embedder;
+    }
+    return null;
   }
 
   /**

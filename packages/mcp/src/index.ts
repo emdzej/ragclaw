@@ -13,14 +13,14 @@ import { extname, resolve, join } from "path";
 
 import {
   Store,
-  Embedder,
   IndexingService,
+  createEmbedder,
   getConfig,
   getDbPath,
   isPathAllowed,
   isUrlAllowed,
 } from "@emdzej/ragclaw-core";
-import type { Source } from "@emdzej/ragclaw-core";
+import type { Source, EmbedderPlugin } from "@emdzej/ragclaw-core";
 
 const config = getConfig();
 const RAGCLAW_DIR = config.dataDir;
@@ -158,15 +158,22 @@ const TOOLS: Tool[] = [
 // Cached singletons (expensive to initialise)
 // ---------------------------------------------------------------------------
 
-/** Embedder used only for search-time query embedding. */
-let cachedEmbedder: Embedder | null = null;
+/** Embedders cached per DB name (different DBs may use different models). */
+const cachedEmbedders = new Map<string, EmbedderPlugin>();
 
-async function getEmbedder(): Promise<Embedder> {
-  if (!cachedEmbedder) {
-    cachedEmbedder = new Embedder();
-    await cachedEmbedder.embed("warmup");
-  }
-  return cachedEmbedder;
+async function getEmbedder(dbName: string, store: Store): Promise<EmbedderPlugin> {
+  const cached = cachedEmbedders.get(dbName);
+  if (cached) return cached;
+
+  // Read embedder alias from store metadata; fall back to "nomic" for legacy DBs
+  const storedName = await store.getMeta("embedder_name") ?? "nomic";
+  const embedder = createEmbedder({ alias: storedName });
+
+  // Warm up (downloads model on first call)
+  await embedder.embed("warmup");
+
+  cachedEmbedders.set(dbName, embedder);
+  return embedder;
 }
 
 /** IndexingService used for add/reindex operations. */
@@ -174,8 +181,12 @@ let cachedIndexingService: IndexingService | null = null;
 
 async function getIndexingService(): Promise<IndexingService> {
   if (!cachedIndexingService) {
+    // Use default embedder (nomic) for indexing via MCP.
+    // The embedder will be written to store metadata on first index.
+    const embedder = createEmbedder();
     cachedIndexingService = new IndexingService({
       extractorLimits: config.extractorLimits,
+      embedder,
     });
     await cachedIndexingService.init();
   }
@@ -203,7 +214,7 @@ async function ragSearch(args: {
   await store.open(dbPath);
 
   try {
-    const embedder = await getEmbedder();
+    const embedder = await getEmbedder(dbName, store);
     const embedding = args.mode !== "keyword" 
       ? await embedder.embedQuery(args.query)
       : undefined;
@@ -304,13 +315,19 @@ async function ragStatus(args: { db?: string }): Promise<string> {
 
   try {
     const stats = await store.getStats();
+    const meta = await store.getAllMeta();
     const sizeKB = (stats.sizeBytes / 1024).toFixed(1);
     const updated = stats.lastUpdated 
       ? new Date(stats.lastUpdated).toLocaleString()
       : "never";
 
+    const embedderName = meta.embedder_name ?? "nomic";
+    const embedderModel = meta.embedder_model ?? embedderName;
+    const embedderDims = meta.embedder_dimensions ?? "?";
+
     return `Knowledge Base: ${dbName}
 Path: ${dbPath}
+Embedder: ${embedderName} (${embedderModel}, ${embedderDims} dims)
 Sources: ${stats.sources}
 Chunks: ${stats.chunks}
 Size: ${sizeKB} KB

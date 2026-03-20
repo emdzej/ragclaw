@@ -10,6 +10,7 @@ import { removeCommand } from "./commands/remove.js";
 import { reindex } from "./commands/reindex.js";
 import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
 import { configList, configGet, configSet } from "./commands/config.js";
+import { doctorCommand } from "./commands/doctor.js";
 
 const program = new Command();
 
@@ -33,6 +34,7 @@ program
   .option("-r, --recursive", "Recurse into directories", true)
   .option("--include <pattern>", "Include glob pattern")
   .option("--exclude <pattern>", "Exclude glob pattern")
+  .option("-e, --embedder <name>", "Embedder preset or model (e.g. bge, nomic, BAAI/bge-m3)")
   .option("--allowed-paths <paths>", "Restrict indexing to these paths (comma-separated)")
   .option("--max-depth <n>", "Max directory recursion depth")
   .option("--max-files <n>", "Max files per directory source")
@@ -81,6 +83,7 @@ program
   .option("-d, --db <name>", "Knowledge base name", "default")
   .option("-f, --force", "Reindex all sources regardless of hash")
   .option("-p, --prune", "Remove sources that no longer exist")
+  .option("-e, --embedder <name>", "Re-embed with a different model (rebuilds all vectors)")
   .option("--allowed-paths <paths>", "Restrict indexing to these paths (comma-separated)")
   .option("--allow-urls", "Allow URL sources")
   .option("--no-allow-urls", "Disallow URL sources")
@@ -153,5 +156,10 @@ configCmd
   .argument("<key>", "Config key (e.g., allowedPaths, maxDepth)")
   .argument("<value>", "Value to set")
   .action(configSet);
+
+program
+  .command("doctor")
+  .description("Check system compatibility and embedder requirements")
+  .action(doctorCommand);
 
 program.parse();

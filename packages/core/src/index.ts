@@ -57,6 +57,7 @@ export {
   RAGCLAW_DIR,
   DEFAULT_EXTRACTOR_LIMITS,
   type RagclawConfig,
+  type EmbedderConfigBlock,
   type ConfigKeyMeta,
   type ExtractorLimits,
 } from "./config.js";

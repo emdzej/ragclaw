@@ -6,15 +6,19 @@ import {
   IndexingService,
   isPathAllowed,
   isUrlAllowed,
+  createEmbedder,
 } from "@emdzej/ragclaw-core";
 import type { RagclawConfig } from "@emdzej/ragclaw-core";
 import { getDbPath, getConfig } from "../config.js";
+import { PluginLoader } from "../plugins/loader.js";
 import { resolve } from "path";
 
 interface ReindexOptions {
   db: string;
   force?: boolean;
   prune?: boolean;
+  /** Embedder preset alias or HuggingFace model ID (e.g. "bge", "nomic"). */
+  embedder?: string;
   // Security guard overrides (from CLI flags)
   allowedPaths?: string;
   allowUrls?: boolean;
@@ -88,8 +92,28 @@ export async function reindex(options: ReindexOptions): Promise<void> {
 
     spinner.text = "Loading embedding model...";
 
+    // Load plugins (for plugin-provided embedder support)
+    const pluginLoader = new PluginLoader({
+      enabledPlugins: config.enabledPlugins,
+      scanGlobalNpm: config.scanGlobalNpm,
+      config: config.pluginConfig,
+    });
+    await pluginLoader.loadAll();
+
+    // Resolve embedder: CLI flag > config file > plugin-provided > default (nomic)
+    const pluginEmbedder = pluginLoader.getEmbedder();
+    const embedderAlias = options.embedder
+      ?? (typeof config.embedder === "string" ? config.embedder : undefined);
+
+    const onProgress = (p: number) => { spinner.text = `Downloading model... ${Math.round(p * 100)}%`; };
+    const embedder = embedderAlias
+      ? createEmbedder({ alias: embedderAlias, onProgress })
+      : pluginEmbedder
+        ?? createEmbedder({ onProgress });
+
     const indexingService = new IndexingService({
       extractorLimits: config.extractorLimits,
+      embedder,
     });
     await indexingService.init();
     spinner.succeed("Model loaded");

@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import chalk from "chalk";
 import ora from "ora";
-import { Store, Embedder } from "@emdzej/ragclaw-core";
+import { Store, createEmbedder } from "@emdzej/ragclaw-core";
 import type { SearchMode } from "@emdzej/ragclaw-core";
 import { getDbPath } from "../config.js";
 
@@ -27,10 +27,13 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
   const spinner = ora("Searching...").start();
 
   try {
-    // Load embedder for vector/hybrid search
+    // Load embedder for vector/hybrid search.
+    // Always inferred from store metadata — no --embedder flag on search.
     let embedding: Float32Array | undefined;
     if (options.mode !== "keyword") {
-      const embedder = new Embedder();
+      // Read embedder info from store metadata (set during indexing)
+      const storedName = await store.getMeta("embedder_name") ?? "nomic";
+      const embedder = createEmbedder({ alias: storedName });
       embedding = await embedder.embedQuery(query);
     }
 
