@@ -33,7 +33,7 @@
   "author": "Michał Jaskólski",
   "dependencies": {
     "@huggingface/transformers": "^3.8.0",
-    "better-sqlite3": "^11.8.0",
+    "better-sqlite3": "^12.8.0",
     "canvas": "^3.2.1",
     "cheerio": "^1.2.0",
     "mammoth": "^1.12.0",
@@ -45,15 +45,13 @@
     "tree-sitter-javascript": "^0.25.0",
     "tree-sitter-python": "^0.25.0",
     "tree-sitter-typescript": "^0.23.2",
-    "uuid": "^11.1.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.0",
-    "@types/uuid": "^10.0.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.0"
   },
   "engines": {
     "node": ">=22"

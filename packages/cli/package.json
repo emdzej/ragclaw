@@ -29,14 +29,14 @@
   "author": "Michał Jaskólski",
   "dependencies": {
     "@emdzej/ragclaw-core": "workspace:*",
-    "commander": "^13.1.0",
+    "commander": "^14.0.3",
     "chalk": "^5.4.1",
-    "ora": "^8.2.0"
+    "ora": "^9.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.0"
   },
   "engines": {
     "node": ">=22"

@@ -8,9 +8,9 @@
     "clean": "turbo run clean"
   },
   "devDependencies": {
-    "turbo": "^2.5.0",
+    "turbo": "^2.8.20",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.0"
   },
   "packageManager": "pnpm@10.6.1",
   "engines": {

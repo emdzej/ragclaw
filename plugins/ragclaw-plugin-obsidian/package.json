@@ -29,7 +29,7 @@
     "@emdzej/ragclaw-core": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.0"
   },
   "ragclaw": {
     "schemes": ["obsidian", "vault"]
