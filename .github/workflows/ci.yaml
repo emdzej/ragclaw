@@ -28,6 +28,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Test
+        run: pnpm test
+
       - name: Type check
         run: pnpm exec tsc --noEmit -p packages/core/tsconfig.json
 
@@ -59,6 +62,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Test
+        run: pnpm test
 
       - name: Verify CLI build
         run: test -f packages/cli/dist/cli.js
