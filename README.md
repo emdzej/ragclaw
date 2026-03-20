@@ -12,6 +12,8 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 - **🧩 Extensible** — Plugin system for custom extractors
 - **⚡ Incremental** — Only re-indexes changed files
 
+📖 **[How It Works](docs/HOW_IT_WORKS.md)** — Learn about extraction, chunking, embeddings, and search
+
 ## Requirements
 
 - **Node.js 22.x** (LTS) — Node 23+ is not supported due to native module compatibility
