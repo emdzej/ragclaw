@@ -20,11 +20,17 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 
 ## Quick Start
 
-### Install from npm
+### Install from GitHub Packages
 
 ```bash
+# Configure npm to use GitHub Packages for @emdzej scope
+echo "@emdzej:registry=https://npm.pkg.github.com" >> ~/.npmrc
+
+# Install
 npm install -g @emdzej/ragclaw-cli
 ```
+
+> **Note:** GitHub Packages requires authentication. Run `npm login --registry=https://npm.pkg.github.com` with a [personal access token](https://github.com/settings/tokens) (scope: `read:packages`).
 
 ### Install from source
 
