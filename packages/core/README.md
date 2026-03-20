@@ -17,12 +17,26 @@ npm install @emdzej/ragclaw-core
 
 ## Embedder Presets
 
-| Alias | Model | Dims | Est. RAM |
-|-------|-------|------|----------|
-| `nomic` | `nomic-ai/nomic-embed-text-v1.5` | 768 | ~600 MB |
-| `bge` | `BAAI/bge-m3` | 1024 | ~2.3 GB |
-| `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | ~1.4 GB |
-| `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~90 MB |
+Four built-in presets are available via `createEmbedder({ alias })`:
+
+| Alias | Model | Language | Context | Dims | ~RAM |
+|-------|-------|----------|---------|------|------|
+| `nomic` ⭐ | `nomic-ai/nomic-embed-text-v1.5` | English | 8 192 tok | 768 | ~600 MB |
+| `bge` | `BAAI/bge-m3` | 100+ languages | 8 192 tok | 1024 | ~2.3 GB |
+| `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | English | 512 tok | 1024 | ~1.4 GB |
+| `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | English | 256 tok | 384 | ~90 MB |
+
+> ⭐ Default preset used when no alias is specified.
+
+**Per-model notes:**
+
+- **`nomic`** — Best general-purpose choice for English content. 8 192-token context handles long documents well. Supports [Matryoshka](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5#matryoshka-embeddings) representation — dimensions can be truncated to 512/256/128/64 with negligible quality loss if storage is tight. Requires task-instruction prefixes (`search_document:` / `search_query:`), which the preset applies automatically.
+
+- **`bge`** — The only multilingual preset. Supports 100+ languages and tops multilingual retrieval benchmarks (MIRACL, MKQA). Choose this whenever your corpus is non-English or mixed-language. Heaviest RAM footprint (~2.3 GB).
+
+- **`mxbai`** — Highest English retrieval quality per MTEB (64.68 avg over 56 datasets, beating OpenAI `text-embedding-3-large`). Hard limit: **512-token context window** — content beyond 512 tokens is silently truncated. Use with short-to-medium length documents.
+
+- **`minilm`** — Lightest model (~90 MB, 22.7 M params). **256-token context window** — best for short notes, sentences, or any environment where RAM is a constraint. Not suited for long documents.
 
 ## Vector Search & sqlite-vec
 

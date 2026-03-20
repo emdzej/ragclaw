@@ -14,7 +14,7 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 - **📄 Multi-format** — Markdown, PDF, DOCX, code, web pages, images (OCR)
 - **🔍 Hybrid search** — Vector similarity + BM25 keyword search
 - **🌳 Code-aware** — Tree-sitter AST parsing for semantic code chunks
-- **🧠 Multiple embedders** — nomic, bge, mxbai, minilm, or bring your own via plugins
+- **🧠 Multiple embedders** — nomic (default), bge (multilingual), mxbai (best English quality), minilm (low RAM) — or bring your own via plugins
 - **📱 Portable** — SQLite database, copy anywhere
 - **🔌 MCP server** — Works with Codex, Claude Code, OpenCode
 - **🧩 Extensible** — Plugin system for custom extractors and embedders
@@ -152,12 +152,13 @@ dataDir: ~/my-ragclaw-data
 pluginsDir: ~/my-ragclaw-plugins
 
 # Embedder selection (default: nomic)
-# Use a preset alias: nomic | bge | mxbai | minilm
+# Preset aliases: nomic | bge | mxbai | minilm
+# See "Choosing an Embedder" section for a comparison of language support,
+# context length, RAM requirements, and quality tradeoffs.
 embedder: nomic
 
-# Or specify a full HuggingFace model:
-# embedder:
-#   model: BAAI/bge-m3
+# Or specify any HuggingFace model ID directly:
+# embedder: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 
 # Enabled plugins (managed via `ragclaw plugin enable/disable`)
 plugins: ragclaw-plugin-github, ragclaw-plugin-obsidian
@@ -347,6 +348,46 @@ Once configured, these tools are available to AI agents:
 Index the ./src directory into ragclaw
 Search ragclaw for "error handling patterns"
 Reindex ragclaw with force=true
+```
+
+---
+
+## Choosing an Embedder
+
+RagClaw ships four built-in presets. Pick one based on your content language, document length, and available RAM:
+
+| Alias | Model | Language | Context | Dims | ~RAM | Strengths |
+|-------|-------|----------|---------|------|------|-----------|
+| `nomic` ⭐ | `nomic-ai/nomic-embed-text-v1.5` | English | 8 192 tok | 768 | ~600 MB | Long docs, balanced quality/size, Matryoshka dims |
+| `bge` | `BAAI/bge-m3` | **100+ languages** | 8 192 tok | 1024 | ~2.3 GB | Best for non-English or mixed-language content |
+| `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | English | 512 tok | 1024 | ~1.4 GB | Highest English retrieval quality (MTEB 64.68) |
+| `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | English | 256 tok | 384 | ~90 MB | Minimal RAM, fastest — short texts/notes only |
+
+> ⭐ Default preset. Run `ragclaw doctor` to see which presets fit your available RAM.
+
+**Quick-pick guide:**
+
+- **Default / general use** → `nomic` — good English quality, long context, moderate RAM
+- **Non-English or multilingual content** → `bge` — the only multilingual preset; needs ~2.3 GB RAM
+- **Best English quality** → `mxbai` — tops MTEB English benchmarks; keep documents under ~400 tokens
+- **Low RAM / fast batch indexing** → `minilm` — fits in ~90 MB; best for short notes or sentences
+- **Custom model / Ollama / OpenAI-compatible** → use a [plugin](#plugins) that provides an `EmbedderPlugin`
+
+**Important limitations to be aware of:**
+
+- `mxbai` has a **512-token context window** — longer chunks are silently truncated
+- `minilm` has a **256-token context window** — only suitable for short text
+- `bge` requires **~2.3 GB RAM** to load; `ragclaw doctor` will warn if available RAM is low
+
+```bash
+# Use a preset
+ragclaw add --embedder bge ./docs/
+
+# Use any HuggingFace model directly
+ragclaw add --embedder "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" ./docs/
+
+# Set a default in config
+ragclaw config set embedder bge
 ```
 
 ---

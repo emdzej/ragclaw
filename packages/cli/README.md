@@ -50,12 +50,21 @@ The embedder is resolved in this priority order:
 
 **Available presets:**
 
-| Alias | Model | Dims | ~RAM |
-|-------|-------|------|------|
-| `nomic` | nomic-ai/nomic-embed-text-v1.5 | 768 | 600 MB |
-| `bge` | BAAI/bge-m3 | 1024 | 2.3 GB |
-| `mxbai` | mixedbread-ai/mxbai-embed-large-v1 | 1024 | 1.4 GB |
-| `minilm` | sentence-transformers/all-MiniLM-L6-v2 | 384 | 90 MB |
+| Alias | Model | Language | Context | Dims | ~RAM |
+|-------|-------|----------|---------|------|------|
+| `nomic` ⭐ | `nomic-ai/nomic-embed-text-v1.5` | English | 8 192 tok | 768 | ~600 MB |
+| `bge` | `BAAI/bge-m3` | **100+ languages** | 8 192 tok | 1024 | ~2.3 GB |
+| `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | English | 512 tok | 1024 | ~1.4 GB |
+| `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | English | 256 tok | 384 | ~90 MB |
+
+> ⭐ Default preset.
+
+**When to use each preset:**
+
+- **`nomic`** — Default for most use cases. Good English quality, handles long documents (8 192-token context), moderate RAM (~600 MB). Supports Matryoshka dimension truncation.
+- **`bge`** — Non-English or mixed-language corpora. Tops multilingual benchmarks; requires ~2.3 GB RAM.
+- **`mxbai`** — Highest English retrieval quality on MTEB (64.68). Hard limit of 512 tokens — longer content is truncated silently.
+- **`minilm`** — Minimal RAM (~90 MB). 256-token limit makes it suitable only for short notes or sentences.
 
 For search, the embedder is always read from the database's stored metadata — no flag needed.
 
@@ -108,21 +117,6 @@ Current Config:
 
 ```bash
 npm install sqlite-vec
-```
-$ ragclaw doctor
-
-System Check:
-  RAM:   16.0 GB total, 9.3 GB available
-  Node:  v22.14.0
-
-Embedder Compatibility:
-  minilm  (~90 MB)   sentence-transformers/all-MiniLM-L6-v2    384 dim  OK
-  nomic   (~600 MB)  nomic-ai/nomic-embed-text-v1.5            768 dim  OK
-  mxbai   (~1.4 GB)  mixedbread-ai/mxbai-embed-large-v1       1024 dim  OK
-  bge     (~2.3 GB)  BAAI/bge-m3                               1024 dim  WARN may be slow
-
-Current Config:
-  embedder: nomic (default)
 ```
 
 ## Documentation
