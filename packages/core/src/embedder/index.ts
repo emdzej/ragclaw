@@ -1,11 +1,42 @@
 import { pipeline, env, Tensor } from "@huggingface/transformers";
 import { homedir } from "os";
 import { join } from "path";
+import { existsSync } from "fs";
 import type { EmbedderPlugin, EmbedderPreset, EmbedderConfig } from "../types.js";
 import { EMBEDDER_PRESETS, DEFAULT_PRESET } from "./presets.js";
 
 // Configure default cache directory
 env.cacheDir = join(homedir(), ".cache", "ragclaw", "models");
+
+/**
+ * Return the directory where RagClaw caches HuggingFace model files.
+ *
+ * Respects any override that was applied via `env.cacheDir` (e.g. from a
+ * custom `cacheDir` config option).
+ */
+export function getModelCacheDir(): string {
+  return env.cacheDir as string;
+}
+
+/**
+ * Check whether a model's ONNX files are already present in the local cache.
+ *
+ * A model is considered cached when its directory exists under
+ * `<cacheDir>/<org>/<repo>/` (for `"org/repo"` model IDs) or
+ * `<cacheDir>/<model>/` (for single-segment IDs).
+ *
+ * This mirrors the layout that `@huggingface/transformers` uses when it
+ * fetches and stores model files.
+ *
+ * @param modelId  HuggingFace model ID, e.g. `"nomic-ai/nomic-embed-text-v1.5"`
+ * @param cacheDir Override the cache directory (default: `getModelCacheDir()`)
+ */
+export function isModelCached(modelId: string, cacheDir?: string): boolean {
+  const base = cacheDir ?? getModelCacheDir();
+  // HF model IDs use "org/repo" — map to <cacheDir>/org/repo/
+  const modelPath = join(base, ...modelId.split("/"));
+  return existsSync(modelPath);
+}
 
 type FeatureExtractionPipeline = Awaited<ReturnType<typeof pipeline<"feature-extraction">>>;
 

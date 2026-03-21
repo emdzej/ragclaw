@@ -12,7 +12,7 @@ import { mergeCommand } from "./commands/merge.js";
 import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
 import { configList, configGet, configSet } from "./commands/config.js";
 import { doctorCommand } from "./commands/doctor.js";
-import { embedderList } from "./commands/embedder.js";
+import { embedderList, embedderDownload } from "./commands/embedder.js";
 
 const program = new Command();
 
@@ -197,5 +197,12 @@ embedderCmd
   .command("list")
   .description("List all available embedders (built-in presets and plugin-provided)")
   .action(embedderList);
+
+embedderCmd
+  .command("download")
+  .description("Download a model to the local cache for offline use")
+  .argument("[name]", "Preset alias, HuggingFace model ID, or plugin embedder name")
+  .option("-a, --all", "Download all built-in presets and plugin embedders")
+  .action(embedderDownload);
 
 program.parse();

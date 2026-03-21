@@ -21,6 +21,7 @@ Local-first RAG engine for OpenClaw. Index and search your documents, code, and 
 - **⚡ Incremental** — Only re-indexes changed files
 
 📖 **[How It Works](docs/HOW_IT_WORKS.md)** — Learn about extraction, chunking, embeddings, and search
+📋 **[User Guide](docs/USER_GUIDE.md)** — Full feature reference: all commands, flags, configuration, MCP setup, and plugins
 
 ## Requirements
 
@@ -103,6 +104,7 @@ ragclaw list                   # List indexed sources
 ragclaw remove <source>        # Remove from index
 ragclaw doctor                 # Check system & embedder compatibility
 ragclaw embedder list          # List all available embedders (presets + plugins)
+ragclaw embedder download [n]  # Pre-download a model for offline use (or --all)
 ragclaw plugin list            # List plugins with enabled/disabled status
 ragclaw plugin enable <n>      # Enable a plugin (or --all)
 ragclaw plugin disable <n>     # Disable a plugin
@@ -120,6 +122,7 @@ ragclaw config set <key> <value>  # Persist a config value
 -e, --embedder <n>  # Embedder preset or model (add/reindex/merge only)
 -f, --force         # Reindex all (ignore hash)
 -p, --prune         # Remove missing sources
+-a, --all           # Download all models (embedder download only)
 
 # Merge flags (for `merge`)
 --strategy <s>      # strict (same embedder, default) | reindex (re-embed with local model)

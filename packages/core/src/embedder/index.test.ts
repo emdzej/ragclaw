@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { join } from "path";
 
 // ── Mock @huggingface/transformers before importing the module ──────────────
 // The HuggingFaceEmbedder uses `pipeline("feature-extraction", model, ...)` which
@@ -9,12 +10,18 @@ const mockPipe: Mock = vi.fn();
 
 vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(async () => mockPipe),
-  env: { cacheDir: "" },
+  env: { cacheDir: "/mock/cache/ragclaw/models" },
   Tensor: class {},
 }));
 
+// Mock fs so isModelCached never touches the real filesystem
+vi.mock("fs", () => ({
+  existsSync: vi.fn(),
+}));
+
 // Must import AFTER vi.mock so the mock takes effect
-const { HuggingFaceEmbedder, Embedder } = await import("./index.js");
+const { HuggingFaceEmbedder, Embedder, isModelCached, getModelCacheDir } = await import("./index.js");
+import { existsSync } from "fs";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -384,6 +391,86 @@ describe("Embedder (backward-compat alias)", () => {
       "feature-extraction",
       "custom/model",
       expect.anything(),
+    );
+  });
+});
+
+// ── getModelCacheDir() ──────────────────────────────────────────────────────
+
+describe("getModelCacheDir()", () => {
+  it("returns the value of env.cacheDir from @huggingface/transformers", async () => {
+    // index.ts overwrites env.cacheDir at module-load time, so we can only
+    // assert that getModelCacheDir() returns the same value as env.cacheDir
+    // (i.e. the two stay in sync), not a specific path.
+    const { env } = await import("@huggingface/transformers");
+    const dir = getModelCacheDir();
+    expect(dir).toBe(env.cacheDir);
+  });
+
+  it("returns a string", () => {
+    expect(typeof getModelCacheDir()).toBe("string");
+  });
+});
+
+// ── isModelCached() ─────────────────────────────────────────────────────────
+
+describe("isModelCached()", () => {
+  const mockExistsSync = vi.mocked(existsSync);
+
+  beforeEach(() => {
+    mockExistsSync.mockReset();
+  });
+
+  it("returns true when the model directory exists", () => {
+    mockExistsSync.mockReturnValue(true);
+    expect(isModelCached("nomic-ai/nomic-embed-text-v1.5")).toBe(true);
+  });
+
+  it("returns false when the model directory does not exist", () => {
+    mockExistsSync.mockReturnValue(false);
+    expect(isModelCached("nomic-ai/nomic-embed-text-v1.5")).toBe(false);
+  });
+
+  it("checks the correct path for an org/repo model ID", () => {
+    mockExistsSync.mockReturnValue(false);
+    isModelCached("BAAI/bge-m3", "/mock/cache/ragclaw/models");
+    expect(mockExistsSync).toHaveBeenCalledWith(
+      join("/mock/cache/ragclaw/models", "BAAI", "bge-m3"),
+    );
+  });
+
+  it("checks the correct path for a single-segment model ID", () => {
+    mockExistsSync.mockReturnValue(false);
+    isModelCached("my-model", "/mock/cache/ragclaw/models");
+    expect(mockExistsSync).toHaveBeenCalledWith(
+      join("/mock/cache/ragclaw/models", "my-model"),
+    );
+  });
+
+  it("uses a custom cacheDir when provided", () => {
+    mockExistsSync.mockReturnValue(true);
+    const result = isModelCached("org/model", "/custom/cache");
+    expect(mockExistsSync).toHaveBeenCalledWith(
+      join("/custom/cache", "org", "model"),
+    );
+    expect(result).toBe(true);
+  });
+
+  it("uses env.cacheDir when no cacheDir argument is given", () => {
+    mockExistsSync.mockReturnValue(false);
+    // We can't rely on the exact path since index.ts sets env.cacheDir at load time.
+    // Instead verify that the path contains the model segments.
+    isModelCached("org/model");
+    const [[checkedPath]] = mockExistsSync.mock.calls;
+    expect(checkedPath as string).toContain("org");
+    expect(checkedPath as string).toContain("model");
+  });
+
+  it("handles deep model IDs with multiple slashes as a single path join", () => {
+    mockExistsSync.mockReturnValue(false);
+    isModelCached("org/sub/model", "/mock/cache/ragclaw/models");
+    expect(mockExistsSync).toHaveBeenCalledWith(
+      join("/mock/cache/ragclaw/models", "org", "sub", "model"),
     );
   });
 });

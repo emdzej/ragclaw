@@ -5,7 +5,7 @@ export * from "./types.js";
 export { Store } from "./store/index.js";
 
 // Embedder
-export { HuggingFaceEmbedder, Embedder } from "./embedder/index.js";
+export { HuggingFaceEmbedder, Embedder, isModelCached, getModelCacheDir } from "./embedder/index.js";
 export type { HuggingFaceEmbedderConfig } from "./embedder/index.js";
 
 // Embedder presets & factory
