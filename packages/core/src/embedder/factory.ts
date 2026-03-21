@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2026 Michał Jaskólski and contributors
+ *
+ * This source code is licensed under the MIT License found in the
+ * LICENSE file in the root directory of this repository.
+ */
+
 import type { EmbedderPlugin } from "../types.js";
 import { HuggingFaceEmbedder } from "./index.js";
 import { resolvePreset, EMBEDDER_PRESETS, DEFAULT_PRESET } from "./presets.js";

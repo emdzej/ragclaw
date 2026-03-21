@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2026 Michał Jaskólski and contributors
+ *
+ * This source code is licensed under the MIT License found in the
+ * LICENSE file in the root directory of this repository.
+ */
+
 import { existsSync, statSync } from "fs";
 import { readdir } from "fs/promises";
 import { join, resolve, extname } from "path";

@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2026 Michał Jaskólski and contributors
+ *
+ * This source code is licensed under the MIT License found in the
+ * LICENSE file in the root directory of this repository.
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { SourceRecord } from "@emdzej/ragclaw-core";
 

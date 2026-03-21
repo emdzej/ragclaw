@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2026 Michał Jaskólski and contributors
+ *
+ * This source code is licensed under the MIT License found in the
+ * LICENSE file in the root directory of this repository.
+ */
+
 import os from "os";
 import chalk from "chalk";
 import { Store, listPresets, resolvePreset, getConfig, checkSystemRequirements, getAvailableMemory } from "@emdzej/ragclaw-core";
