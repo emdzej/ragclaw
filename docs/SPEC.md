@@ -201,6 +201,17 @@ CREATE TABLE IF NOT EXISTS store_meta (
 );
 -- Keys: embedder_name, embedder_model, embedder_dimensions
 
+-- Merge history
+CREATE TABLE IF NOT EXISTS merge_history (
+  id TEXT PRIMARY KEY,
+  source_path TEXT NOT NULL,   -- path to the source DB that was merged
+  merged_at INTEGER NOT NULL,  -- Unix epoch ms
+  strategy TEXT NOT NULL,      -- 'strict' | 'reindex'
+  sources_added INTEGER NOT NULL DEFAULT 0,
+  sources_updated INTEGER NOT NULL DEFAULT 0,
+  sources_skipped INTEGER NOT NULL DEFAULT 0
+);
+
 -- Indexes
 CREATE INDEX idx_chunks_source ON chunks(source_id);
 CREATE INDEX idx_sources_path ON sources(path);
@@ -352,6 +363,57 @@ ragclaw list
 ragclaw list --db my-docs --type code
 ```
 
+### `ragclaw merge <source-db> [options]`
+Merge another knowledge base (a `.sqlite` / `.db` file) into the local one.
+The source database is never modified — all writes go to the destination.
+
+```bash
+# Merge using strict strategy (same embedder required — embeddings copied verbatim)
+ragclaw merge ~/backup/project-a.sqlite
+
+# Preview what would change without writing (dry-run)
+ragclaw merge ~/backup/project-a.sqlite --dry-run
+
+# Merge across different embedders (re-embeds text with the local model)
+ragclaw merge ~/backup/other.sqlite --strategy reindex --embedder bge
+
+# Only import sources whose path starts with /docs/
+ragclaw merge ~/backup/other.sqlite --include /docs/
+
+# Skip sources whose path starts with /tmp/
+ragclaw merge ~/backup/other.sqlite --exclude /tmp/
+
+# Overwrite local conflicting sources with remote versions
+ragclaw merge ~/backup/other.sqlite --on-conflict prefer-remote
+
+# Merge into a named knowledge base
+ragclaw merge ~/backup/other.sqlite --db my-kb
+
+Options:
+  --db <name>              Destination knowledge base (default: "default")
+  --strategy <s>           strict (default) | reindex
+  --on-conflict <r>        skip (default) | prefer-local | prefer-remote
+  --dry-run                Preview diff, write nothing
+  --include <paths>        Comma-separated path prefixes to import
+  --exclude <paths>        Comma-separated path prefixes to skip
+  --embedder <n>           Embedder for reindex strategy (preset or model)
+```
+
+**Strategies:**
+
+| Strategy | When to use | How it works |
+|----------|-------------|--------------|
+| `strict` (default) | Both DBs use the same embedder | Copies chunk embeddings verbatim — fast, no re-embedding |
+| `reindex` | Different embedders | Copies chunk text, re-embeds with local model — works across any embedders |
+
+**Conflict resolution** applies when the same source path exists in both DBs but with a different content hash:
+
+| Resolution | Behaviour |
+|------------|-----------|
+| `skip` (default) | Keep the local version, ignore the remote one |
+| `prefer-local` | Same as `skip` |
+| `prefer-remote` | Overwrite local chunks with remote chunks |
+
 ## OpenClaw Skill Integration
 
 ### Commands
@@ -464,6 +526,7 @@ interface EmbedderConfigBlock {
 
 ## Future Enhancements
 
+- [x] **Database merge** — `ragclaw merge <source.db>` copies sources+chunks from one SQLite KB into another; supports `strict` (same embedder, copy embeddings) and `reindex` (re-embed text with local model) strategies; conflict resolution (`skip` / `prefer-local` / `prefer-remote`); `--dry-run` diff preview; `--include`/`--exclude` path filters; `rag_merge` MCP tool
 - [ ] Incremental re-indexing (watch mode)
 - [ ] Audio transcription
 - [ ] Multi-database queries

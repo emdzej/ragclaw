@@ -97,6 +97,7 @@ ragclaw embedder list
 ragclaw add <source>           # Index file, directory, or URL
 ragclaw search <query>         # Search knowledge base
 ragclaw reindex                # Re-process changed files
+ragclaw merge <source.db>      # Merge another knowledge base into this one
 ragclaw status                 # Show KB statistics (incl. embedder info)
 ragclaw list                   # List indexed sources
 ragclaw remove <source>        # Remove from index
@@ -116,9 +117,16 @@ ragclaw config set <key> <value>  # Persist a config value
 -d, --db <name>     # Knowledge base name (default: "default")
 -l, --limit <n>     # Max search results
 -m, --mode <mode>   # Search mode: vector|keyword|hybrid
--e, --embedder <n>  # Embedder preset or model (add/reindex only)
+-e, --embedder <n>  # Embedder preset or model (add/reindex/merge only)
 -f, --force         # Reindex all (ignore hash)
 -p, --prune         # Remove missing sources
+
+# Merge flags (for `merge`)
+--strategy <s>      # strict (same embedder, default) | reindex (re-embed with local model)
+--on-conflict <r>   # skip (default) | prefer-local | prefer-remote
+--dry-run           # Preview diff without writing anything
+--include <paths>   # Comma-separated path prefixes to import
+--exclude <paths>   # Comma-separated path prefixes to skip
 
 # Security flags (for `add` and `reindex`)
 --enforce-guards          # Enforce path/URL security guards (default: off)
@@ -249,6 +257,27 @@ rsync -av ~/.local/share/ragclaw/ user@server:~/.local/share/ragclaw/
 ragclaw search "query" -d /path/to/backup.sqlite
 ```
 
+### Merging Databases
+
+Copy a database from another machine and merge it into your local one:
+
+```bash
+# Merge a remote DB into default (same embedder — embeddings copied verbatim)
+ragclaw merge ~/backup/project-a.sqlite
+
+# Preview what would change before writing
+ragclaw merge ~/backup/project-a.sqlite --dry-run
+
+# Merge across different embedders (re-embeds text locally)
+ragclaw merge ~/backup/other.sqlite --strategy reindex
+
+# Only import docs/, overwrite conflicts with remote version
+ragclaw merge ~/backup/other.sqlite --include /docs/ --on-conflict prefer-remote
+
+# Merge into a named knowledge base
+ragclaw merge ~/backup/other.sqlite -d my-kb
+```
+
 ---
 
 ## Integration Setup
@@ -357,6 +386,7 @@ Once configured, these tools are available to AI agents:
 | `rag_search` | Search knowledge base |
 | `rag_add` | Index file/directory/URL — pass `crawl: true` to follow links |
 | `rag_reindex` | Re-process changed sources |
+| `rag_merge` | Merge another `.db` file into a local knowledge base |
 | `rag_status` | Get KB statistics (includes embedder info) |
 | `rag_list` | List indexed sources |
 | `rag_remove` | Remove source from index |

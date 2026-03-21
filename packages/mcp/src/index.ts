@@ -14,6 +14,7 @@ import { extname, resolve, join } from "path";
 import {
   Store,
   IndexingService,
+  MergeService,
   createEmbedder,
   getConfig,
   getDbPath,
@@ -193,6 +194,50 @@ const TOOLS: Tool[] = [
           default: false,
         },
       },
+    },
+  },
+  {
+    name: "rag_merge",
+    description: "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceDb: {
+          type: "string",
+          description: "Absolute path to the source .db file to merge from",
+        },
+        db: {
+          type: "string",
+          description: "Destination knowledge base name (default: 'default')",
+          default: "default",
+        },
+        strategy: {
+          type: "string",
+          enum: ["strict", "reindex"],
+          description: "Merge strategy: 'strict' (copy embeddings, requires identical embedder) or 'reindex' (re-embed text, works across embedders). Default: 'strict'.",
+          default: "strict",
+        },
+        onConflict: {
+          type: "string",
+          enum: ["skip", "prefer-local", "prefer-remote"],
+          description: "Conflict resolution when the same source exists in both DBs. Default: 'skip' (keep local).",
+          default: "skip",
+        },
+        dryRun: {
+          type: "boolean",
+          description: "Preview what would change without writing anything (default: false)",
+          default: false,
+        },
+        include: {
+          type: "string",
+          description: "Comma-separated path prefixes — only import matching sources",
+        },
+        exclude: {
+          type: "string",
+          description: "Comma-separated path prefixes — skip matching sources",
+        },
+      },
+      required: ["sourceDb"],
     },
   },
 ];
@@ -561,6 +606,98 @@ async function ragReindex(args: {
   }
 }
 
+async function ragMerge(args: {
+  sourceDb: string;
+  db?: string;
+  strategy?: "strict" | "reindex";
+  onConflict?: "skip" | "prefer-local" | "prefer-remote";
+  dryRun?: boolean;
+  include?: string;
+  exclude?: string;
+}): Promise<string> {
+  const dbName = args.db || "default";
+  const destDbPath = getDbPath(dbName);
+  const sourceDbPath = resolve(args.sourceDb);
+
+  if (!existsSync(sourceDbPath)) {
+    return `Error: Source database not found: ${sourceDbPath}`;
+  }
+
+  // Security: source DB must be within an allowed path
+  const pathCheck = isPathAllowed(sourceDbPath, config, process.cwd());
+  if (!pathCheck.allowed) {
+    return `Error: ${pathCheck.reason}`;
+  }
+
+  // Ensure destination directory exists
+  await mkdir(RAGCLAW_DIR, { recursive: true });
+
+  const destDb = new Store();
+  await destDb.open(destDbPath);
+
+  try {
+    const strategy = args.strategy ?? "strict";
+
+    // For reindex, create an embedder
+    let embedder: EmbedderPlugin | undefined;
+    if (strategy === "reindex") {
+      embedder = createEmbedder();
+      await embedder.embed("warmup");
+    }
+
+    const include = args.include
+      ? args.include.split(",").map((s) => s.trim()).filter(Boolean)
+      : undefined;
+    const exclude = args.exclude
+      ? args.exclude.split(",").map((s) => s.trim()).filter(Boolean)
+      : undefined;
+
+    const mergeService = new MergeService();
+    const summary = await mergeService.merge(destDb, sourceDbPath, {
+      strategy,
+      onConflict: args.onConflict ?? "skip",
+      dryRun: args.dryRun ?? false,
+      include,
+      exclude,
+      embedder,
+    });
+
+    const { diff } = summary;
+
+    if (summary.dryRun) {
+      const lines: string[] = [
+        `Dry-run diff (${sourceDbPath} → ${dbName}):`,
+        `  Strategy : ${summary.strategy}`,
+        `  To add   : ${diff.toAdd.length} source(s)`,
+        `  To update: ${diff.toUpdate.length} source(s)`,
+        `  Identical: ${diff.identical.length} source(s)`,
+        `  Local only: ${diff.localOnly.length} source(s)`,
+      ];
+      if (diff.toAdd.length > 0) {
+        lines.push("\nWould add:");
+        diff.toAdd.slice(0, 10).forEach((s) => lines.push(`  + ${s.path}`));
+        if (diff.toAdd.length > 10) lines.push(`  ... and ${diff.toAdd.length - 10} more`);
+      }
+      if (diff.toUpdate.length > 0) {
+        lines.push("\nConflicts (would update or skip per --on-conflict):");
+        diff.toUpdate.slice(0, 10).forEach((s) => lines.push(`  ~ ${s.path}`));
+        if (diff.toUpdate.length > 10) lines.push(`  ... and ${diff.toUpdate.length - 10} more`);
+      }
+      return lines.join("\n");
+    }
+
+    let result = `Merge complete (${summary.strategy}): ${summary.sourcesAdded} added, ${summary.sourcesUpdated} updated, ${summary.sourcesSkipped} skipped.`;
+    if (summary.errors.length > 0) {
+      result += `\n\nErrors (${summary.errors.length}):\n`;
+      result += summary.errors.slice(0, 5).map((e) => `  ${e.path}: ${e.error}`).join("\n");
+      if (summary.errors.length > 5) result += `\n  ... and ${summary.errors.length - 5} more`;
+    }
+    return result;
+  } finally {
+    await destDb.close();
+  }
+}
+
 // Helper to collect sources (with security enforcement)
 async function collectSources(source: string, recursive: boolean): Promise<Source[]> {
   // URL
@@ -683,6 +820,9 @@ async function main() {
           break;
         case "rag_reindex":
           result = await ragReindex(args as Parameters<typeof ragReindex>[0]);
+          break;
+        case "rag_merge":
+          result = await ragMerge(args as Parameters<typeof ragMerge>[0]);
           break;
         default:
           throw new Error(`Unknown tool: ${name}`);

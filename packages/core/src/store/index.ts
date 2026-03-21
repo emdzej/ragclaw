@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS store_meta (
   value TEXT NOT NULL
 );
 
+-- Merge history
+CREATE TABLE IF NOT EXISTS merge_history (
+  id TEXT PRIMARY KEY,
+  source_path TEXT NOT NULL,
+  merged_at INTEGER NOT NULL,
+  strategy TEXT NOT NULL,
+  sources_added INTEGER NOT NULL DEFAULT 0,
+  sources_updated INTEGER NOT NULL DEFAULT 0,
+  sources_skipped INTEGER NOT NULL DEFAULT 0
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_sources_path ON sources(path);
@@ -600,6 +611,56 @@ export class Store {
       embedding: row.embedding ? new Float32Array(row.embedding as ArrayBuffer) : undefined,
       createdAt: row.created_at as number,
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Merge support — raw access used by MergeService
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Return all chunk records for a given source, including raw embedding blobs.
+   * Used by MergeService to copy or re-embed chunks from a source DB.
+   */
+  async getChunksBySource(sourceId: string): Promise<ChunkRecord[]> {
+    if (!this.db) throw new Error("Store not opened");
+    const rows = this.db
+      .prepare(`
+        SELECT c.*, s.path AS source_path
+        FROM chunks c
+        JOIN sources s ON s.id = c.source_id
+        WHERE c.source_id = ?
+      `)
+      .all(sourceId) as Record<string, unknown>[];
+    return rows.map((row) => this.rowToChunk(row));
+  }
+
+  /**
+   * Insert a merge history record.
+   */
+  async addMergeHistory(entry: {
+    sourcePath: string;
+    mergedAt: number;
+    strategy: string;
+    sourcesAdded: number;
+    sourcesUpdated: number;
+    sourcesSkipped: number;
+  }): Promise<void> {
+    if (!this.db) throw new Error("Store not opened");
+    this.db
+      .prepare(`
+        INSERT INTO merge_history
+          (id, source_path, merged_at, strategy, sources_added, sources_updated, sources_skipped)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        randomUUID(),
+        entry.sourcePath,
+        entry.mergedAt,
+        entry.strategy,
+        entry.sourcesAdded,
+        entry.sourcesUpdated,
+        entry.sourcesSkipped,
+      );
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

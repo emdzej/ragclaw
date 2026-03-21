@@ -8,6 +8,7 @@ import { statusCommand } from "./commands/status.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
 import { reindex } from "./commands/reindex.js";
+import { mergeCommand } from "./commands/merge.js";
 import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
 import { configList, configGet, configSet } from "./commands/config.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -104,6 +105,19 @@ program
   .option("--enforce-guards", "Enforce path/URL security guards")
   .option("--no-enforce-guards", "Skip path/URL security guards (default)")
   .action((options) => reindex(options));
+
+program
+  .command("merge")
+  .description("Merge another knowledge base into this one")
+  .argument("<source-db>", "Path to the source .sqlite database file")
+  .option("-d, --db <name>", "Destination knowledge base name", "default")
+  .option("--strategy <strategy>", "Merge strategy: strict (default) or reindex", "strict")
+  .option("--on-conflict <resolution>", "Conflict resolution: skip (default), prefer-local, or prefer-remote", "skip")
+  .option("--dry-run", "Preview what would change without writing anything")
+  .option("--include <patterns>", "Only import sources matching these path prefixes (comma-separated)")
+  .option("--exclude <patterns>", "Skip sources matching these path prefixes (comma-separated)")
+  .option("-e, --embedder <name>", "Embedder to use for reindex strategy")
+  .action(mergeCommand);
 
 // Plugin commands
 const pluginCmd = program

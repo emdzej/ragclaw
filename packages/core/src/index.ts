@@ -83,3 +83,14 @@ export {
   type IndexCrawlPageResult,
   type IndexCrawlSummary,
 } from "./indexing.js";
+
+// Merge service
+export {
+  MergeService,
+  type MergeStrategy,
+  type ConflictResolution,
+  type MergeOptions,
+  type MergeSourceResult,
+  type MergeDiff,
+  type MergeSummary,
+} from "./merge.js";

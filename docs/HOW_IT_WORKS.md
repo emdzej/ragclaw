@@ -363,6 +363,48 @@ The only download is the embedding model (cached after first use; size depends o
 
 ---
 
+## Merging Databases
+
+RagClaw knowledge bases are portable SQLite files — you can copy them between machines. The `merge` command lets you combine two databases without re-indexing source files.
+
+```bash
+# Merge a database from another machine into the local default
+ragclaw merge ~/backup/project-a.sqlite
+
+# Preview what would change (no writes)
+ragclaw merge ~/backup/project-a.sqlite --dry-run
+```
+
+### Strict vs Reindex
+
+**`strict` (default):** Both databases were indexed with the same embedder — chunk embedding blobs are copied verbatim. Fast: no model needed.
+
+**`reindex`:** The databases used different embedders. RagClaw copies the raw chunk *text* from the source and re-embeds it locally with your current model. No access to the original files or URLs is needed.
+
+```bash
+# Source used bge, local uses nomic — re-embed with local model
+ragclaw merge ~/backup/other.sqlite --strategy reindex
+```
+
+### What happens during a merge
+
+```
+Source DB (read-only)
+  └─ listSources()     → diff against local DB
+       │
+       ├─ new sources  → import chunks (copy or re-embed)
+       ├─ conflicts    → skip / prefer-local / prefer-remote
+       └─ identical    → skip (same content hash)
+                               │
+                               ▼
+                      Destination DB (written)
+                        + merge_history row recorded
+```
+
+A `merge_history` row is written to the destination database after every successful (non-dry-run) merge, recording the source path, timestamp, strategy, and counts.
+
+---
+
 ## Further Reading
 
 - [SQLite FTS5](https://www.sqlite.org/fts5.html) — Full-text search in SQLite
