@@ -31,9 +31,14 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
     // Always inferred from store metadata — no --embedder flag on search.
     let embedding: Float32Array | undefined;
     if (options.mode !== "keyword") {
-      // Read embedder info from store metadata (set during indexing)
+      // Read embedder info from store metadata (set during indexing).
+      // Prefer embedder_model (full HF model ID) over embedder_name (which may
+      // be a short display name like "nomic-embed-text-v1.5", not a valid alias).
+      const storedModel = await store.getMeta("embedder_model");
       const storedName = await store.getMeta("embedder_name") ?? "nomic";
-      const embedder = createEmbedder({ alias: storedName });
+      const embedder = storedModel
+        ? createEmbedder({ model: storedModel })
+        : createEmbedder({ alias: storedName });
       embedding = await embedder.embedQuery(query);
     }
 

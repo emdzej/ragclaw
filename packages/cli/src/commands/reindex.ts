@@ -102,19 +102,46 @@ export async function reindex(options: ReindexOptions): Promise<void> {
     });
     await pluginLoader.loadAll();
 
-    // Resolve embedder: CLI flag > config file > plugin-provided > default (nomic)
+    // Resolve embedder priority:
+    //   1. Explicit CLI flag (-e / --embedder)
+    //   2. Plugin-provided embedder
+    //   3. Embedder stored in DB metadata (set at index time) — avoids mismatch
+    //      between the global config default and what was actually used to build
+    //      the existing vectors.
+    //   4. Global config default / nomic
     const pluginEmbedder = pluginLoader.getEmbedder();
-    const embedderAlias = options.embedder
-      ?? (typeof config.embedder === "string" ? config.embedder : undefined);
+
+    let embedderAlias: string | undefined;
+    let embedderModel: string | undefined;
+
+    if (options.embedder) {
+      // Explicit flag: treat as alias first, then as raw model ID
+      embedderAlias = options.embedder;
+    } else if (!pluginEmbedder) {
+      // No explicit flag, no plugin — read from DB metadata so we keep using
+      // the same model that produced the stored vectors.
+      const storedModel = await store.getMeta("embedder_model");
+      const storedName = await store.getMeta("embedder_name");
+      if (storedModel) {
+        embedderModel = storedModel;
+      } else if (storedName) {
+        embedderAlias = storedName;
+      }
+      // If nothing is stored yet (empty/new DB), fall through to createEmbedder()
+      // default (nomic).
+    }
 
     const onProgress = (p: number) => { spinner.text = `Downloading model... ${Math.round(p * 100)}%`; };
     const embedder = embedderAlias
       ? createEmbedder({ alias: embedderAlias, onProgress })
-      : pluginEmbedder
-        ?? createEmbedder({ onProgress });
+      : embedderModel
+        ? createEmbedder({ model: embedderModel, onProgress })
+        : pluginEmbedder
+          ?? createEmbedder({ onProgress });
 
-    // System requirements check (RAM) for known presets
-    const presetAlias = embedderAlias ?? "nomic";
+    // System requirements check (RAM) for known presets.
+    // resolvePreset returns null for raw model IDs, so the check is safely skipped.
+    const presetAlias = embedderAlias ?? embedderModel ?? "nomic";
     const preset = resolvePreset(presetAlias);
     if (preset) {
       const sysCheck = checkSystemRequirements(preset);

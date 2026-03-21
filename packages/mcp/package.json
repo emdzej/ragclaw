@@ -1,6 +1,6 @@
 {
   "name": "@emdzej/ragclaw-mcp",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "MCP server for RagClaw - exposes RAG tools to Codex, Claude, OpenCode",
   "type": "module",
   "main": "./dist/index.js",

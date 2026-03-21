@@ -253,9 +253,13 @@ async function getEmbedder(dbName: string, store: Store): Promise<EmbedderPlugin
   const cached = cachedEmbedders.get(dbName);
   if (cached) return cached;
 
-  // Read embedder alias from store metadata; fall back to "nomic" for legacy DBs
+  // Prefer embedder_model (full HF model ID) over embedder_name, which may be
+  // a short display name like "nomic-embed-text-v1.5" rather than a valid alias.
+  const storedModel = await store.getMeta("embedder_model");
   const storedName = await store.getMeta("embedder_name") ?? "nomic";
-  const embedder = createEmbedder({ alias: storedName });
+  const embedder = storedModel
+    ? createEmbedder({ model: storedModel })
+    : createEmbedder({ alias: storedName });
 
   // Warm up (downloads model on first call)
   await embedder.embed("warmup");
@@ -302,9 +306,8 @@ async function ragSearch(args: {
   await store.open(dbPath);
 
   try {
-    const embedder = await getEmbedder(dbName, store);
-    const embedding = args.mode !== "keyword" 
-      ? await embedder.embedQuery(args.query)
+    const embedding = args.mode !== "keyword"
+      ? await getEmbedder(dbName, store).then((e) => e.embedQuery(args.query))
       : undefined;
 
     const results = await store.search({

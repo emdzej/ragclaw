@@ -1,6 +1,6 @@
 {
   "name": "ragclaw-plugin-obsidian",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "RagClaw plugin for indexing Obsidian vaults",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
   "author": "Michał Jaskólski",
   "keywords": ["ragclaw", "ragclaw-plugin", "obsidian", "notes", "markdown"],
   "peerDependencies": {
-    "@emdzej/ragclaw-core": ">=0.4.1"
+    "@emdzej/ragclaw-core": ">=0.4.2"
   },
   "devDependencies": {
     "@emdzej/ragclaw-core": "workspace:*",
