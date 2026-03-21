@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { basename, extname } from "path";
+import { basename, extname } from "node:path";
 import Tesseract from "tesseract.js";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
 import type { ExtractorLimits } from "../config.js";
 import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
+import type { ExtractedContent, Extractor, Source } from "../types.js";
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
 
@@ -29,7 +29,7 @@ export class ImageExtractor implements Extractor {
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    if (!source.path) {
+    if (source.type !== "file" || !source.path) {
       throw new Error("ImageExtractor requires a file path");
     }
 
@@ -38,7 +38,10 @@ export class ImageExtractor implements Extractor {
         logger: () => {}, // Suppress progress logs
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`OCR timed out after ${this.ocrTimeoutMs}ms`)), this.ocrTimeoutMs)
+        setTimeout(
+          () => reject(new Error(`OCR timed out after ${this.ocrTimeoutMs}ms`)),
+          this.ocrTimeoutMs
+        )
       ),
     ]);
 
@@ -67,15 +70,22 @@ export class ImageExtractor implements Extractor {
   private getMimeType(path: string): string {
     const ext = extname(path).toLowerCase();
     switch (ext) {
-      case ".png": return "image/png";
+      case ".png":
+        return "image/png";
       case ".jpg":
-      case ".jpeg": return "image/jpeg";
-      case ".gif": return "image/gif";
-      case ".webp": return "image/webp";
-      case ".bmp": return "image/bmp";
+      case ".jpeg":
+        return "image/jpeg";
+      case ".gif":
+        return "image/gif";
+      case ".webp":
+        return "image/webp";
+      case ".bmp":
+        return "image/bmp";
       case ".tiff":
-      case ".tif": return "image/tiff";
-      default: return "image/unknown";
+      case ".tif":
+        return "image/tiff";
+      default:
+        return "image/unknown";
     }
   }
 }
@@ -90,7 +100,7 @@ export class ImageExtractor implements Extractor {
 export async function ocrFromBuffer(
   buffer: Buffer,
   language = "eng",
-  ocrTimeoutMs?: number,
+  ocrTimeoutMs?: number
 ): Promise<{ text: string; confidence: number }> {
   const timeout = ocrTimeoutMs ?? DEFAULT_EXTRACTOR_LIMITS.ocrTimeoutMs;
 

@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { resolve, sep } from "path";
-import { lookup } from "dns/promises";
-import { isIP } from "net";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { resolve, sep } from "node:path";
 import type { RagclawConfig } from "./config.js";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ import type { RagclawConfig } from "./config.js";
 export function isPathAllowed(
   inputPath: string,
   config: Pick<RagclawConfig, "allowedPaths">,
-  fallbackCwd?: string,
+  fallbackCwd?: string
 ): { allowed: true } | { allowed: false; reason: string } {
   const resolved = resolve(inputPath);
 
@@ -71,7 +71,7 @@ export function isPathAllowed(
  * RFC 1918 / RFC 5735 / RFC 4291 private & reserved IPv4/IPv6 ranges.
  * Each entry is [prefix, maskBits] for IPv4 or a test function for IPv6.
  */
-const PRIVATE_IPV4_RANGES: Array<[number, number, number]> = [
+const _PRIVATE_IPV4_RANGES: Array<[number, number, number]> = [
   // [byte0, byte1-start, byte1-end]  — simplified CIDR check
   // We'll do full numeric comparison below; this list is for documentation.
   // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8,
@@ -84,13 +84,13 @@ function isPrivateIPv4(ip: string): boolean {
 
   const [a, b] = parts;
 
-  if (a === 10) return true;                          // 10.0.0.0/8
-  if (a === 127) return true;                         // 127.0.0.0/8
-  if (a === 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
-  if (a === 192 && b === 168) return true;             // 192.168.0.0/16
-  if (a === 169 && b === 254) return true;             // 169.254.0.0/16 (link-local)
-  if (a === 0) return true;                            // 0.0.0.0/8
-  if (a === 100 && b >= 64 && b <= 127) return true;   // 100.64.0.0/10 (CGNAT)
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 127) return true; // 127.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16 (link-local)
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 (CGNAT)
   if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 (benchmark)
 
   return false;
@@ -98,8 +98,8 @@ function isPrivateIPv4(ip: string): boolean {
 
 function isPrivateIPv6(ip: string): boolean {
   const lower = ip.toLowerCase();
-  if (lower === "::1") return true;                   // loopback
-  if (lower.startsWith("fe80:")) return true;         // link-local
+  if (lower === "::1") return true; // loopback
+  if (lower.startsWith("fe80:")) return true; // link-local
   if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA fc00::/7
   // IPv4-mapped  ::ffff:a.b.c.d
   const v4Mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
@@ -124,7 +124,7 @@ function isPrivateIP(ip: string): boolean {
  */
 export async function isUrlAllowed(
   urlString: string,
-  config: Pick<RagclawConfig, "allowUrls" | "blockPrivateUrls">,
+  config: Pick<RagclawConfig, "allowUrls" | "blockPrivateUrls">
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (!config.allowUrls) {
     return {

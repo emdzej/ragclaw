@@ -5,8 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolve, sep } from "path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isPathAllowed, isUrlAllowed } from "./guards.js";
 
 // ---------------------------------------------------------------------------
@@ -88,7 +87,8 @@ vi.mock("dns/promises", () => ({
   lookup: vi.fn(),
 }));
 
-import { lookup } from "dns/promises";
+import { lookup } from "node:dns/promises";
+
 const mockLookup = vi.mocked(lookup);
 
 describe("isUrlAllowed", () => {

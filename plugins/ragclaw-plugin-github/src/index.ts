@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import type { RagClawPlugin, Extractor, ExtractedContent, Source, PluginConfigKey } from "@emdzej/ragclaw-core";
-import { execFileSync } from "child_process";
+import { execFileSync } from "node:child_process";
+import type { ExtractedContent, Extractor, RagClawPlugin, Source } from "@emdzej/ragclaw-core";
 
 /**
  * GitHub content types
@@ -69,7 +69,12 @@ export function parseGitHubUrl(source: string): ParsedGitHubUrl | null {
   if (type === "issues" || type === "pulls" || type === "discussions") {
     if (number !== undefined) {
       if (!Number.isInteger(number) || number <= 0) return null;
-      return { owner, repo, type: type === "issues" ? "issue" : type === "pulls" ? "pr" : type, number };
+      return {
+        owner,
+        repo,
+        type: type === "issues" ? "issue" : type === "pulls" ? "pr" : type,
+        number,
+      };
     }
     return { owner, repo, type };
   }
@@ -125,7 +130,16 @@ async function fetchRepo(owner: string, repo: string): Promise<ExtractedContent>
  * Fetch all issues
  */
 async function fetchIssues(owner: string, repo: string): Promise<ExtractedContent> {
-  const issuesJson = gh("issue", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", String(MAX_ISSUES));
+  const issuesJson = gh(
+    "issue",
+    "list",
+    "-R",
+    `${owner}/${repo}`,
+    "--json",
+    "number,title,body,author,labels,state,createdAt",
+    "--limit",
+    String(MAX_ISSUES)
+  );
   const issues = JSON.parse(issuesJson);
 
   let text = `# Issues: ${owner}/${repo}\n\n`;
@@ -157,7 +171,15 @@ async function fetchIssues(owner: string, repo: string): Promise<ExtractedConten
  * Fetch single issue with comments
  */
 async function fetchIssue(owner: string, repo: string, number: number): Promise<ExtractedContent> {
-  const issueJson = gh("issue", "view", String(number), "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt,comments");
+  const issueJson = gh(
+    "issue",
+    "view",
+    String(number),
+    "-R",
+    `${owner}/${repo}`,
+    "--json",
+    "number,title,body,author,labels,state,createdAt,comments"
+  );
   const issue = JSON.parse(issueJson);
 
   let text = `# Issue #${issue.number}: ${issue.title}\n\n`;
@@ -194,7 +216,16 @@ async function fetchIssue(owner: string, repo: string, number: number): Promise<
  * Fetch all PRs
  */
 async function fetchPulls(owner: string, repo: string): Promise<ExtractedContent> {
-  const prsJson = gh("pr", "list", "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt", "--limit", String(MAX_PRS));
+  const prsJson = gh(
+    "pr",
+    "list",
+    "-R",
+    `${owner}/${repo}`,
+    "--json",
+    "number,title,body,author,labels,state,createdAt",
+    "--limit",
+    String(MAX_PRS)
+  );
   const prs = JSON.parse(prsJson);
 
   let text = `# Pull Requests: ${owner}/${repo}\n\n`;
@@ -226,7 +257,15 @@ async function fetchPulls(owner: string, repo: string): Promise<ExtractedContent
  * Fetch single PR with comments and reviews
  */
 async function fetchPR(owner: string, repo: string, number: number): Promise<ExtractedContent> {
-  const prJson = gh("pr", "view", String(number), "-R", `${owner}/${repo}`, "--json", "number,title,body,author,labels,state,createdAt,comments,reviews");
+  const prJson = gh(
+    "pr",
+    "view",
+    String(number),
+    "-R",
+    `${owner}/${repo}`,
+    "--json",
+    "number,title,body,author,labels,state,createdAt,comments,reviews"
+  );
   const pr = JSON.parse(prJson);
 
   let text = `# PR #${pr.number}: ${pr.title}\n\n`;
@@ -306,7 +345,9 @@ async function fetchDiscussions(owner: string, repo: string): Promise<ExtractedC
  */
 /** @internal — exported for testing only */
 export function getSourceUrl(source: Source): string {
-  return source.url || source.path || "";
+  if (source.type === "url") return source.url;
+  if (source.type === "file") return source.path;
+  return "";
 }
 
 /**
@@ -335,11 +376,13 @@ class GitHubExtractor implements Extractor {
       case "issues":
         return fetchIssues(owner, repo);
       case "issue":
-        return fetchIssue(owner, repo, number!);
+        if (number === undefined) throw new Error(`Missing issue number in GitHub URL: ${url}`);
+        return fetchIssue(owner, repo, number);
       case "pulls":
         return fetchPulls(owner, repo);
       case "pr":
-        return fetchPR(owner, repo, number!);
+        if (number === undefined) throw new Error(`Missing PR number in GitHub URL: ${url}`);
+        return fetchPR(owner, repo, number);
       case "discussions":
         return fetchDiscussions(owner, repo);
       default:
@@ -358,9 +401,24 @@ const plugin: RagClawPlugin = {
   schemes: ["github", "gh"],
 
   configSchema: [
-    { key: "maxIssues",  type: "number", description: "Max issues to fetch (default: 100)",     defaultValue: 100 },
-    { key: "maxPRs",     type: "number", description: "Max PRs to fetch (default: 100)",        defaultValue: 100 },
-    { key: "maxBuffer",  type: "number", description: "Max gh CLI output buffer in bytes (default: 10485760)", defaultValue: 10 * 1024 * 1024 },
+    {
+      key: "maxIssues",
+      type: "number",
+      description: "Max issues to fetch (default: 100)",
+      defaultValue: 100,
+    },
+    {
+      key: "maxPRs",
+      type: "number",
+      description: "Max PRs to fetch (default: 100)",
+      defaultValue: 100,
+    },
+    {
+      key: "maxBuffer",
+      type: "number",
+      description: "Max gh CLI output buffer in bytes (default: 10485760)",
+      defaultValue: 10 * 1024 * 1024,
+    },
   ],
 
   async init(config?: Record<string, unknown>) {

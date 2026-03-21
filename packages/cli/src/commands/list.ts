@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync } from "fs";
-import chalk from "chalk";
+import { existsSync } from "node:fs";
 import { Store } from "@emdzej/ragclaw-core";
+import chalk from "chalk";
 import { getDbPath } from "../config.js";
 
 interface ListOptions {

@@ -5,19 +5,19 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  EMBEDDER_PRESETS,
   DEFAULT_PRESET,
-  resolvePreset,
+  EMBEDDER_PRESETS,
   isKnownPreset,
   listPresets,
+  resolvePreset,
 } from "./presets.js";
 
 describe("EMBEDDER_PRESETS", () => {
   it("contains the four built-in presets", () => {
     expect(Object.keys(EMBEDDER_PRESETS)).toEqual(
-      expect.arrayContaining(["nomic", "bge", "mxbai", "minilm"]),
+      expect.arrayContaining(["nomic", "bge", "mxbai", "minilm"])
     );
     expect(Object.keys(EMBEDDER_PRESETS)).toHaveLength(4);
   });
@@ -32,7 +32,7 @@ describe("EMBEDDER_PRESETS", () => {
   });
 
   it("nomic preset has correct values", () => {
-    const nomic = EMBEDDER_PRESETS["nomic"];
+    const nomic = EMBEDDER_PRESETS.nomic;
     expect(nomic.model).toBe("nomic-ai/nomic-embed-text-v1.5");
     expect(nomic.dim).toBe(768);
     expect(nomic.docPrefix).toBe("search_document: ");
@@ -40,16 +40,16 @@ describe("EMBEDDER_PRESETS", () => {
   });
 
   it("minilm preset has smallest dimensions", () => {
-    expect(EMBEDDER_PRESETS["minilm"].dim).toBe(384);
+    expect(EMBEDDER_PRESETS.minilm.dim).toBe(384);
   });
 
   it("bge and mxbai presets have 1024 dimensions", () => {
-    expect(EMBEDDER_PRESETS["bge"].dim).toBe(1024);
-    expect(EMBEDDER_PRESETS["mxbai"].dim).toBe(1024);
+    expect(EMBEDDER_PRESETS.bge.dim).toBe(1024);
+    expect(EMBEDDER_PRESETS.mxbai.dim).toBe(1024);
   });
 
   it("mxbai has query prefix but no doc prefix", () => {
-    const mxbai = EMBEDDER_PRESETS["mxbai"];
+    const mxbai = EMBEDDER_PRESETS.mxbai;
     expect(mxbai.queryPrefix).toBe("Represent this sentence: ");
     expect(mxbai.docPrefix).toBeUndefined();
   });
@@ -75,7 +75,7 @@ describe("resolvePreset()", () => {
   it("returns preset for known alias", () => {
     const preset = resolvePreset("nomic");
     expect(preset).toBeDefined();
-    expect(preset!.model).toBe("nomic-ai/nomic-embed-text-v1.5");
+    expect(preset?.model).toBe("nomic-ai/nomic-embed-text-v1.5");
   });
 
   it("is case-insensitive", () => {

@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import type { Chunk, Chunker, ExtractedContent } from "../types.js";
 
 type Language = "typescript" | "javascript" | "python" | "go" | "java";
@@ -87,28 +87,22 @@ export class CodeChunker implements Chunker {
       for (const { name, module } of languages) {
         try {
           const langModule = await import(module);
-          const lang = name === "typescript" 
-            ? langModule.default.typescript 
-            : langModule.default;
-          
+          const lang = name === "typescript" ? langModule.default.typescript : langModule.default;
+
           const parser = new TreeSitter();
           parser.setLanguage(lang);
           this.parsers.set(name, parser as unknown as TreeSitterParser);
-        } catch (e) {
+        } catch (_e) {
           // Language not available, will use fallback
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // Tree-sitter native module not available, will use fallback for all languages
       console.warn("Tree-sitter not available, using fallback chunker for code");
     }
   }
 
-  async chunk(
-    content: ExtractedContent,
-    sourceId: string,
-    sourcePath: string
-  ): Promise<Chunk[]> {
+  async chunk(content: ExtractedContent, sourceId: string, sourcePath: string): Promise<Chunk[]> {
     await this.ensureInitialized();
 
     const language = content.metadata.language as Language;
@@ -121,7 +115,7 @@ export class CodeChunker implements Chunker {
 
     const tree = parser.parse(content.text);
     const chunks: Chunk[] = [];
-    const lines = content.text.split("\n");
+    const _lines = content.text.split("\n");
 
     // Extract classes first (as larger units)
     const classTypes = CLASS_TYPES[language] || [];
@@ -151,7 +145,7 @@ export class CodeChunker implements Chunker {
       }
 
       const name = this.getNodeName(node, language);
-      
+
       // Skip anonymous/small functions
       if (!name && node.text.length < 100) {
         return;
@@ -194,18 +188,16 @@ export class CodeChunker implements Chunker {
     }
   }
 
-  private isInsideClass(node: TreeSitterNode, classTypes: string[]): boolean {
+  private isInsideClass(_node: TreeSitterNode, _classTypes: string[]): boolean {
     // Walk up the tree to check if we're inside a class
     // This is a simplified check - tree-sitter doesn't give us parent refs easily
     // So we check by text inclusion which is imperfect but works for most cases
     return false; // For now, include all functions
   }
 
-  private getNodeName(node: TreeSitterNode, language: Language): string | undefined {
+  private getNodeName(node: TreeSitterNode, _language: Language): string | undefined {
     // Try common field names for identifiers
-    const nameNode = 
-      node.childForFieldName("name") ||
-      node.childForFieldName("identifier");
+    const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
 
     if (nameNode) {
       return nameNode.text;
@@ -216,11 +208,7 @@ export class CodeChunker implements Chunker {
     return undefined;
   }
 
-  private fallbackChunk(
-    content: ExtractedContent,
-    sourceId: string,
-    sourcePath: string
-  ): Chunk[] {
+  private fallbackChunk(content: ExtractedContent, sourceId: string, sourcePath: string): Chunk[] {
     const lines = content.text.split("\n");
     const chunks: Chunk[] = [];
     const chunkSize = 50; // lines per chunk

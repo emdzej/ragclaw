@@ -5,36 +5,44 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import type { SearchResult, ChunkRecord } from "@emdzej/ragclaw-core";
+import type { ChunkRecord, SearchResult } from "@emdzej/ragclaw-core";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // All vi.mock() calls must be hoisted before any module imports.
 
 // ── MCP SDK mocks — prevent real server/transport initialisation ──────────────
 // Capture the CallTool request handler so we can invoke it directly in tests.
-let capturedCallToolHandler: ((req: { params: { name: string; arguments: unknown } }) => Promise<unknown>) | undefined;
+let capturedCallToolHandler:
+  | ((req: { params: { name: string; arguments: unknown } }) => Promise<unknown>)
+  | undefined;
 let capturedListToolsHandler: (() => Promise<unknown>) | undefined;
 
 const serverMock = {
-  setRequestHandler: vi.fn((schema: unknown, handler: (req: unknown) => Promise<unknown>) => {
+  setRequestHandler: vi.fn((_schema: unknown, handler: (req: unknown) => Promise<unknown>) => {
     // Identify handlers by the schema object reference at mock-setup time.
     // We tag them by calling order: ListTools first, CallTool second (per main()).
     if (!capturedListToolsHandler) {
       capturedListToolsHandler = handler as () => Promise<unknown>;
     } else {
-      capturedCallToolHandler = handler as (req: { params: { name: string; arguments: unknown } }) => Promise<unknown>;
+      capturedCallToolHandler = handler as (req: {
+        params: { name: string; arguments: unknown };
+      }) => Promise<unknown>;
     }
   }),
   connect: vi.fn(async () => {}),
 };
 
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
-  Server: vi.fn(function () { return serverMock; }),
+  Server: vi.fn(function () {
+    return serverMock;
+  }),
 }));
 
 vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: vi.fn(function () { return {}; }),
+  StdioServerTransport: vi.fn(function () {
+    return {};
+  }),
 }));
 
 vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
@@ -88,9 +96,15 @@ const mergeServiceMock = {
 };
 
 vi.mock("@emdzej/ragclaw-core", () => ({
-  Store: vi.fn(function () { return storeMock; }),
-  IndexingService: vi.fn(function () { return indexingServiceMock; }),
-  MergeService: vi.fn(function () { return mergeServiceMock; }),
+  Store: vi.fn(function () {
+    return storeMock;
+  }),
+  IndexingService: vi.fn(function () {
+    return indexingServiceMock;
+  }),
+  MergeService: vi.fn(function () {
+    return mergeServiceMock;
+  }),
   createEmbedder: vi.fn(),
   getConfig: vi.fn(() => ({
     dataDir: "/mock/ragclaw",
@@ -113,6 +127,7 @@ vi.mock("@emdzej/ragclaw-core", () => ({
 // ── Import SUT after all vi.mock calls ────────────────────────────────────────
 // This triggers main() which registers the handlers on serverMock.
 await import("./index.js");
+
 import { createEmbedder as mockCreateEmbedder } from "@emdzej/ragclaw-core";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -144,9 +159,9 @@ function makeResult(sourcePath: string, text: string): SearchResult {
 
 /** Call the rag_search tool handler and return the text content. */
 async function callRagSearch(args: Record<string, unknown>): Promise<string> {
-  const response = await capturedCallToolHandler!({
+  const response = (await capturedCallToolHandler?.({
     params: { name: "rag_search", arguments: args },
-  }) as { content: Array<{ type: string; text: string }> };
+  })) as { content: Array<{ type: string; text: string }> };
   return response.content[0].text;
 }
 
@@ -155,7 +170,9 @@ async function callRagSearch(args: Record<string, unknown>): Promise<string> {
 // Each test that exercises the embedder cache needs a unique DB name so the
 // module-level cachedEmbedders Map doesn't return a stale result from a prior test.
 let dbCounter = 0;
-function freshDb() { return `testdb-${++dbCounter}`; }
+function freshDb() {
+  return `testdb-${++dbCounter}`;
+}
 
 describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
   beforeEach(() => {
@@ -184,19 +201,19 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
     it("calls store.search with undefined embedding in keyword mode", async () => {
       await callRagSearch({ query: "hello", mode: "keyword", db: freshDb() });
 
-      expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ mode: "keyword" }),
-      );
+      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "keyword" }));
       // Vitest matcher: verify no embedding key, or embedding is undefined
       expect(storeMock.search).not.toHaveBeenCalledWith(
-        expect.objectContaining({ embedding: expect.anything() }),
+        expect.objectContaining({ embedding: expect.anything() })
       );
     });
 
     it("does not throw in keyword mode even when no embedder metadata is stored", async () => {
       storeMock.getMeta.mockResolvedValue(null);
 
-      await expect(callRagSearch({ query: "hello", mode: "keyword", db: freshDb() })).resolves.not.toThrow();
+      await expect(
+        callRagSearch({ query: "hello", mode: "keyword", db: freshDb() })
+      ).resolves.not.toThrow();
     });
   });
 
@@ -213,7 +230,7 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
       await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
 
       expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" }),
+        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" })
       );
     });
 
@@ -229,7 +246,7 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
       await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
 
       expect(mockCreateEmbedder).not.toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "nomic-embed-text-v1.5" }),
+        expect.objectContaining({ alias: "nomic-embed-text-v1.5" })
       );
     });
 
@@ -242,9 +259,7 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
 
       await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "bge" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "bge" }));
     });
 
     it("uses alias 'nomic' as fallback when no metadata is stored", async () => {
@@ -252,9 +267,7 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
 
       await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "nomic" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "nomic" }));
     });
 
     it("does not throw when embedder_name is the display name (nomic-embed-text-v1.5)", async () => {
@@ -264,7 +277,9 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
         return null;
       });
 
-      await expect(callRagSearch({ query: "hello", mode: "vector", db: freshDb() })).resolves.not.toThrow();
+      await expect(
+        callRagSearch({ query: "hello", mode: "vector", db: freshDb() })
+      ).resolves.not.toThrow();
     });
   });
 
@@ -273,7 +288,7 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
   describe("hybrid mode calls getEmbedder", () => {
     it("calls createEmbedder in hybrid mode", async () => {
       storeMock.getMeta.mockImplementation(async (key: string) =>
-        key === "embedder_model" ? "nomic-ai/nomic-embed-text-v1.5" : null,
+        key === "embedder_model" ? "nomic-ai/nomic-embed-text-v1.5" : null
       );
 
       await callRagSearch({ query: "hello", mode: "hybrid", db: freshDb() });
@@ -290,9 +305,7 @@ describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
 
       // In hybrid mode, embedQuery is called and the result passed to store.search
       expect(embedder.embedQuery).toHaveBeenCalledWith("hello");
-      expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ mode: "hybrid" }),
-      );
+      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "hybrid" }));
     });
   });
 

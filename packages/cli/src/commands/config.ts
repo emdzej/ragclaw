@@ -6,8 +6,8 @@
  */
 
 import chalk from "chalk";
-import { getConfig, getConfigFilePath, setConfigValue, SETTABLE_KEYS } from "../config.js";
-import type { RagclawConfig, ConfigKeyMeta } from "../config.js";
+import type { ConfigKeyMeta, RagclawConfig } from "../config.js";
+import { getConfig, getConfigFilePath, SETTABLE_KEYS, setConfigValue } from "../config.js";
 
 /**
  * Resolve the current value for a SETTABLE_KEYS entry.
@@ -70,9 +70,8 @@ export async function configList(): Promise<void> {
   for (const meta of SETTABLE_KEYS) {
     const value = resolveSettableValue(config, meta);
     const source = getSource(meta);
-    const sourceLabel = source === "env"
-      ? chalk.yellow(`[env: ${meta.envVar}]`)
-      : chalk.dim("[default]");
+    const sourceLabel =
+      source === "env" ? chalk.yellow(`[env: ${meta.envVar}]`) : chalk.dim("[default]");
 
     console.log(
       `  ${chalk.white(meta.yamlKey.padEnd(keyWidth))} ${formatValue(value).padEnd(40)} ${sourceLabel}`
@@ -108,7 +107,9 @@ export async function configGet(key: string): Promise<void> {
   }
 
   console.log(chalk.red(`Unknown config key: "${key}"`));
-  console.log(chalk.dim(`Valid keys: ${SETTABLE_KEYS.map((k) => k.yamlKey).join(", ")}, configDir`));
+  console.log(
+    chalk.dim(`Valid keys: ${SETTABLE_KEYS.map((k) => k.yamlKey).join(", ")}, configDir`)
+  );
   process.exitCode = 1;
 }
 
@@ -129,14 +130,18 @@ export async function configSet(key: string, value: string): Promise<void> {
   if (meta.type === "number") {
     const n = parseInt(value, 10);
     if (!Number.isFinite(n) || n <= 0) {
-      console.log(chalk.red(`Invalid value for ${meta.yamlKey}: expected a positive integer, got "${value}"`));
+      console.log(
+        chalk.red(`Invalid value for ${meta.yamlKey}: expected a positive integer, got "${value}"`)
+      );
       process.exitCode = 1;
       return;
     }
   }
   if (meta.type === "boolean") {
     if (value !== "true" && value !== "false") {
-      console.log(chalk.red(`Invalid value for ${meta.yamlKey}: expected "true" or "false", got "${value}"`));
+      console.log(
+        chalk.red(`Invalid value for ${meta.yamlKey}: expected "true" or "false", got "${value}"`)
+      );
       process.exitCode = 1;
       return;
     }

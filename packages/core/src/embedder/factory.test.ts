@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { EmbedderPlugin } from "../types.js";
 
 // ── Mock @huggingface/transformers ──────────────────────────────────────────
@@ -113,7 +113,7 @@ describe("createEmbedder()", () => {
 
     it("throws for unknown alias", () => {
       expect(() => createEmbedder({ alias: "doesnotexist" })).toThrow(
-        /Unknown embedder preset "doesnotexist"/,
+        /Unknown embedder preset "doesnotexist"/
       );
     });
 
@@ -161,7 +161,7 @@ describe("createEmbedder()", () => {
       const { pipeline: mockPipelineFactory } = await import("@huggingface/transformers");
       const onProgress = vi.fn();
       const embedder = createEmbedder({ onProgress });
-      await embedder.embed!("test");
+      await embedder.embed?.("test");
 
       const factoryCall = (mockPipelineFactory as Mock).mock.calls[0];
       expect(factoryCall[2]).toHaveProperty("progress_callback");

@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { extractVideoId, decodeHtmlEntities, formatTimestamp } from "./index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { decodeHtmlEntities, extractVideoId, formatTimestamp } from "./index.js";
 
 describe("extractVideoId", () => {
   it("extracts from youtube:// scheme", () => {
@@ -62,7 +62,7 @@ describe("decodeHtmlEntities", () => {
   });
 
   it("decodes &quot; and &#39;", () => {
-    expect(decodeHtmlEntities('&quot;hello&#39;')).toBe('"hello\'');
+    expect(decodeHtmlEntities("&quot;hello&#39;")).toBe("\"hello'");
   });
 
   it("decodes &apos;", () => {
@@ -158,9 +158,7 @@ describe("YouTubeExtractor.extract()", () => {
     return {
       captions: {
         playerCaptionsTracklistRenderer: {
-          captionTracks: [
-            { baseUrl: "https://example.com/captions", languageCode },
-          ],
+          captionTracks: [{ baseUrl: "https://example.com/captions", languageCode }],
         },
       },
     };
@@ -172,7 +170,7 @@ describe("YouTubeExtractor.extract()", () => {
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
     const mod = await import("./index.js");
-    extractor = mod.default.extractors![0] as typeof extractor;
+    extractor = mod.default.extractors?.[0] as typeof extractor;
   });
 
   afterEach(() => {
@@ -191,7 +189,9 @@ describe("YouTubeExtractor.extract()", () => {
     });
 
     it("accepts youtube.com watch URLs", () => {
-      expect(extractor.canHandle({ type: "url", url: "https://youtube.com/watch?v=dQw4w9WgXcQ" })).toBe(true);
+      expect(
+        extractor.canHandle({ type: "url", url: "https://youtube.com/watch?v=dQw4w9WgXcQ" })
+      ).toBe(true);
     });
 
     it("accepts youtu.be short URLs", () => {
@@ -210,7 +210,8 @@ describe("YouTubeExtractor.extract()", () => {
   // ── extract: success path ─────────────────────────────────────────────
   describe("success path", () => {
     it("fetches transcript and metadata, returns formatted text", async () => {
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         // 1st call: innertube API
         .mockResolvedValueOnce(new Response(JSON.stringify(innertubeResponse()), { status: 200 }))
         // 2nd call: caption track URL
@@ -239,7 +240,8 @@ describe("YouTubeExtractor.extract()", () => {
     });
 
     it("handles multi-element transcript (greedy regex merges into one segment)", async () => {
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(JSON.stringify(innertubeResponse()), { status: 200 }))
         .mockResolvedValueOnce(new Response(TRANSCRIPT_XML_MULTI, { status: 200 }))
         .mockResolvedValueOnce(new Response(JSON.stringify(OEMBED_RESPONSE), { status: 200 }));
@@ -254,7 +256,8 @@ describe("YouTubeExtractor.extract()", () => {
     });
 
     it("handles missing metadata gracefully", async () => {
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(JSON.stringify(innertubeResponse()), { status: 200 }))
         .mockResolvedValueOnce(new Response(TRANSCRIPT_XML_SINGLE, { status: 200 }))
         // oEmbed fails
@@ -278,7 +281,8 @@ describe("YouTubeExtractor.extract()", () => {
         },
       };
 
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(JSON.stringify(multiTrack), { status: 200 }))
         .mockResolvedValueOnce(new Response(TRANSCRIPT_XML_SINGLE, { status: 200 }))
         .mockResolvedValueOnce(new Response(JSON.stringify(OEMBED_RESPONSE), { status: 200 }));
@@ -295,48 +299,50 @@ describe("YouTubeExtractor.extract()", () => {
   describe("error handling", () => {
     it("throws on invalid video ID (empty)", async () => {
       // youtube:// with nothing after → extractVideoId returns "" (falsy) → "Invalid" error
-      await expect(
-        extractor.extract({ type: "url", url: "youtube://" }),
-      ).rejects.toThrow("Invalid YouTube URL");
+      await expect(extractor.extract({ type: "url", url: "youtube://" })).rejects.toThrow(
+        "Invalid YouTube URL"
+      );
     });
 
     it("throws when innertube API returns non-OK", async () => {
-      globalThis.fetch = vi.fn()
-        .mockResolvedValueOnce(new Response("error", { status: 403 }));
+      globalThis.fetch = vi.fn().mockResolvedValueOnce(new Response("error", { status: 403 }));
 
       await expect(
-        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" }),
+        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" })
       ).rejects.toThrow("Failed to fetch video info: 403");
     });
 
     it("throws when no captions available", async () => {
       const noCaptions = { captions: { playerCaptionsTracklistRenderer: { captionTracks: [] } } };
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(JSON.stringify(noCaptions), { status: 200 }));
 
       await expect(
-        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" }),
+        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" })
       ).rejects.toThrow("No captions available");
     });
 
     it("throws when caption fetch fails", async () => {
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(JSON.stringify(innertubeResponse()), { status: 200 }))
         .mockResolvedValueOnce(new Response("error", { status: 500 }));
 
       await expect(
-        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" }),
+        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" })
       ).rejects.toThrow("Failed to fetch transcript: 500");
     });
 
     it("throws when transcript XML has no segments", async () => {
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(new Response(JSON.stringify(innertubeResponse()), { status: 200 }))
         .mockResolvedValueOnce(new Response("<transcript></transcript>", { status: 200 }))
         .mockResolvedValueOnce(new Response(JSON.stringify(OEMBED_RESPONSE), { status: 200 }));
 
       await expect(
-        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" }),
+        extractor.extract({ type: "url", url: "youtube://dQw4w9WgXcQ" })
       ).rejects.toThrow("No transcript available");
     });
   });

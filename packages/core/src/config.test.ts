@@ -5,17 +5,17 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { writeFileSync, mkdirSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  sanitizeDbName,
-  getConfig,
-  resetConfigCache,
-  getDbPath,
   DEFAULT_EXTRACTOR_LIMITS,
+  getConfig,
+  getDbPath,
+  resetConfigCache,
   SETTABLE_KEYS,
+  sanitizeDbName,
 } from "./config.js";
 
 // ---------------------------------------------------------------------------
@@ -391,7 +391,13 @@ describe("config file YAML parsing", () => {
 
   // Save/restore env vars that affect config loading
   const savedEnv: Record<string, string | undefined> = {};
-  const envKeys = ["RAGCLAW_CONFIG_DIR", "RAGCLAW_DATA_DIR", "RAGCLAW_EMBEDDER", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
+  const envKeys = [
+    "RAGCLAW_CONFIG_DIR",
+    "RAGCLAW_DATA_DIR",
+    "RAGCLAW_EMBEDDER",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+  ];
 
   beforeEach(() => {
     // Create a temp dir used as RAGCLAW_CONFIG_DIR
@@ -435,13 +441,17 @@ describe("config file YAML parsing", () => {
   });
 
   it("parses embedder object with plugin + baseUrl", () => {
-    writeConfig("embedder:\n  plugin: ollama\n  model: nomic-embed-text\n  baseUrl: http://localhost:11434\n");
+    writeConfig(
+      "embedder:\n  plugin: ollama\n  model: nomic-embed-text\n  baseUrl: http://localhost:11434\n"
+    );
     const cfg = getConfig();
-    expect(cfg.embedder).toEqual(expect.objectContaining({
-      plugin: "ollama",
-      model: "nomic-embed-text",
-      baseUrl: "http://localhost:11434",
-    }));
+    expect(cfg.embedder).toEqual(
+      expect.objectContaining({
+        plugin: "ollama",
+        model: "nomic-embed-text",
+        baseUrl: "http://localhost:11434",
+      })
+    );
   });
 
   it("embedder is undefined when not set", () => {
@@ -515,12 +525,12 @@ describe("RAGCLAW_EMBEDDER env var", () => {
 
   beforeEach(() => {
     resetConfigCache();
-    savedEnv["RAGCLAW_EMBEDDER"] = process.env.RAGCLAW_EMBEDDER;
+    savedEnv.RAGCLAW_EMBEDDER = process.env.RAGCLAW_EMBEDDER;
   });
 
   afterEach(() => {
-    if (savedEnv["RAGCLAW_EMBEDDER"] === undefined) delete process.env.RAGCLAW_EMBEDDER;
-    else process.env.RAGCLAW_EMBEDDER = savedEnv["RAGCLAW_EMBEDDER"];
+    if (savedEnv.RAGCLAW_EMBEDDER === undefined) delete process.env.RAGCLAW_EMBEDDER;
+    else process.env.RAGCLAW_EMBEDDER = savedEnv.RAGCLAW_EMBEDDER;
     resetConfigCache();
   });
 

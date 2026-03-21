@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { homedir, platform } from "os";
-import { join, resolve } from "path";
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir, platform } from "node:os";
+import { join, resolve } from "node:path";
 import YAML from "yaml";
 
 /**
@@ -165,8 +165,8 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   let maxDepth = 10;
   let maxFiles = 1000;
   let enforceGuards = false;
-  let extractorLimits: ExtractorLimits = { ...DEFAULT_EXTRACTOR_LIMITS };
-  let pluginConfig: Record<string, Record<string, unknown>> = {};
+  const extractorLimits: ExtractorLimits = { ...DEFAULT_EXTRACTOR_LIMITS };
+  const pluginConfig: Record<string, Record<string, unknown>> = {};
   let embedder: string | EmbedderConfigBlock | undefined;
 
   // Check for legacy path (backwards compatibility)
@@ -195,7 +195,10 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
       if (Array.isArray(parsed.plugins)) {
         enabledPlugins = (parsed.plugins as unknown[]).map(String).filter(Boolean);
       } else if (typeof parsed.plugins === "string") {
-        enabledPlugins = parsed.plugins.split(",").map((s: string) => s.trim()).filter(Boolean);
+        enabledPlugins = parsed.plugins
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean);
       }
 
       if (typeof parsed.scanGlobalNpm === "boolean") {
@@ -264,7 +267,11 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
       }
 
       // Parse nested extractor block (new format)
-      if (parsed.extractor && typeof parsed.extractor === "object" && !Array.isArray(parsed.extractor)) {
+      if (
+        parsed.extractor &&
+        typeof parsed.extractor === "object" &&
+        !Array.isArray(parsed.extractor)
+      ) {
         for (const [key, val] of Object.entries(parsed.extractor as Record<string, unknown>)) {
           const limitsKey = key as keyof ExtractorLimits;
           if (limitsKey in DEFAULT_EXTRACTOR_LIMITS) {
@@ -292,9 +299,14 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
 
       // Parse nested plugin block (new format)
       if (parsed.plugin && typeof parsed.plugin === "object" && !Array.isArray(parsed.plugin)) {
-        for (const [pluginName, pluginVals] of Object.entries(parsed.plugin as Record<string, unknown>)) {
+        for (const [pluginName, pluginVals] of Object.entries(
+          parsed.plugin as Record<string, unknown>
+        )) {
           if (pluginVals && typeof pluginVals === "object" && !Array.isArray(pluginVals)) {
-            pluginConfig[pluginName] = { ...(pluginConfig[pluginName] ?? {}), ...(pluginVals as Record<string, unknown>) };
+            pluginConfig[pluginName] = {
+              ...(pluginConfig[pluginName] ?? {}),
+              ...(pluginVals as Record<string, unknown>),
+            };
           }
         }
       }
@@ -302,7 +314,11 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
       // Parse embedder: alias string or config block
       if (typeof parsed.embedder === "string") {
         embedder = parsed.embedder;
-      } else if (parsed.embedder && typeof parsed.embedder === "object" && !Array.isArray(parsed.embedder)) {
+      } else if (
+        parsed.embedder &&
+        typeof parsed.embedder === "object" &&
+        !Array.isArray(parsed.embedder)
+      ) {
         const eb = parsed.embedder as Record<string, unknown>;
         embedder = {
           plugin: typeof eb.plugin === "string" ? eb.plugin : undefined,
@@ -325,8 +341,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
     pluginsDir = process.env.RAGCLAW_PLUGINS_DIR;
   }
   if (process.env.RAGCLAW_ALLOWED_PATHS) {
-    allowedPaths = process.env.RAGCLAW_ALLOWED_PATHS
-      .split(",")
+    allowedPaths = process.env.RAGCLAW_ALLOWED_PATHS.split(",")
       .map((s) => s.trim())
       .filter(Boolean)
       .map((p) => resolve(expandHome(p)));
@@ -370,9 +385,20 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   }
 
   let config: RagclawConfig = {
-    configDir, dataDir, pluginsDir, enabledPlugins, scanGlobalNpm,
-    allowedPaths, allowUrls, blockPrivateUrls, maxDepth, maxFiles,
-    enforceGuards, extractorLimits, pluginConfig, embedder,
+    configDir,
+    dataDir,
+    pluginsDir,
+    enabledPlugins,
+    scanGlobalNpm,
+    allowedPaths,
+    allowUrls,
+    blockPrivateUrls,
+    maxDepth,
+    maxFiles,
+    enforceGuards,
+    extractorLimits,
+    pluginConfig,
+    embedder,
   };
 
   // CLI-flag overrides (highest priority)
@@ -413,7 +439,7 @@ export function sanitizeDbName(name: string): string {
   if (!SAFE_DB_NAME.test(name)) {
     throw new Error(
       `Invalid knowledge base name: "${name}". ` +
-      `Names may contain only letters, digits, hyphens, and underscores (max 64 chars).`,
+        `Names may contain only letters, digits, hyphens, and underscores (max 64 chars).`
     );
   }
   return name;
@@ -430,7 +456,7 @@ export function getDbPath(name: string): string {
   const { dataDir } = getConfig();
   const dbPath = resolve(dataDir, `${safeName}.sqlite`);
   const resolvedDataDir = resolve(dataDir);
-  if (!dbPath.startsWith(resolvedDataDir + "/") && dbPath !== resolvedDataDir) {
+  if (!dbPath.startsWith(`${resolvedDataDir}/`) && dbPath !== resolvedDataDir) {
     throw new Error(`Knowledge base path escapes data directory: ${dbPath}`);
   }
   return dbPath;
@@ -496,21 +522,111 @@ export interface ConfigKeyMeta {
 }
 
 export const SETTABLE_KEYS: ConfigKeyMeta[] = [
-  { yamlKey: "dataDir",          envVar: "RAGCLAW_DATA_DIR",            type: "string",   configKey: "dataDir",          description: "Data directory for knowledge bases" },
-  { yamlKey: "pluginsDir",       envVar: "RAGCLAW_PLUGINS_DIR",         type: "string",   configKey: "pluginsDir",       description: "Local plugins directory" },
-  { yamlKey: "plugins",          envVar: undefined,                     type: "string[]",  configKey: "enabledPlugins",   description: "Enabled plugin names (comma-separated)" },
-  { yamlKey: "scanGlobalNpm",    envVar: undefined,                     type: "boolean",   configKey: "scanGlobalNpm",    description: "Scan global npm packages for plugins" },
-  { yamlKey: "allowedPaths",     envVar: "RAGCLAW_ALLOWED_PATHS",       type: "string[]",  configKey: "allowedPaths",     description: "Allowed filesystem paths for indexing (comma-separated)" },
-  { yamlKey: "allowUrls",        envVar: "RAGCLAW_ALLOW_URLS",          type: "boolean",   configKey: "allowUrls",        description: "Allow URL sources" },
-  { yamlKey: "blockPrivateUrls", envVar: "RAGCLAW_BLOCK_PRIVATE_URLS",  type: "boolean",   configKey: "blockPrivateUrls", description: "Block fetches to private/reserved IPs" },
-  { yamlKey: "maxDepth",         envVar: "RAGCLAW_MAX_DEPTH",           type: "number",    configKey: "maxDepth",         description: "Max directory recursion depth" },
-  { yamlKey: "maxFiles",         envVar: "RAGCLAW_MAX_FILES",           type: "number",    configKey: "maxFiles",         description: "Max files per directory source" },
-  { yamlKey: "enforceGuards",    envVar: "RAGCLAW_ENFORCE_GUARDS",      type: "boolean",   configKey: "enforceGuards",    description: "Enforce path/URL guards in CLI (for autonomous use)" },
-  { yamlKey: "extractor.fetchTimeoutMs",      envVar: "RAGCLAW_FETCH_TIMEOUT_MS",        type: "number", configKey: undefined, description: "HTTP fetch timeout in ms (default: 30000)" },
-  { yamlKey: "extractor.maxResponseSizeBytes", envVar: "RAGCLAW_MAX_RESPONSE_SIZE_BYTES", type: "number", configKey: undefined, description: "Max HTTP response body in bytes (default: 52428800)" },
-  { yamlKey: "extractor.maxPdfPages",          envVar: "RAGCLAW_MAX_PDF_PAGES",           type: "number", configKey: undefined, description: "Max pages per PDF (default: 200)" },
-  { yamlKey: "extractor.ocrTimeoutMs",         envVar: "RAGCLAW_OCR_TIMEOUT_MS",          type: "number", configKey: undefined, description: "OCR timeout in ms per invocation (default: 60000)" },
-  { yamlKey: "embedder",                       envVar: "RAGCLAW_EMBEDDER",                type: "string", configKey: "embedder", description: "Embedder preset alias or model (e.g. bge, nomic, BAAI/bge-m3)" },
+  {
+    yamlKey: "dataDir",
+    envVar: "RAGCLAW_DATA_DIR",
+    type: "string",
+    configKey: "dataDir",
+    description: "Data directory for knowledge bases",
+  },
+  {
+    yamlKey: "pluginsDir",
+    envVar: "RAGCLAW_PLUGINS_DIR",
+    type: "string",
+    configKey: "pluginsDir",
+    description: "Local plugins directory",
+  },
+  {
+    yamlKey: "plugins",
+    envVar: undefined,
+    type: "string[]",
+    configKey: "enabledPlugins",
+    description: "Enabled plugin names (comma-separated)",
+  },
+  {
+    yamlKey: "scanGlobalNpm",
+    envVar: undefined,
+    type: "boolean",
+    configKey: "scanGlobalNpm",
+    description: "Scan global npm packages for plugins",
+  },
+  {
+    yamlKey: "allowedPaths",
+    envVar: "RAGCLAW_ALLOWED_PATHS",
+    type: "string[]",
+    configKey: "allowedPaths",
+    description: "Allowed filesystem paths for indexing (comma-separated)",
+  },
+  {
+    yamlKey: "allowUrls",
+    envVar: "RAGCLAW_ALLOW_URLS",
+    type: "boolean",
+    configKey: "allowUrls",
+    description: "Allow URL sources",
+  },
+  {
+    yamlKey: "blockPrivateUrls",
+    envVar: "RAGCLAW_BLOCK_PRIVATE_URLS",
+    type: "boolean",
+    configKey: "blockPrivateUrls",
+    description: "Block fetches to private/reserved IPs",
+  },
+  {
+    yamlKey: "maxDepth",
+    envVar: "RAGCLAW_MAX_DEPTH",
+    type: "number",
+    configKey: "maxDepth",
+    description: "Max directory recursion depth",
+  },
+  {
+    yamlKey: "maxFiles",
+    envVar: "RAGCLAW_MAX_FILES",
+    type: "number",
+    configKey: "maxFiles",
+    description: "Max files per directory source",
+  },
+  {
+    yamlKey: "enforceGuards",
+    envVar: "RAGCLAW_ENFORCE_GUARDS",
+    type: "boolean",
+    configKey: "enforceGuards",
+    description: "Enforce path/URL guards in CLI (for autonomous use)",
+  },
+  {
+    yamlKey: "extractor.fetchTimeoutMs",
+    envVar: "RAGCLAW_FETCH_TIMEOUT_MS",
+    type: "number",
+    configKey: undefined,
+    description: "HTTP fetch timeout in ms (default: 30000)",
+  },
+  {
+    yamlKey: "extractor.maxResponseSizeBytes",
+    envVar: "RAGCLAW_MAX_RESPONSE_SIZE_BYTES",
+    type: "number",
+    configKey: undefined,
+    description: "Max HTTP response body in bytes (default: 52428800)",
+  },
+  {
+    yamlKey: "extractor.maxPdfPages",
+    envVar: "RAGCLAW_MAX_PDF_PAGES",
+    type: "number",
+    configKey: undefined,
+    description: "Max pages per PDF (default: 200)",
+  },
+  {
+    yamlKey: "extractor.ocrTimeoutMs",
+    envVar: "RAGCLAW_OCR_TIMEOUT_MS",
+    type: "number",
+    configKey: undefined,
+    description: "OCR timeout in ms per invocation (default: 60000)",
+  },
+  {
+    yamlKey: "embedder",
+    envVar: "RAGCLAW_EMBEDDER",
+    type: "string",
+    configKey: "embedder",
+    description: "Embedder preset alias or model (e.g. bge, nomic, BAAI/bge-m3)",
+  },
 ];
 
 /**
@@ -523,7 +639,9 @@ export const SETTABLE_KEYS: ConfigKeyMeta[] = [
 export function setConfigValue(yamlKey: string, rawValue: string): void {
   const meta = SETTABLE_KEYS.find((k) => k.yamlKey === yamlKey);
   if (!meta) {
-    throw new Error(`Unknown config key: "${yamlKey}". Valid keys: ${SETTABLE_KEYS.map((k) => k.yamlKey).join(", ")}`);
+    throw new Error(
+      `Unknown config key: "${yamlKey}". Valid keys: ${SETTABLE_KEYS.map((k) => k.yamlKey).join(", ")}`
+    );
   }
 
   const config = getConfig();

@@ -7,28 +7,27 @@
  * LICENSE file in the root directory of this repository.
  */
 
+import { existsSync } from "node:fs";
+import { mkdir, readdir, stat } from "node:fs/promises";
+import { extname, join, resolve } from "node:path";
+import type { EmbedderPlugin, Source } from "@emdzej/ragclaw-core";
+import {
+  createEmbedder,
+  getConfig,
+  getDbPath,
+  IndexingService,
+  isPathAllowed,
+  isUrlAllowed,
+  MergeService,
+  Store,
+} from "@emdzej/ragclaw-core";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  Tool,
+  type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { existsSync } from "fs";
-import { mkdir, readdir, stat } from "fs/promises";
-import { extname, resolve, join } from "path";
-
-import {
-  Store,
-  IndexingService,
-  MergeService,
-  createEmbedder,
-  getConfig,
-  getDbPath,
-  isPathAllowed,
-  isUrlAllowed,
-} from "@emdzej/ragclaw-core";
-import type { Source, EmbedderPlugin } from "@emdzej/ragclaw-core";
 
 const config = getConfig();
 const RAGCLAW_DIR = config.dataDir;
@@ -37,7 +36,8 @@ const RAGCLAW_DIR = config.dataDir;
 const TOOLS: Tool[] = [
   {
     name: "rag_search",
-    description: "Search the local knowledge base for relevant documents and code. Returns matching chunks with source paths and relevance scores.",
+    description:
+      "Search the local knowledge base for relevant documents and code. Returns matching chunks with source paths and relevance scores.",
     inputSchema: {
       type: "object",
       properties: {
@@ -67,7 +67,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: "rag_add",
-    description: "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
+    description:
+      "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
     inputSchema: {
       type: "object",
       properties: {
@@ -181,7 +182,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: "rag_reindex",
-    description: "Re-process changed sources in the knowledge base. Only re-indexes files that have changed since last indexing.",
+    description:
+      "Re-process changed sources in the knowledge base. Only re-indexes files that have changed since last indexing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -205,7 +207,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: "rag_merge",
-    description: "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
+    description:
+      "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
     inputSchema: {
       type: "object",
       properties: {
@@ -221,13 +224,15 @@ const TOOLS: Tool[] = [
         strategy: {
           type: "string",
           enum: ["strict", "reindex"],
-          description: "Merge strategy: 'strict' (copy embeddings, requires identical embedder) or 'reindex' (re-embed text, works across embedders). Default: 'strict'.",
+          description:
+            "Merge strategy: 'strict' (copy embeddings, requires identical embedder) or 'reindex' (re-embed text, works across embedders). Default: 'strict'.",
           default: "strict",
         },
         onConflict: {
           type: "string",
           enum: ["skip", "prefer-local", "prefer-remote"],
-          description: "Conflict resolution when the same source exists in both DBs. Default: 'skip' (keep local).",
+          description:
+            "Conflict resolution when the same source exists in both DBs. Default: 'skip' (keep local).",
           default: "skip",
         },
         dryRun: {
@@ -263,7 +268,7 @@ async function getEmbedder(dbName: string, store: Store): Promise<EmbedderPlugin
   // Prefer embedder_model (full HF model ID) over embedder_name, which may be
   // a short display name like "nomic-embed-text-v1.5" rather than a valid alias.
   const storedModel = await store.getMeta("embedder_model");
-  const storedName = await store.getMeta("embedder_name") ?? "nomic";
+  const storedName = (await store.getMeta("embedder_name")) ?? "nomic";
   const embedder = storedModel
     ? createEmbedder({ model: storedModel })
     : createEmbedder({ alias: storedName });
@@ -313,9 +318,10 @@ async function ragSearch(args: {
   await store.open(dbPath);
 
   try {
-    const embedding = args.mode !== "keyword"
-      ? await getEmbedder(dbName, store).then((e) => e.embedQuery(args.query))
-      : undefined;
+    const embedding =
+      args.mode !== "keyword"
+        ? await getEmbedder(dbName, store).then((e) => e.embedQuery(args.query))
+        : undefined;
 
     const results = await store.search({
       text: args.query,
@@ -329,9 +335,10 @@ async function ragSearch(args: {
     }
 
     const formatted = results.map((r, i) => {
-      const lines = r.chunk.startLine && r.chunk.endLine
-        ? ` (lines ${r.chunk.startLine}-${r.chunk.endLine})`
-        : "";
+      const lines =
+        r.chunk.startLine && r.chunk.endLine
+          ? ` (lines ${r.chunk.startLine}-${r.chunk.endLine})`
+          : "";
       const score = (r.score * 100).toFixed(1);
       return `[${i + 1}] ${r.chunk.sourcePath}${lines}\nScore: ${score}%\n${r.chunk.text.slice(0, 500)}${r.chunk.text.length > 500 ? "..." : ""}`;
     });
@@ -382,10 +389,16 @@ async function ragAdd(args: {
       }
 
       const crawlInclude = args.crawlInclude
-        ? args.crawlInclude.split(",").map((s) => s.trim()).filter(Boolean)
+        ? args.crawlInclude
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
         : undefined;
       const crawlExclude = args.crawlExclude
-        ? args.crawlExclude.split(",").map((s) => s.trim()).filter(Boolean)
+        ? args.crawlExclude
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
         : undefined;
 
       const summary = await indexingService.indexCrawl(store, args.source, {
@@ -409,13 +422,14 @@ async function ragAdd(args: {
     // Normal mode
     // -------------------------------------------------------------------------
     const sources = await collectSources(args.source, args.recursive ?? true);
-    
+
     let indexed = 0;
     let totalChunks = 0;
     const errors: string[] = [];
 
     for (const src of sources) {
-      const displayPath = src.path || src.url || "unknown";
+      const displayPath =
+        src.type === "url" ? src.url : src.type === "file" ? src.path : (src.name ?? "unknown");
 
       try {
         const outcome = await indexingService.indexSource(store, src);
@@ -465,9 +479,7 @@ async function ragStatus(args: { db?: string }): Promise<string> {
     const stats = await store.getStats();
     const meta = await store.getAllMeta();
     const sizeKB = (stats.sizeBytes / 1024).toFixed(1);
-    const updated = stats.lastUpdated 
-      ? new Date(stats.lastUpdated).toLocaleString()
-      : "never";
+    const updated = stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleString() : "never";
 
     const embedderName = meta.embedder_name ?? "nomic";
     const embedderModel = meta.embedder_model ?? embedderName;
@@ -499,7 +511,7 @@ async function ragList(args: { db?: string }): Promise<string> {
 
   try {
     const sources = await store.listSources();
-    
+
     if (sources.length === 0) {
       return "No sources indexed.";
     }
@@ -656,10 +668,16 @@ async function ragMerge(args: {
     }
 
     const include = args.include
-      ? args.include.split(",").map((s) => s.trim()).filter(Boolean)
+      ? args.include
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : undefined;
     const exclude = args.exclude
-      ? args.exclude.split(",").map((s) => s.trim()).filter(Boolean)
+      ? args.exclude
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : undefined;
 
     const mergeService = new MergeService();
@@ -685,12 +703,16 @@ async function ragMerge(args: {
       ];
       if (diff.toAdd.length > 0) {
         lines.push("\nWould add:");
-        diff.toAdd.slice(0, 10).forEach((s) => lines.push(`  + ${s.path}`));
+        diff.toAdd.slice(0, 10).forEach((s) => {
+          lines.push(`  + ${s.path}`);
+        });
         if (diff.toAdd.length > 10) lines.push(`  ... and ${diff.toAdd.length - 10} more`);
       }
       if (diff.toUpdate.length > 0) {
         lines.push("\nConflicts (would update or skip per --on-conflict):");
-        diff.toUpdate.slice(0, 10).forEach((s) => lines.push(`  ~ ${s.path}`));
+        diff.toUpdate.slice(0, 10).forEach((s) => {
+          lines.push(`  ~ ${s.path}`);
+        });
         if (diff.toUpdate.length > 10) lines.push(`  ... and ${diff.toUpdate.length - 10} more`);
       }
       return lines.join("\n");
@@ -699,7 +721,10 @@ async function ragMerge(args: {
     let result = `Merge complete (${summary.strategy}): ${summary.sourcesAdded} added, ${summary.sourcesUpdated} updated, ${summary.sourcesSkipped} skipped.`;
     if (summary.errors.length > 0) {
       result += `\n\nErrors (${summary.errors.length}):\n`;
-      result += summary.errors.slice(0, 5).map((e) => `  ${e.path}: ${e.error}`).join("\n");
+      result += summary.errors
+        .slice(0, 5)
+        .map((e) => `  ${e.path}: ${e.error}`)
+        .join("\n");
       if (summary.errors.length > 5) result += `\n  ... and ${summary.errors.length - 5} more`;
     }
     return result;
@@ -750,7 +775,7 @@ async function collectFilesRecursive(
   collected: Source[],
   currentDepth: number,
   maxDepth: number,
-  maxFiles: number,
+  maxFiles: number
 ): Promise<void> {
   if (currentDepth >= maxDepth) {
     return; // depth limit reached
@@ -763,8 +788,22 @@ async function collectFilesRecursive(
   const entries = await readdir(dir, { withFileTypes: true });
 
   const supportedExts = [
-    ".md", ".markdown", ".mdx", ".txt", ".text", ".pdf", ".docx",
-    ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java",
+    ".md",
+    ".markdown",
+    ".mdx",
+    ".txt",
+    ".text",
+    ".pdf",
+    ".docx",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".py",
+    ".go",
+    ".java",
   ];
 
   for (const entry of entries) {

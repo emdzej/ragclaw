@@ -5,17 +5,12 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync, statSync } from "fs";
-import { resolve } from "path";
+import { existsSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+import type { ConflictResolution, EmbedderPlugin, MergeStrategy } from "@emdzej/ragclaw-core";
+import { createEmbedder, getDbPath, MergeService, Store } from "@emdzej/ragclaw-core";
 import chalk from "chalk";
 import ora from "ora";
-import {
-  Store,
-  MergeService,
-  createEmbedder,
-  getDbPath,
-} from "@emdzej/ragclaw-core";
-import type { MergeStrategy, ConflictResolution } from "@emdzej/ragclaw-core";
 import { getConfig } from "../config.js";
 
 interface MergeOptions {
@@ -58,7 +53,11 @@ export async function mergeCommand(sourceDb: string, options: MergeOptions): Pro
   // Validate conflict resolution
   const onConflict = (options.onConflict ?? "skip") as ConflictResolution;
   if (!["skip", "prefer-local", "prefer-remote"].includes(onConflict)) {
-    console.error(chalk.red(`Unknown --on-conflict value "${options.onConflict}". Use skip, prefer-local, or prefer-remote.`));
+    console.error(
+      chalk.red(
+        `Unknown --on-conflict value "${options.onConflict}". Use skip, prefer-local, or prefer-remote.`
+      )
+    );
     process.exit(1);
   }
 
@@ -76,17 +75,28 @@ export async function mergeCommand(sourceDb: string, options: MergeOptions): Pro
 
   try {
     // For reindex strategy, resolve the embedder
-    let embedder;
+    let embedder: EmbedderPlugin | undefined;
     if (strategy === "reindex") {
-      const embedderAlias = options.embedder ?? (typeof config.embedder === "string" ? config.embedder : undefined);
+      const embedderAlias =
+        options.embedder ?? (typeof config.embedder === "string" ? config.embedder : undefined);
       embedder = createEmbedder(embedderAlias ? { alias: embedderAlias } : {});
       spinner.text = "Loading embedding model...";
       await embedder.init?.();
       if (embedder.dimensions === 0) await embedder.embed("warmup");
     }
 
-    const include = options.include ? options.include.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
-    const exclude = options.exclude ? options.exclude.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    const include = options.include
+      ? options.include
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+    const exclude = options.exclude
+      ? options.exclude
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
 
     const mergeService = new MergeService();
 
@@ -98,7 +108,9 @@ export async function mergeCommand(sourceDb: string, options: MergeOptions): Pro
       console.log();
       console.log(chalk.bold("Merge preview") + chalk.dim(` (${sourcePath} → ${destPath})`));
       console.log();
-      console.log(`  Embedder match: ${diffResult.embedderMatch ? chalk.green("yes") : chalk.yellow("no")}`);
+      console.log(
+        `  Embedder match: ${diffResult.embedderMatch ? chalk.green("yes") : chalk.yellow("no")}`
+      );
       if (!diffResult.embedderMatch) {
         console.log(`    Local:  ${diffResult.destEmbedder}`);
         console.log(`    Remote: ${diffResult.srcEmbedder}`);
@@ -106,9 +118,15 @@ export async function mergeCommand(sourceDb: string, options: MergeOptions): Pro
       }
       console.log();
       console.log(`  ${chalk.green("Would add:")}    ${diffResult.toAdd.length} source(s)`);
-      console.log(`  ${chalk.yellow("Would update:")} ${diffResult.toUpdate.length} source(s) (conflict policy: ${onConflict})`);
-      console.log(`  ${chalk.dim("Identical:")}    ${diffResult.identical.length} source(s) — skip`);
-      console.log(`  ${chalk.dim("Local only:")}   ${diffResult.localOnly.length} source(s) — untouched`);
+      console.log(
+        `  ${chalk.yellow("Would update:")} ${diffResult.toUpdate.length} source(s) (conflict policy: ${onConflict})`
+      );
+      console.log(
+        `  ${chalk.dim("Identical:")}    ${diffResult.identical.length} source(s) — skip`
+      );
+      console.log(
+        `  ${chalk.dim("Local only:")}   ${diffResult.localOnly.length} source(s) — untouched`
+      );
 
       if (diffResult.toAdd.length > 0) {
         console.log();
@@ -168,7 +186,11 @@ export async function mergeCommand(sourceDb: string, options: MergeOptions): Pro
     }
 
     console.log();
-    console.log(chalk.green(`✓ Added ${summary.sourcesAdded}, updated ${summary.sourcesUpdated}, skipped ${summary.sourcesSkipped}`));
+    console.log(
+      chalk.green(
+        `✓ Added ${summary.sourcesAdded}, updated ${summary.sourcesUpdated}, skipped ${summary.sourcesSkipped}`
+      )
+    );
 
     if (summary.errors.length > 0) {
       console.log();

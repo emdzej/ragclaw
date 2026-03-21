@@ -5,10 +5,10 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync } from "fs";
-import { createInterface } from "readline";
-import chalk from "chalk";
+import { existsSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { Store } from "@emdzej/ragclaw-core";
+import chalk from "chalk";
 import { getDbPath } from "../config.js";
 
 interface RemoveOptions {

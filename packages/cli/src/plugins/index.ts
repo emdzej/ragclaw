@@ -5,5 +5,5 @@
  * LICENSE file in the root directory of this repository.
  */
 
-export { PluginLoader, getPluginLoader } from "./loader.js";
+export { getPluginLoader, PluginLoader } from "./loader.js";
 export { createPluginScaffold, pluginCreate } from "./scaffold.js";

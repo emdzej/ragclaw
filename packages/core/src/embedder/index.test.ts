@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { join } from "path";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // ── Mock @huggingface/transformers before importing the module ──────────────
 // The HuggingFaceEmbedder uses `pipeline("feature-extraction", model, ...)` which
@@ -27,8 +27,11 @@ vi.mock("fs", () => ({
 }));
 
 // Must import AFTER vi.mock so the mock takes effect
-const { HuggingFaceEmbedder, Embedder, isModelCached, getModelCacheDir } = await import("./index.js");
-import { existsSync } from "fs";
+const { HuggingFaceEmbedder, Embedder, isModelCached, getModelCacheDir } = await import(
+  "./index.js"
+);
+
+import { existsSync } from "node:fs";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -200,7 +203,7 @@ describe("HuggingFaceEmbedder", () => {
 
       expect(mockPipe).toHaveBeenCalledWith(
         ["search_document: a", "search_document: b", "search_document: c"],
-        { pooling: "mean", normalize: true },
+        { pooling: "mean", normalize: true }
       );
     });
 
@@ -241,9 +244,7 @@ describe("HuggingFaceEmbedder", () => {
     it("batches in groups of 32", async () => {
       // Create 40 texts -> should produce 2 calls (32 + 8)
       const texts = Array.from({ length: 40 }, (_, i) => `text${i}`);
-      mockPipe
-        .mockResolvedValueOnce(fakeTensor(32, 768))
-        .mockResolvedValueOnce(fakeTensor(8, 768));
+      mockPipe.mockResolvedValueOnce(fakeTensor(32, 768)).mockResolvedValueOnce(fakeTensor(8, 768));
 
       const e = new HuggingFaceEmbedder({ dim: 768 });
       const results = await e.embedBatch(texts);
@@ -340,7 +341,7 @@ describe("HuggingFaceEmbedder", () => {
       expect(mockPipelineFactory).toHaveBeenCalledWith(
         "feature-extraction",
         "custom/model",
-        expect.anything(),
+        expect.anything()
       );
     });
   });
@@ -387,9 +388,7 @@ describe("Embedder (backward-compat alias)", () => {
   it("accepts legacy config with custom model", async () => {
     const { pipeline: mockPipelineFactory } = await import("@huggingface/transformers");
     // Auto-detect test embed + actual embed
-    mockPipe
-      .mockResolvedValueOnce(fakeTensor(1, 512))
-      .mockResolvedValueOnce(fakeTensor(1, 512));
+    mockPipe.mockResolvedValueOnce(fakeTensor(1, 512)).mockResolvedValueOnce(fakeTensor(1, 512));
 
     const e = new Embedder({ model: "custom/model" });
     await e.embed("test");
@@ -397,7 +396,7 @@ describe("Embedder (backward-compat alias)", () => {
     expect(mockPipelineFactory).toHaveBeenCalledWith(
       "feature-extraction",
       "custom/model",
-      expect.anything(),
+      expect.anything()
     );
   });
 });
@@ -442,24 +441,20 @@ describe("isModelCached()", () => {
     mockExistsSync.mockReturnValue(false);
     isModelCached("BAAI/bge-m3", "/mock/cache/ragclaw/models");
     expect(mockExistsSync).toHaveBeenCalledWith(
-      join("/mock/cache/ragclaw/models", "BAAI", "bge-m3"),
+      join("/mock/cache/ragclaw/models", "BAAI", "bge-m3")
     );
   });
 
   it("checks the correct path for a single-segment model ID", () => {
     mockExistsSync.mockReturnValue(false);
     isModelCached("my-model", "/mock/cache/ragclaw/models");
-    expect(mockExistsSync).toHaveBeenCalledWith(
-      join("/mock/cache/ragclaw/models", "my-model"),
-    );
+    expect(mockExistsSync).toHaveBeenCalledWith(join("/mock/cache/ragclaw/models", "my-model"));
   });
 
   it("uses a custom cacheDir when provided", () => {
     mockExistsSync.mockReturnValue(true);
     const result = isModelCached("org/model", "/custom/cache");
-    expect(mockExistsSync).toHaveBeenCalledWith(
-      join("/custom/cache", "org", "model"),
-    );
+    expect(mockExistsSync).toHaveBeenCalledWith(join("/custom/cache", "org", "model"));
     expect(result).toBe(true);
   });
 
@@ -477,7 +472,7 @@ describe("isModelCached()", () => {
     mockExistsSync.mockReturnValue(false);
     isModelCached("org/sub/model", "/mock/cache/ragclaw/models");
     expect(mockExistsSync).toHaveBeenCalledWith(
-      join("/mock/cache/ragclaw/models", "org", "sub", "model"),
+      join("/mock/cache/ragclaw/models", "org", "sub", "model")
     );
   });
 });

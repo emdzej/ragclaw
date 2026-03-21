@@ -5,26 +5,32 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { createHash } from "crypto";
-import { stat } from "fs/promises";
-import { existsSync } from "fs";
-import { Store } from "./store/index.js";
-import { Embedder } from "./embedder/index.js";
-import { createEmbedder } from "./embedder/factory.js";
-import { SemanticChunker } from "./chunkers/semantic.js";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { CodeChunker } from "./chunkers/code.js";
-import { MarkdownExtractor } from "./extractors/markdown.js";
-import { TextExtractor } from "./extractors/text.js";
-import { PdfExtractor } from "./extractors/pdf.js";
-import { DocxExtractor } from "./extractors/docx.js";
-import { WebExtractor } from "./extractors/web.js";
-import type { CrawlOptions } from "./extractors/web.js";
-import { CodeExtractor } from "./extractors/code.js";
-import { ImageExtractor } from "./extractors/image.js";
-import { hashFile } from "./utils/hash.js";
-import type { Source, Extractor, Chunker, ChunkRecord, ExtractedContent, SourceRecord, EmbedderPlugin } from "./types.js";
-import type { EmbedderResolvedConfig } from "./embedder/factory.js";
+import { SemanticChunker } from "./chunkers/semantic.js";
 import type { ExtractorLimits } from "./config.js";
+import type { EmbedderResolvedConfig } from "./embedder/factory.js";
+import { createEmbedder } from "./embedder/factory.js";
+import { CodeExtractor } from "./extractors/code.js";
+import { DocxExtractor } from "./extractors/docx.js";
+import { ImageExtractor } from "./extractors/image.js";
+import { MarkdownExtractor } from "./extractors/markdown.js";
+import { PdfExtractor } from "./extractors/pdf.js";
+import { TextExtractor } from "./extractors/text.js";
+import type { CrawlOptions } from "./extractors/web.js";
+import { WebExtractor } from "./extractors/web.js";
+import type { Store } from "./store/index.js";
+import type {
+  Chunker,
+  ChunkRecord,
+  EmbedderPlugin,
+  Extractor,
+  Source,
+  SourceRecord,
+} from "./types.js";
+import { hashFile } from "./utils/hash.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,7 +127,7 @@ export class IndexingService {
   private embedder: EmbedderPlugin;
   private ready = false;
 
-  constructor(private cfg: IndexingServiceConfig = {}) {
+  constructor(cfg: IndexingServiceConfig = {}) {
     this.extractors = [
       ...(cfg.extraExtractors ?? []),
       new MarkdownExtractor(),
@@ -183,7 +189,7 @@ export class IndexingService {
           `(stored with "${storedName}") but the current embedder "${this.embedder.name}" ` +
           `produces ${currentDim}-dim vectors.\n` +
           `To fix: run \`ragclaw reindex --embedder ${this.embedder.name}\` to rebuild the index, ` +
-          `or switch back to the original embedder.`,
+          `or switch back to the original embedder.`
       );
     }
 
@@ -203,7 +209,7 @@ export class IndexingService {
   async indexSource(
     store: Store,
     source: Source,
-    options: IndexSourceOptions = {},
+    options: IndexSourceOptions = {}
   ): Promise<IndexOutcome> {
     try {
       const extractor = this.extractors.find((e) => e.canHandle(source));
@@ -211,8 +217,12 @@ export class IndexingService {
         return { status: "skipped", reason: "unsupported format" };
       }
 
-      const isUrl = source.type === "url";
-      const sourcePath = isUrl ? source.url! : source.path!;
+      const sourcePath =
+        source.type === "url"
+          ? source.url
+          : source.type === "file"
+            ? source.path
+            : (source.name ?? "inline-text");
 
       // Check dimension compatibility before any I/O (fast-fail)
       await this.checkAndRecordEmbedderMeta(store);
@@ -221,13 +231,13 @@ export class IndexingService {
 
       // Content hash for change detection
       let contentHash: string;
-      if (!isUrl) {
-        contentHash = await hashFile(source.path!);
+      if (source.type === "file") {
+        contentHash = await hashFile(source.path);
         if (!options.force && existing && existing.contentHash === contentHash) {
           return { status: "unchanged", sourceId: existing.id };
         }
       } else {
-        // URLs always get a fresh hash (force re-index)
+        // URLs and text always get a fresh hash (force re-index)
         contentHash = createHash("sha256")
           .update(sourcePath + Date.now())
           .digest("hex");
@@ -242,14 +252,8 @@ export class IndexingService {
       const extracted = await extractor.extract(source);
       const chunker: Chunker =
         extracted.sourceType === "code" ? this.codeChunker : this.semanticChunker;
-      const chunks = await chunker.chunk(
-        extracted,
-        existing?.id ?? "",
-        sourcePath,
-      );
-      const embeddings = await this.embedder.embedBatch(
-        chunks.map((c) => c.text),
-      );
+      const chunks = await chunker.chunk(extracted, existing?.id ?? "", sourcePath);
+      const embeddings = await this.embedder.embedBatch(chunks.map((c) => c.text));
 
       // For auto-detect embedders (dim was 0 at pre-check), write meta now
       // that dimensions are known after the first real embed.
@@ -261,8 +265,8 @@ export class IndexingService {
       // Source metadata
       const now = Date.now();
       let mtime: number | undefined;
-      if (!isUrl) {
-        const fileStat = await stat(source.path!);
+      if (source.type === "file") {
+        const fileStat = await stat(source.path);
         mtime = fileStat.mtimeMs;
       }
 
@@ -316,7 +320,7 @@ export class IndexingService {
   async reindexSource(
     store: Store,
     source: SourceRecord,
-    options: ReindexSourceOptions = {},
+    options: ReindexSourceOptions = {}
   ): Promise<ReindexOutcome> {
     try {
       const isUrl = source.type === "url";
@@ -343,11 +347,7 @@ export class IndexingService {
         currentMtime = fileStat.mtimeMs;
       }
 
-      if (
-        !options.force &&
-        currentHash &&
-        currentHash === source.contentHash
-      ) {
+      if (!options.force && currentHash && currentHash === source.contentHash) {
         return { status: "unchanged", sourceId: source.id };
       }
 
@@ -365,9 +365,7 @@ export class IndexingService {
       const chunker: Chunker =
         extracted.sourceType === "code" ? this.codeChunker : this.semanticChunker;
       const chunks = await chunker.chunk(extracted, source.id, source.path);
-      const embeddings = await this.embedder.embedBatch(
-        chunks.map((c) => c.text),
-      );
+      const embeddings = await this.embedder.embedBatch(chunks.map((c) => c.text));
 
       // Swap chunks atomically
       await store.removeChunksBySource(source.id);
@@ -411,12 +409,10 @@ export class IndexingService {
   async indexCrawl(
     store: Store,
     startUrl: string,
-    options: IndexCrawlOptions = {},
+    options: IndexCrawlOptions = {}
   ): Promise<IndexCrawlSummary> {
     // Find the WebExtractor instance (always present in the built-in list)
-    const webExtractor = this.extractors.find(
-      (e): e is WebExtractor => e instanceof WebExtractor,
-    );
+    const webExtractor = this.extractors.find((e): e is WebExtractor => e instanceof WebExtractor);
 
     if (!webExtractor) {
       throw new Error("WebExtractor not available — cannot crawl");

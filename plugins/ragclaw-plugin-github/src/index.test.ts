@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { parseGitHubUrl, getSourceUrl } from "./index.js";
-
 // ── Mock child_process so `gh()` calls don't shell out ──────────────────────
-import { execFileSync } from "child_process";
+import { execFileSync } from "node:child_process";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getSourceUrl, parseGitHubUrl } from "./index.js";
+
 vi.mock("child_process", () => ({
   execFileSync: vi.fn(),
 }));
@@ -140,12 +140,18 @@ describe("getSourceUrl", () => {
 // The extract() method is accessed via the plugin's `extractors[0]` entry.
 
 describe("GitHubExtractor.extract()", () => {
-  let extractor: { canHandle: (s: { type: string; url?: string }) => boolean; extract: (s: { type: string; url?: string }) => Promise<{ text: string; metadata: Record<string, unknown>; sourceType: string }> };
+  let extractor: {
+    canHandle: (s: { type: string; url?: string }) => boolean;
+    extract: (s: {
+      type: string;
+      url?: string;
+    }) => Promise<{ text: string; metadata: Record<string, unknown>; sourceType: string }>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
     const mod = await import("./index.js");
-    extractor = mod.default.extractors![0] as typeof extractor;
+    extractor = mod.default.extractors?.[0] as typeof extractor;
   });
 
   afterEach(() => {
@@ -163,7 +169,9 @@ describe("GitHubExtractor.extract()", () => {
     });
 
     it("rejects https://github.com URLs", () => {
-      expect(extractor.canHandle({ type: "url", url: "https://github.com/owner/repo" })).toBe(false);
+      expect(extractor.canHandle({ type: "url", url: "https://github.com/owner/repo" })).toBe(
+        false
+      );
     });
   });
 
@@ -172,7 +180,9 @@ describe("GitHubExtractor.extract()", () => {
     it("fetches repo info and README", async () => {
       mockExecFileSync
         .mockReturnValueOnce(JSON.stringify({ name: "hello-world", description: "A test repo" }))
-        .mockReturnValueOnce("name:\thello-world\ndescription:\tA test repo\n--\n# Hello\n\nWelcome to my repo.");
+        .mockReturnValueOnce(
+          "name:\thello-world\ndescription:\tA test repo\n--\n# Hello\n\nWelcome to my repo."
+        );
 
       const result = await extractor.extract({ type: "url", url: "github://octocat/hello-world" });
 
@@ -190,12 +200,31 @@ describe("GitHubExtractor.extract()", () => {
   describe("issues type", () => {
     it("fetches and formats issues", async () => {
       const issues = [
-        { number: 1, title: "Bug report", body: "Something broke", author: { login: "alice" }, labels: [{ name: "bug" }], state: "OPEN", createdAt: "2024-01-01" },
-        { number: 2, title: "Feature req", body: "Add something", author: { login: "bob" }, labels: [], state: "CLOSED", createdAt: "2024-01-02" },
+        {
+          number: 1,
+          title: "Bug report",
+          body: "Something broke",
+          author: { login: "alice" },
+          labels: [{ name: "bug" }],
+          state: "OPEN",
+          createdAt: "2024-01-01",
+        },
+        {
+          number: 2,
+          title: "Feature req",
+          body: "Add something",
+          author: { login: "bob" },
+          labels: [],
+          state: "CLOSED",
+          createdAt: "2024-01-02",
+        },
       ];
       mockExecFileSync.mockReturnValueOnce(JSON.stringify(issues));
 
-      const result = await extractor.extract({ type: "url", url: "github://octocat/hello-world/issues" });
+      const result = await extractor.extract({
+        type: "url",
+        url: "github://octocat/hello-world/issues",
+      });
 
       expect(result.text).toContain("# Issues: octocat/hello-world");
       expect(result.text).toContain("## #1: Bug report");
@@ -218,13 +247,14 @@ describe("GitHubExtractor.extract()", () => {
         labels: [{ name: "critical" }],
         state: "OPEN",
         createdAt: "2024-01-01",
-        comments: [
-          { author: { login: "bob" }, body: "Looking into it", createdAt: "2024-01-02" },
-        ],
+        comments: [{ author: { login: "bob" }, body: "Looking into it", createdAt: "2024-01-02" }],
       };
       mockExecFileSync.mockReturnValueOnce(JSON.stringify(issue));
 
-      const result = await extractor.extract({ type: "url", url: "github://octocat/hello-world/issues/42" });
+      const result = await extractor.extract({
+        type: "url",
+        url: "github://octocat/hello-world/issues/42",
+      });
 
       expect(result.text).toContain("# Issue #42: Critical bug");
       expect(result.text).toContain("This is a serious issue");
@@ -239,11 +269,22 @@ describe("GitHubExtractor.extract()", () => {
   describe("pulls type", () => {
     it("fetches and formats PRs", async () => {
       const prs = [
-        { number: 10, title: "Add feature", body: "New cool stuff", author: { login: "carol" }, labels: [], state: "OPEN", createdAt: "2024-02-01" },
+        {
+          number: 10,
+          title: "Add feature",
+          body: "New cool stuff",
+          author: { login: "carol" },
+          labels: [],
+          state: "OPEN",
+          createdAt: "2024-02-01",
+        },
       ];
       mockExecFileSync.mockReturnValueOnce(JSON.stringify(prs));
 
-      const result = await extractor.extract({ type: "url", url: "github://octocat/hello-world/pulls" });
+      const result = await extractor.extract({
+        type: "url",
+        url: "github://octocat/hello-world/pulls",
+      });
 
       expect(result.text).toContain("# Pull Requests: octocat/hello-world");
       expect(result.text).toContain("## #10: Add feature");
@@ -263,16 +304,15 @@ describe("GitHubExtractor.extract()", () => {
         labels: [{ name: "refactor" }],
         state: "MERGED",
         createdAt: "2024-02-15",
-        reviews: [
-          { author: { login: "eve" }, state: "APPROVED", body: "LGTM" },
-        ],
-        comments: [
-          { author: { login: "frank" }, body: "Nice work!", createdAt: "2024-02-16" },
-        ],
+        reviews: [{ author: { login: "eve" }, state: "APPROVED", body: "LGTM" }],
+        comments: [{ author: { login: "frank" }, body: "Nice work!", createdAt: "2024-02-16" }],
       };
       mockExecFileSync.mockReturnValueOnce(JSON.stringify(pr));
 
-      const result = await extractor.extract({ type: "url", url: "github://octocat/hello-world/pulls/5" });
+      const result = await extractor.extract({
+        type: "url",
+        url: "github://octocat/hello-world/pulls/5",
+      });
 
       expect(result.text).toContain("# PR #5: Refactor auth");
       expect(result.text).toContain("Major refactor");
@@ -290,11 +330,20 @@ describe("GitHubExtractor.extract()", () => {
   describe("discussions type", () => {
     it("fetches discussions via API", async () => {
       const discussions = [
-        { title: "Question about X", body: "How does X work?", user: { login: "grace" }, created_at: "2024-03-01", category: { name: "Q&A" } },
+        {
+          title: "Question about X",
+          body: "How does X work?",
+          user: { login: "grace" },
+          created_at: "2024-03-01",
+          category: { name: "Q&A" },
+        },
       ];
       mockExecFileSync.mockReturnValueOnce(JSON.stringify(discussions));
 
-      const result = await extractor.extract({ type: "url", url: "github://octocat/hello-world/discussions" });
+      const result = await extractor.extract({
+        type: "url",
+        url: "github://octocat/hello-world/discussions",
+      });
 
       expect(result.text).toContain("# Discussions: octocat/hello-world");
       expect(result.text).toContain("## Question about X");
@@ -308,9 +357,9 @@ describe("GitHubExtractor.extract()", () => {
   // ── extract: error cases ──────────────────────────────────────────────
   describe("error handling", () => {
     it("throws on invalid GitHub URL", async () => {
-      await expect(
-        extractor.extract({ type: "url", url: "github://invalid" }),
-      ).rejects.toThrow("Invalid GitHub URL");
+      await expect(extractor.extract({ type: "url", url: "github://invalid" })).rejects.toThrow(
+        "Invalid GitHub URL"
+      );
     });
 
     it("throws when gh CLI fails", async () => {
@@ -319,7 +368,7 @@ describe("GitHubExtractor.extract()", () => {
       });
 
       await expect(
-        extractor.extract({ type: "url", url: "github://octocat/hello-world" }),
+        extractor.extract({ type: "url", url: "github://octocat/hello-world" })
       ).rejects.toThrow("gh CLI failed");
     });
   });

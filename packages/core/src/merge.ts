@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { Store } from "./store/index.js";
-import type { SourceRecord, ChunkRecord, EmbedderPlugin } from "./types.js";
+import type { ChunkRecord, EmbedderPlugin, SourceRecord } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,8 +18,8 @@ export type MergeStrategy = "strict" | "reindex";
 
 /** What to do when the same source path exists in both databases. */
 export type ConflictResolution =
-  | "skip"       // keep local, ignore remote
-  | "prefer-local"  // same as skip
+  | "skip" // keep local, ignore remote
+  | "prefer-local" // same as skip
   | "prefer-remote"; // overwrite local with remote
 
 /** Options for a merge operation. */
@@ -107,15 +107,9 @@ export class MergeService {
   async merge(
     destDb: Store,
     sourceDbPath: string,
-    options: MergeOptions = {},
+    options: MergeOptions = {}
   ): Promise<MergeSummary> {
-    const {
-      onConflict = "skip",
-      dryRun = false,
-      include,
-      exclude,
-      onProgress,
-    } = options;
+    const { onConflict = "skip", dryRun = false, include, exclude, onProgress } = options;
 
     // ── Open source DB (read-only) ──────────────────────────────────────────
     const sourceDb = new Store();
@@ -139,7 +133,7 @@ export class MergeService {
         strategy = "reindex";
         if (!options.embedder) {
           throw new Error(
-            'MergeService: strategy "reindex" requires an embedder instance (options.embedder)',
+            'MergeService: strategy "reindex" requires an embedder instance (options.embedder)'
           );
         }
       } else if (options.strategy === "strict" || !options.strategy) {
@@ -148,7 +142,7 @@ export class MergeService {
             `Cannot merge: embedder mismatch.\n` +
               `  Local:  ${destEmbedder} (${destDims} dims)\n` +
               `  Remote: ${srcEmbedder} (${srcDims} dims)\n` +
-              `Use --strategy=reindex to re-embed with the local model.`,
+              `Use --strategy=reindex to re-embed with the local model.`
           );
         }
         strategy = "strict";
@@ -200,7 +194,14 @@ export class MergeService {
           if (existing) {
             await destDb.removeChunksBySource(existing.id);
           }
-          await this.importSource(destDb, sourceDb, remote, strategy, options.embedder, existing?.id);
+          await this.importSource(
+            destDb,
+            sourceDb,
+            remote,
+            strategy,
+            options.embedder,
+            existing?.id
+          );
           summary.sourcesUpdated++;
           onProgress?.({ path: remote.path, status: "updated" });
         } catch (err) {
@@ -238,7 +239,7 @@ export class MergeService {
     destDb: Store,
     sourceDbPath: string,
     include?: string[],
-    exclude?: string[],
+    exclude?: string[]
   ): Promise<MergeDiff & { embedderMatch: boolean; srcEmbedder: string; destEmbedder: string }> {
     const sourceDb = new Store();
     await sourceDb.open(sourceDbPath);
@@ -269,7 +270,7 @@ export class MergeService {
     destDb: Store,
     remoteSources: SourceRecord[],
     include?: string[],
-    exclude?: string[],
+    exclude?: string[]
   ): Promise<MergeDiff> {
     const toAdd: SourceRecord[] = [];
     const toUpdate: SourceRecord[] = [];
@@ -319,7 +320,7 @@ export class MergeService {
     remote: SourceRecord,
     strategy: MergeStrategy,
     embedder?: EmbedderPlugin,
-    existingId?: string,
+    existingId?: string
   ): Promise<void> {
     const remoteChunks = await sourceDb.getChunksBySource(remote.id);
 

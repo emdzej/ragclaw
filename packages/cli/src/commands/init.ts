@@ -5,10 +5,10 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
+import { Store } from "@emdzej/ragclaw-core";
 import chalk from "chalk";
 import { ensureDataDir, getDbPath } from "../config.js";
-import { Store } from "@emdzej/ragclaw-core";
 
 export async function initCommand(name: string): Promise<void> {
   const dbPath = getDbPath(name);

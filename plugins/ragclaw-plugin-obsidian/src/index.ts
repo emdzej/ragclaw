@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import type { RagClawPlugin, Extractor, ExtractedContent, Source, PluginConfigKey } from "@emdzej/ragclaw-core";
-import { readFile, readdir, stat } from "fs/promises";
-import { existsSync } from "fs";
-import { join, basename, relative, extname } from "path";
-import { homedir } from "os";
+import { existsSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, extname, join, relative } from "node:path";
+import type { ExtractedContent, Extractor, RagClawPlugin, Source } from "@emdzej/ragclaw-core";
 
 // ---------------------------------------------------------------------------
 // Configurable limits (overridable via plugin config)
@@ -33,16 +33,9 @@ function getDefaultVaultLocations(): string[] {
       join(home, "Obsidian"),
     ];
   } else if (platform === "win32") {
-    return [
-      join(home, "Documents"),
-      join(home, "Obsidian"),
-    ];
+    return [join(home, "Documents"), join(home, "Obsidian")];
   } else {
-    return [
-      join(home, "Documents"),
-      join(home, "Obsidian"),
-      join(home, ".obsidian"),
-    ];
+    return [join(home, "Documents"), join(home, "Obsidian"), join(home, ".obsidian")];
   }
 }
 
@@ -130,7 +123,10 @@ export function processObsidianContent(content: string): string {
 
 /** @internal — exported for testing only.
  * Extract YAML frontmatter from note content. */
-export function extractFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
+export function extractFrontmatter(content: string): {
+  frontmatter: Record<string, unknown> | null;
+  body: string;
+} {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) {
     return { frontmatter: null, body: content };
@@ -145,7 +141,10 @@ export function extractFrontmatter(content: string): { frontmatter: Record<strin
       if (keyValue) {
         const [, key, value] = keyValue;
         if (value.startsWith("[") && value.endsWith("]")) {
-          frontmatter[key] = value.slice(1, -1).split(",").map(s => s.trim());
+          frontmatter[key] = value
+            .slice(1, -1)
+            .split(",")
+            .map((s) => s.trim());
         } else {
           frontmatter[key] = value;
         }
@@ -195,7 +194,9 @@ function parseObsidianUrl(source: string): ParsedObsidianUrl | null {
 
   const vaultPath = findVault(vaultName);
   if (!vaultPath) {
-    throw new Error(`Vault not found: ${vaultName}. Searched in: ${getDefaultVaultLocations().join(", ")}`);
+    throw new Error(
+      `Vault not found: ${vaultName}. Searched in: ${getDefaultVaultLocations().join(", ")}`
+    );
   }
 
   return { vaultPath, subPath };
@@ -203,7 +204,9 @@ function parseObsidianUrl(source: string): ParsedObsidianUrl | null {
 
 /** Get source URL string from a Source. */
 function getSourceUrl(source: Source): string {
-  return source.url || source.path || "";
+  if (source.type === "url") return source.url;
+  if (source.type === "file") return source.path;
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -379,8 +382,18 @@ const plugin: RagClawPlugin = {
   schemes: ["obsidian", "vault"],
 
   configSchema: [
-    { key: "maxNotes",    type: "number", description: "Max notes to index from a vault (default: unlimited)", defaultValue: undefined },
-    { key: "maxNoteSize", type: "number", description: "Max note size in bytes to include (default: unlimited)", defaultValue: undefined },
+    {
+      key: "maxNotes",
+      type: "number",
+      description: "Max notes to index from a vault (default: unlimited)",
+      defaultValue: undefined,
+    },
+    {
+      key: "maxNoteSize",
+      type: "number",
+      description: "Max note size in bytes to include (default: unlimited)",
+      defaultValue: undefined,
+    },
   ],
 
   async init(config?: Record<string, unknown>) {

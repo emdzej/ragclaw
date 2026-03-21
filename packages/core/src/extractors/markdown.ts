@@ -5,24 +5,25 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { readFile, stat } from "fs/promises";
-import { basename, extname } from "path";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
+import type { ExtractedContent, Extractor, FileSource, Source } from "../types.js";
 
 export class MarkdownExtractor implements Extractor {
   canHandle(source: Source): boolean {
-    if (source.type !== "file" || !source.path) return false;
+    if (source.type !== "file") return false;
     const ext = extname(source.path).toLowerCase();
     return [".md", ".markdown", ".mdx"].includes(ext);
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    if (!source.path) {
+    if (source.type !== "file") {
       throw new Error("MarkdownExtractor requires a file path");
     }
+    const fileSource = source as FileSource;
 
-    const content = await readFile(source.path, "utf-8");
-    const metadata = this.extractMetadata(content, source.path);
+    const content = await readFile(fileSource.path, "utf-8");
+    const metadata = this.extractMetadata(content, fileSource.path);
 
     return {
       text: this.removeYamlFrontmatter(content),

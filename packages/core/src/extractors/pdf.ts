@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { readFile } from "fs/promises";
-import { basename, extname } from "path";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import type { ExtractorLimits } from "../config.js";
 import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
+import type { ExtractedContent, Extractor, Source } from "../types.js";
 
 // Minimum text length per page to consider it "has text"
 const MIN_TEXT_PER_PAGE = 50;
@@ -20,11 +20,13 @@ export class PdfExtractor implements Extractor {
   private maxPdfPages: number;
   private ocrTimeoutMs: number;
 
-  constructor(options: {
-    enableOcr?: boolean;
-    ocrLanguage?: string;
-    limits?: Partial<ExtractorLimits>;
-  } = {}) {
+  constructor(
+    options: {
+      enableOcr?: boolean;
+      ocrLanguage?: string;
+      limits?: Partial<ExtractorLimits>;
+    } = {}
+  ) {
     this.enableOcr = options.enableOcr ?? true;
     this.ocrLanguage = options.ocrLanguage ?? "eng";
     this.maxPdfPages = options.limits?.maxPdfPages ?? DEFAULT_EXTRACTOR_LIMITS.maxPdfPages;
@@ -38,31 +40,31 @@ export class PdfExtractor implements Extractor {
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    if (!source.path) {
+    if (source.type !== "file" || !source.path) {
       throw new Error("PdfExtractor requires a file path");
     }
 
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    
+
     const buffer = await readFile(source.path);
     const uint8Array = new Uint8Array(buffer);
-    
+
     const doc = await pdfjs.getDocument({ data: uint8Array }).promise;
     const numPages = doc.numPages;
     const pagesToProcess = Math.min(numPages, this.maxPdfPages);
-    
+
     const textParts: string[] = [];
     let ocrPages = 0;
     let usedOcr = false;
-    
+
     for (let i = 1; i <= pagesToProcess; i++) {
       const page = await doc.getPage(i);
       const textContent = await page.getTextContent();
       const pageText = textContent.items
-        .map((item) => "str" in item ? item.str : "")
+        .map((item) => ("str" in item ? item.str : ""))
         .join(" ")
         .trim();
-      
+
       // Check if page has meaningful text
       if (pageText.length >= MIN_TEXT_PER_PAGE) {
         textParts.push(pageText);
@@ -120,13 +122,16 @@ export class PdfExtractor implements Extractor {
     };
   }
 
-  private async ocrPage(page: unknown, pdfjs: unknown): Promise<string> {
+  private async ocrPage(page: unknown, _pdfjs: unknown): Promise<string> {
     // Cast to any for simpler typing
-    const p = page as { getViewport: (opts: { scale: number }) => { width: number; height: number }; render: (opts: unknown) => { promise: Promise<void> } };
-    
+    const p = page as {
+      getViewport: (opts: { scale: number }) => { width: number; height: number };
+      render: (opts: unknown) => { promise: Promise<void> };
+    };
+
     // Render page to canvas and extract image
     const viewport = p.getViewport({ scale: 2.0 }); // Higher scale = better OCR
-    
+
     // Create a canvas for Node.js
     const { createCanvas } = await import("canvas");
     const canvas = createCanvas(viewport.width, viewport.height);
@@ -145,10 +150,13 @@ export class PdfExtractor implements Extractor {
     const result = await Promise.race([
       ocrFromBuffer(pngBuffer, this.ocrLanguage),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`OCR timed out after ${this.ocrTimeoutMs}ms`)), this.ocrTimeoutMs)
+        setTimeout(
+          () => reject(new Error(`OCR timed out after ${this.ocrTimeoutMs}ms`)),
+          this.ocrTimeoutMs
+        )
       ),
     ]);
-    
+
     return result.text;
   }
 }

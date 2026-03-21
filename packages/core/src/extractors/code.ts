@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { readFile } from "fs/promises";
-import { basename, extname } from "path";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
+import type { ExtractedContent, Extractor, Source } from "../types.js";
 
 type Language = "typescript" | "javascript" | "python" | "go" | "java";
 
@@ -25,13 +25,13 @@ const EXT_TO_LANG: Record<string, Language> = {
 
 export class CodeExtractor implements Extractor {
   canHandle(source: Source): boolean {
-    if (source.type !== "file" || !source.path) return false;
+    if (source.type !== "file") return false;
     const ext = extname(source.path).toLowerCase();
     return ext in EXT_TO_LANG;
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    if (!source.path) {
+    if (source.type !== "file") {
       throw new Error("CodeExtractor requires a file path");
     }
 

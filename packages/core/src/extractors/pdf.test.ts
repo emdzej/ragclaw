@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock pdfjs-dist ─────────────────────────────────────────────────────────
 // PdfExtractor does `await import("pdfjs-dist/legacy/build/pdf.mjs")` at
@@ -14,9 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 function makePage(text: string) {
   return {
     getTextContent: vi.fn().mockResolvedValue({
-      items: text
-        ? text.split(" ").map((str) => ({ str }))
-        : [],
+      items: text ? text.split(" ").map((str) => ({ str })) : [],
     }),
     getViewport: vi.fn().mockReturnValue({ width: 100, height: 100 }),
     render: vi.fn().mockReturnValue({ promise: Promise.resolve() }),
@@ -84,17 +82,22 @@ describe("PdfExtractor", () => {
     });
 
     it("rejects file source without path", () => {
-      expect(ext.canHandle({ type: "file" })).toBe(false);
+      expect(ext.canHandle({ type: "file" } as unknown as import("../types.js").Source)).toBe(
+        false
+      );
     });
   });
 
   // ── extract() — basic text extraction ──────────────────────────────────
   describe("extract() — text extraction", () => {
     it("extracts text from a single-page PDF", async () => {
-      const longText = "This is a reasonably long paragraph with enough words to exceed the minimum text threshold of fifty characters easily";
+      const longText =
+        "This is a reasonably long paragraph with enough words to exceed the minimum text threshold of fifty characters easily";
       const page = makePage(longText);
       const doc = makeDoc([page]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false });
       const result = await ext.extract({ type: "file", path: "/docs/report.pdf" });
@@ -105,10 +108,14 @@ describe("PdfExtractor", () => {
     });
 
     it("extracts text from multi-page PDF", async () => {
-      const text1 = "First page content that is long enough to pass the minimum text per page threshold of fifty characters";
-      const text2 = "Second page content that is also long enough to pass the minimum text per page threshold quite easily";
+      const text1 =
+        "First page content that is long enough to pass the minimum text per page threshold of fifty characters";
+      const text2 =
+        "Second page content that is also long enough to pass the minimum text per page threshold quite easily";
       const doc = makeDoc([makePage(text1), makePage(text2)]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false });
       const result = await ext.extract({ type: "file", path: "/docs/report.pdf" });
@@ -121,17 +128,22 @@ describe("PdfExtractor", () => {
 
     it("throws when source has no path", async () => {
       const ext = new PdfExtractor();
-      await expect(ext.extract({ type: "file" })).rejects.toThrow("requires a file path");
+      await expect(
+        ext.extract({ type: "file" } as unknown as import("../types.js").Source)
+      ).rejects.toThrow("requires a file path");
     });
   });
 
   // ── extract() — page limit ─────────────────────────────────────────────
   describe("extract() — maxPdfPages", () => {
     it("respects maxPdfPages limit", async () => {
-      const longText = "Page content that is definitely long enough to exceed fifty characters for the minimum text per page threshold easily";
+      const longText =
+        "Page content that is definitely long enough to exceed fifty characters for the minimum text per page threshold easily";
       const pages = Array.from({ length: 10 }, () => makePage(longText));
       const doc = makeDoc(pages);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false, limits: { maxPdfPages: 3 } });
       const result = await ext.extract({ type: "file", path: "/docs/big.pdf" });
@@ -143,9 +155,12 @@ describe("PdfExtractor", () => {
     });
 
     it("does not set pagesCapped when all pages fit", async () => {
-      const longText = "Enough content to exceed the fifty character threshold for minimum text per page detection in the PDF extractor";
+      const longText =
+        "Enough content to exceed the fifty character threshold for minimum text per page detection in the PDF extractor";
       const doc = makeDoc([makePage(longText), makePage(longText)]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false, limits: { maxPdfPages: 200 } });
       const result = await ext.extract({ type: "file", path: "/docs/small.pdf" });
@@ -157,9 +172,12 @@ describe("PdfExtractor", () => {
   // ── extract() — metadata ───────────────────────────────────────────────
   describe("extract() — metadata", () => {
     it("includes PDF metadata (title, author)", async () => {
-      const longText = "Enough words to satisfy the fifty character minimum text per page requirement for the PDF text extraction logic";
+      const longText =
+        "Enough words to satisfy the fifty character minimum text per page requirement for the PDF text extraction logic";
       const doc = makeDoc([makePage(longText)], { Title: "My Report", Author: "Jane Doe" });
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false });
       const result = await ext.extract({ type: "file", path: "/docs/report.pdf" });
@@ -169,9 +187,12 @@ describe("PdfExtractor", () => {
     });
 
     it("includes filename in metadata", async () => {
-      const longText = "Long text content that definitely surpasses the fifty character threshold for minimum page text detection";
+      const longText =
+        "Long text content that definitely surpasses the fifty character threshold for minimum page text detection";
       const doc = makeDoc([makePage(longText)]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false });
       const result = await ext.extract({ type: "file", path: "/docs/my-report.pdf" });
@@ -180,10 +201,13 @@ describe("PdfExtractor", () => {
     });
 
     it("handles metadata extraction failure gracefully", async () => {
-      const longText = "Enough content to pass the minimum text per page threshold for the PDF extraction process cleanly";
+      const longText =
+        "Enough content to pass the minimum text per page threshold for the PDF extraction process cleanly";
       const doc = makeDoc([makePage(longText)]);
       doc.getMetadata.mockRejectedValue(new Error("no metadata"));
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false });
       const result = await ext.extract({ type: "file", path: "/docs/report.pdf" });
@@ -200,7 +224,9 @@ describe("PdfExtractor", () => {
       // Page with very little text (< 50 chars)
       const page = makePage("short");
       const doc = makeDoc([page]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: true });
       const result = await ext.extract({ type: "file", path: "/docs/scanned.pdf" });
@@ -211,9 +237,12 @@ describe("PdfExtractor", () => {
     });
 
     it("uses regular text when page text exceeds MIN_TEXT_PER_PAGE", async () => {
-      const longText = "This paragraph has enough text content to be well above the fifty character minimum threshold for text detection";
+      const longText =
+        "This paragraph has enough text content to be well above the fifty character minimum threshold for text detection";
       const doc = makeDoc([makePage(longText)]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: true });
       const result = await ext.extract({ type: "file", path: "/docs/normal.pdf" });
@@ -225,7 +254,9 @@ describe("PdfExtractor", () => {
     it("skips OCR when enableOcr is false, but keeps short text", async () => {
       const page = makePage("tiny text");
       const doc = makeDoc([page]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: false });
       const result = await ext.extract({ type: "file", path: "/docs/scanned.pdf" });
@@ -241,7 +272,9 @@ describe("PdfExtractor", () => {
 
       const page = makePage("fallback text");
       const doc = makeDoc([page]);
-      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({ promise: Promise.resolve(doc) });
+      (pdfjs.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(doc),
+      });
 
       const ext = new PdfExtractor({ enableOcr: true });
       const result = await ext.extract({ type: "file", path: "/docs/bad-ocr.pdf" });

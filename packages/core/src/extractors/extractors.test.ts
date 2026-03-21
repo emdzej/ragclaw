@@ -5,15 +5,15 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect } from "vitest";
-import { TextExtractor } from "./text.js";
-import { MarkdownExtractor } from "./markdown.js";
+import { describe, expect, it } from "vitest";
+import type { Source } from "../types.js";
 import { CodeExtractor } from "./code.js";
-import { WebExtractor } from "./web.js";
-import { PdfExtractor } from "./pdf.js";
 import { DocxExtractor } from "./docx.js";
 import { ImageExtractor } from "./image.js";
-import type { Source } from "../types.js";
+import { MarkdownExtractor } from "./markdown.js";
+import { PdfExtractor } from "./pdf.js";
+import { TextExtractor } from "./text.js";
+import { WebExtractor } from "./web.js";
 
 describe("Extractor canHandle", () => {
   describe("TextExtractor", () => {
@@ -120,7 +120,7 @@ describe("Extractor canHandle", () => {
     });
 
     it("does not handle sources without url", () => {
-      expect(ext.canHandle({ type: "url" })).toBe(false);
+      expect(ext.canHandle({ type: "url" } as unknown as Source)).toBe(false);
     });
   });
 
@@ -167,12 +167,18 @@ describe("Extractor canHandle", () => {
   describe("ImageExtractor", () => {
     const ext = new ImageExtractor();
 
-    it.each([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"])(
-      "handles %s files",
-      (extension) => {
-        expect(ext.canHandle({ type: "file", path: `/tmp/image${extension}` })).toBe(true);
-      }
-    );
+    it.each([
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".webp",
+      ".bmp",
+      ".tiff",
+      ".tif",
+    ])("handles %s files", (extension) => {
+      expect(ext.canHandle({ type: "file", path: `/tmp/image${extension}` })).toBe(true);
+    });
 
     it("is case-insensitive", () => {
       expect(ext.canHandle({ type: "file", path: "/tmp/image.PNG" })).toBe(true);
@@ -210,7 +216,7 @@ describe("TextExtractor.extract (inline text)", () => {
   });
 
   it("throws when neither content nor path is provided", async () => {
-    const source: Source = { type: "text" };
+    const source: Source = { type: "text" } as unknown as Source;
     await expect(ext.extract(source)).rejects.toThrow("requires content or file path");
   });
 });

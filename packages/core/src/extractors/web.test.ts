@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebExtractor } from "./web.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ function html(body: string, head = ""): string {
 /** Create a fake Response with streaming body support. */
 function fakeResponse(
   body: string,
-  opts: { status?: number; statusText?: string; contentType?: string; streamBody?: boolean } = {},
+  opts: { status?: number; statusText?: string; contentType?: string; streamBody?: boolean } = {}
 ): Response {
   const status = opts.status ?? 200;
   const statusText = opts.statusText ?? "OK";
@@ -70,7 +70,7 @@ describe("WebExtractor", () => {
     });
 
     it("rejects url sources without url field", () => {
-      expect(ext.canHandle({ type: "url" })).toBe(false);
+      expect(ext.canHandle({ type: "url" } as unknown as import("../types.js").Source)).toBe(false);
     });
 
     it("rejects ftp:// URLs", () => {
@@ -81,9 +81,9 @@ describe("WebExtractor", () => {
   // ── extract() basic ────────────────────────────────────────────────────
   describe("extract() — basic extraction", () => {
     it("extracts text from a simple page", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<main><h1>Title</h1><p>Hello world</p></main>")),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(fakeResponse(html("<main><h1>Title</h1><p>Hello world</p></main>")));
 
       const ext = new WebExtractor();
       const result = await ext.extract({ type: "url", url: "https://example.com" });
@@ -96,26 +96,29 @@ describe("WebExtractor", () => {
 
     it("throws when source has no URL", async () => {
       const ext = new WebExtractor();
-      await expect(ext.extract({ type: "url" })).rejects.toThrow("requires a URL");
+      await expect(
+        ext.extract({ type: "url" } as unknown as import("../types.js").Source)
+      ).rejects.toThrow("requires a URL");
     });
 
     it("throws on non-OK HTTP response", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse("Not Found", { status: 404, statusText: "Not Found" }),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(fakeResponse("Not Found", { status: 404, statusText: "Not Found" }));
 
       const ext = new WebExtractor();
-      await expect(ext.extract({ type: "url", url: "https://example.com/missing" }))
-        .rejects.toThrow("404 Not Found");
+      await expect(
+        ext.extract({ type: "url", url: "https://example.com/missing" })
+      ).rejects.toThrow("404 Not Found");
     });
   });
 
   // ── Metadata extraction ────────────────────────────────────────────────
   describe("extract() — metadata", () => {
     it("extracts title from <title>", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<p>content</p>", "<title>My Page Title</title>")),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(fakeResponse(html("<p>content</p>", "<title>My Page Title</title>")));
 
       const ext = new WebExtractor();
       const result = await ext.extract({ type: "url", url: "https://example.com" });
@@ -124,9 +127,9 @@ describe("WebExtractor", () => {
     });
 
     it("falls back to <h1> for title when <title> is empty", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<h1>Heading Title</h1><p>content</p>")),
-      );
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(fakeResponse(html("<h1>Heading Title</h1><p>content</p>")));
 
       const ext = new WebExtractor();
       const result = await ext.extract({ type: "url", url: "https://example.com" });
@@ -140,9 +143,7 @@ describe("WebExtractor", () => {
         <meta property="og:description" content="OG Desc">
         <meta name="author" content="John Doe">
       `;
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<p>content</p>", head)),
-      );
+      globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(html("<p>content</p>", head)));
 
       const ext = new WebExtractor();
       const result = await ext.extract({ type: "url", url: "https://example.com" });
@@ -154,9 +155,7 @@ describe("WebExtractor", () => {
 
     it("falls back to meta[name=description] when og:description absent", async () => {
       const head = `<meta name="description" content="Meta Desc">`;
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<p>content</p>", head)),
-      );
+      globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(html("<p>content</p>", head)));
 
       const ext = new WebExtractor();
       const result = await ext.extract({ type: "url", url: "https://example.com" });
@@ -165,9 +164,7 @@ describe("WebExtractor", () => {
     });
 
     it("includes the source URL in metadata", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<p>text</p>")),
-      );
+      globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(html("<p>text</p>")));
 
       const ext = new WebExtractor();
       const result = await ext.extract({ type: "url", url: "https://example.com/page" });
@@ -180,11 +177,13 @@ describe("WebExtractor", () => {
   describe("extract() — content cleaning", () => {
     it("removes script and style elements", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <script>alert("xss")</script>
           <style>body{color:red}</style>
           <main><p>Clean content</p></main>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -197,13 +196,15 @@ describe("WebExtractor", () => {
 
     it("removes nav, footer, header, aside, iframe, noscript", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <nav><p>Nav link</p></nav>
           <footer><p>Footer text</p></footer>
           <header><p>Header text</p></header>
           <aside><p>Sidebar</p></aside>
           <main><p>Main content</p></main>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -218,11 +219,13 @@ describe("WebExtractor", () => {
 
     it("removes elements by role attribute", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <div role="navigation"><p>Role nav</p></div>
           <div role="banner"><p>Role banner</p></div>
           <main><p>Keep this</p></main>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -235,10 +238,12 @@ describe("WebExtractor", () => {
 
     it("removes elements by class name (.sidebar, .ad, etc.)", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <div class="advertisement"><p>Buy stuff</p></div>
           <main><p>Article text</p></main>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -253,13 +258,15 @@ describe("WebExtractor", () => {
   describe("extract() — text formatting", () => {
     it("adds markdown heading prefixes", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <article>
             <h1>H1</h1>
             <h2>H2</h2>
             <h3>H3</h3>
           </article>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -272,11 +279,13 @@ describe("WebExtractor", () => {
 
     it("adds bullet markers to list items", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <article>
             <ul><li>Item one</li><li>Item two</li></ul>
           </article>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -288,13 +297,15 @@ describe("WebExtractor", () => {
 
     it("deduplicates consecutive identical lines", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <article>
             <p>Same text</p>
             <p>Same text</p>
             <p>Different text</p>
           </article>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -307,10 +318,12 @@ describe("WebExtractor", () => {
 
     it("prefers <main>/<article> content over full <body>", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html(`
+        fakeResponse(
+          html(`
           <div><p>Outside article</p></div>
           <article><p>Inside article</p></article>
-        `)),
+        `)
+        )
       );
 
       const ext = new WebExtractor();
@@ -328,30 +341,26 @@ describe("WebExtractor", () => {
     it("enforces maxResponseSizeBytes via streaming", async () => {
       // Create a response body that exceeds the limit
       const bigBody = "x".repeat(200);
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(bigBody),
-      );
+      globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(bigBody));
 
       const ext = new WebExtractor({ maxResponseSizeBytes: 100 });
-      await expect(ext.extract({ type: "url", url: "https://example.com" }))
-        .rejects.toThrow("exceeds limit");
+      await expect(ext.extract({ type: "url", url: "https://example.com" })).rejects.toThrow(
+        "exceeds limit"
+      );
     });
 
     it("enforces maxResponseSizeBytes when body is null (fallback path)", async () => {
       const bigBody = "x".repeat(200);
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(bigBody, { streamBody: false }),
-      );
+      globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(bigBody, { streamBody: false }));
 
       const ext = new WebExtractor({ maxResponseSizeBytes: 100 });
-      await expect(ext.extract({ type: "url", url: "https://example.com" }))
-        .rejects.toThrow("exceeds limit");
+      await expect(ext.extract({ type: "url", url: "https://example.com" })).rejects.toThrow(
+        "exceeds limit"
+      );
     });
 
     it("allows responses within the size limit", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<p>Small page</p>")),
-      );
+      globalThis.fetch = vi.fn().mockResolvedValue(fakeResponse(html("<p>Small page</p>")));
 
       const ext = new WebExtractor({ maxResponseSizeBytes: 10_000 });
       const result = await ext.extract({ type: "url", url: "https://example.com" });
@@ -370,21 +379,20 @@ describe("WebExtractor", () => {
               const err = new DOMException("The operation was aborted", "AbortError");
               reject(err);
             });
-          }),
+          })
       );
 
       const ext = new WebExtractor({ fetchTimeoutMs: 50 });
-      await expect(ext.extract({ type: "url", url: "https://example.com" }))
-        .rejects.toThrow("timed out");
+      await expect(ext.extract({ type: "url", url: "https://example.com" })).rejects.toThrow(
+        "timed out"
+      );
     });
   });
 
   // ── Fetch headers ──────────────────────────────────────────────────────
   describe("extract() — request configuration", () => {
     it("sends User-Agent and Accept headers", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        fakeResponse(html("<p>ok</p>")),
-      );
+      const mockFetch = vi.fn().mockResolvedValue(fakeResponse(html("<p>ok</p>")));
       globalThis.fetch = mockFetch;
 
       const ext = new WebExtractor();
@@ -392,7 +400,7 @@ describe("WebExtractor", () => {
 
       const [, opts] = mockFetch.mock.calls[0];
       expect(opts.headers["User-Agent"]).toContain("RagClaw");
-      expect(opts.headers["Accept"]).toContain("text/html");
+      expect(opts.headers.Accept).toContain("text/html");
     });
   });
 });

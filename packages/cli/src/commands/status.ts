@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
+import { resolvePreset, Store } from "@emdzej/ragclaw-core";
 import chalk from "chalk";
-import { Store, resolvePreset } from "@emdzej/ragclaw-core";
 import { getDbPath } from "../config.js";
 
 interface StatusOptions {
@@ -40,7 +40,9 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
     console.log(chalk.bold(`Knowledge Base: ${options.db}`));
     console.log(chalk.dim(`Path: ${dbPath}`));
     console.log();
-    console.log(`  Embedder: ${chalk.cyan(embedderName)} (${embedderModel}, ${embedderDimsDisplay} dims)`);
+    console.log(
+      `  Embedder: ${chalk.cyan(embedderName)} (${embedderModel}, ${embedderDimsDisplay} dims)`
+    );
     console.log(`  Sources:  ${chalk.cyan(stats.sources)}`);
     console.log(`  Chunks:   ${chalk.cyan(stats.chunks)}`);
     console.log(`  Size:     ${chalk.cyan(formatBytes(stats.sizeBytes))}`);
@@ -51,7 +53,9 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
     }
 
     console.log();
-    console.log(`  Vector support: ${store.hasVectorSupport ? chalk.green("✓ native") : chalk.yellow("○ JS fallback")}`);
+    console.log(
+      `  Vector support: ${store.hasVectorSupport ? chalk.green("✓ native") : chalk.yellow("○ JS fallback")}`
+    );
   } finally {
     await store.close();
   }

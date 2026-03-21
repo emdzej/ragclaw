@@ -5,15 +5,15 @@
  * LICENSE file in the root directory of this repository.
  */
 
+import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-import { randomUUID } from "crypto";
 import type {
-  SourceRecord,
   ChunkRecord,
   SearchQuery,
   SearchResult,
-  StoreStats,
+  SourceRecord,
   StoreConfig,
+  StoreStats,
 } from "../types.js";
 import { cosineSimilarity } from "../utils/math.js";
 
@@ -120,11 +120,11 @@ export class Store {
       // Emit once at open time so users know about the performance trade-off.
       console.warn(
         "[ragclaw] sqlite-vec is not available — vector search will fall back to a slower JS implementation.\n" +
-        "  To enable fast native vector search, install the sqlite-vec package:\n" +
-        "    npm install -g @emdzej/ragclaw-cli   (already bundles sqlite-vec)\n" +
-        "    — or —\n" +
-        "    npm install sqlite-vec               (for programmatic use of @emdzej/ragclaw-core)\n" +
-        "  The JS fallback is functionally correct but becomes noticeably slow above ~5 000 chunks."
+          "  To enable fast native vector search, install the sqlite-vec package:\n" +
+          "    npm install -g @emdzej/ragclaw-cli   (already bundles sqlite-vec)\n" +
+          "    — or —\n" +
+          "    npm install sqlite-vec               (for programmatic use of @emdzej/ragclaw-core)\n" +
+          "  The JS fallback is functionally correct but becomes noticeably slow above ~5 000 chunks."
       );
     }
   }
@@ -142,9 +142,7 @@ export class Store {
       .get() as { value: string } | undefined;
 
     if (!existing) {
-      const insert = this.db.prepare(
-        "INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)"
-      );
+      const insert = this.db.prepare("INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)");
       const migrate = this.db.transaction(() => {
         insert.run("embedder_name", "nomic");
         insert.run("embedder_model", "nomic-ai/nomic-embed-text-v1.5");
@@ -166,8 +164,7 @@ export class Store {
     // ── Step 1: try loading via the sqlite-vec npm package ───────────────────
     // The package ships prebuilt binaries and calls db.loadExtension() internally.
     try {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore — optional dependency; may not be installed
+      // sqlite-vec is an optional dependency and may not be installed
       const sqliteVec = await import("sqlite-vec");
       sqliteVec.load(this.db);
       this.vecLoadedFrom = "npm";
@@ -207,20 +204,9 @@ export class Store {
    */
   async getMeta(key: string): Promise<string | null> {
     if (!this.db) throw new Error("Store not opened");
-    const row = this.db
-      .prepare("SELECT value FROM store_meta WHERE key = ?")
-      .get(key) as { value: string } | undefined;
-    return row?.value ?? null;
-  }
-
-  /**
-   * Synchronous variant used internally (before async context is available).
-   */
-  private getMetaSync(key: string): string | null {
-    if (!this.db) return null;
-    const row = this.db
-      .prepare("SELECT value FROM store_meta WHERE key = ?")
-      .get(key) as { value: string } | undefined;
+    const row = this.db.prepare("SELECT value FROM store_meta WHERE key = ?").get(key) as
+      | { value: string }
+      | undefined;
     return row?.value ?? null;
   }
 
@@ -229,9 +215,7 @@ export class Store {
    */
   async setMeta(key: string, value: string): Promise<void> {
     if (!this.db) throw new Error("Store not opened");
-    this.db
-      .prepare("INSERT OR REPLACE INTO store_meta (key, value) VALUES (?, ?)")
-      .run(key, value);
+    this.db.prepare("INSERT OR REPLACE INTO store_meta (key, value) VALUES (?, ?)").run(key, value);
   }
 
   /**
@@ -239,9 +223,10 @@ export class Store {
    */
   async getAllMeta(): Promise<Record<string, string>> {
     if (!this.db) throw new Error("Store not opened");
-    const rows = this.db
-      .prepare("SELECT key, value FROM store_meta")
-      .all() as { key: string; value: string }[];
+    const rows = this.db.prepare("SELECT key, value FROM store_meta").all() as {
+      key: string;
+      value: string;
+    }[];
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
@@ -274,9 +259,9 @@ export class Store {
   async getSource(path: string): Promise<SourceRecord | null> {
     if (!this.db) throw new Error("Store not opened");
 
-    const row = this.db
-      .prepare("SELECT * FROM sources WHERE path = ?")
-      .get(path) as Record<string, unknown> | undefined;
+    const row = this.db.prepare("SELECT * FROM sources WHERE path = ?").get(path) as
+      | Record<string, unknown>
+      | undefined;
 
     if (!row) return null;
 
@@ -329,7 +314,9 @@ export class Store {
     // Also remove from vec table if available
     if (this.hasVec) {
       try {
-        this.db.prepare("DELETE FROM chunks_vec WHERE id IN (SELECT id FROM chunks WHERE source_id = ?)").run(id);
+        this.db
+          .prepare("DELETE FROM chunks_vec WHERE id IN (SELECT id FROM chunks WHERE source_id = ?)")
+          .run(id);
       } catch {
         // Ignore vec errors
       }
@@ -339,7 +326,10 @@ export class Store {
   async listSources(): Promise<SourceRecord[]> {
     if (!this.db) throw new Error("Store not opened");
 
-    const rows = this.db.prepare("SELECT * FROM sources ORDER BY indexed_at DESC").all() as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM sources ORDER BY indexed_at DESC").all() as Record<
+      string,
+      unknown
+    >[];
 
     return rows.map((row) => ({
       id: row.id as string,
@@ -370,9 +360,7 @@ export class Store {
 
     const transaction = this.db.transaction((chunks: ChunkRecord[]) => {
       for (const chunk of chunks) {
-        const embeddingBlob = chunk.embedding
-          ? Buffer.from(chunk.embedding.buffer)
-          : null;
+        const embeddingBlob = chunk.embedding ? Buffer.from(chunk.embedding.buffer) : null;
 
         insertChunk.run(
           chunk.id,
@@ -403,7 +391,9 @@ export class Store {
 
     if (this.hasVec) {
       try {
-        this.db.prepare("DELETE FROM chunks_vec WHERE id IN (SELECT id FROM chunks WHERE source_id = ?)").run(sourceId);
+        this.db
+          .prepare("DELETE FROM chunks_vec WHERE id IN (SELECT id FROM chunks WHERE source_id = ?)")
+          .run(sourceId);
       } catch {
         // Ignore vec errors
       }
@@ -459,14 +449,16 @@ export class Store {
 
     try {
       const embeddingBlob = Buffer.from(embedding.buffer);
-      const rows = this.db.prepare(`
+      const rows = this.db
+        .prepare(`
         SELECT c.*, s.path AS source_path, vec_distance_cosine(v.embedding, ?) AS dist
         FROM chunks_vec v
         JOIN chunks c ON c.id = v.id
         JOIN sources s ON s.id = c.source_id
         ORDER BY dist ASC
         LIMIT ?
-      `).all(embeddingBlob, limit) as Record<string, unknown>[];
+      `)
+        .all(embeddingBlob, limit) as Record<string, unknown>[];
 
       return rows.map((row) => ({
         chunk: this.rowToChunk(row),
@@ -486,9 +478,9 @@ export class Store {
     // Only fetch id + raw embedding blob to minimise memory and avoid
     // JSON.parse / rowToChunk overhead for the vast majority of rows that
     // won't make it into the final result set.
-    const rows = this.db.prepare(
-      "SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL"
-    ).all() as { id: string; embedding: Buffer }[];
+    const rows = this.db
+      .prepare("SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL")
+      .all() as { id: string; embedding: Buffer }[];
 
     if (rows.length === 0) return [];
 
@@ -496,9 +488,9 @@ export class Store {
     if (rows.length > 5_000) {
       console.warn(
         `[ragclaw] JS fallback vector search is scanning ${rows.length.toLocaleString()} chunks — ` +
-        `this will be slow. Install the sqlite-vec package for native ANN search:\n` +
-        `  npm install -g @emdzej/ragclaw-cli   (already bundles sqlite-vec)\n` +
-        `  npm install sqlite-vec               (for programmatic use)`
+          `this will be slow. Install the sqlite-vec package for native ANN search:\n` +
+          `  npm install -g @emdzej/ragclaw-cli   (already bundles sqlite-vec)\n` +
+          `  npm install sqlite-vec               (for programmatic use)`
       );
     }
 
@@ -518,12 +510,14 @@ export class Store {
     // ── Pass 2: hydrate only the winners ───────────────────────────────
     const placeholders = topK.map(() => "?").join(", ");
     const ids = topK.map((r) => r.id);
-    const fullRows = this.db.prepare(`
+    const fullRows = this.db
+      .prepare(`
       SELECT c.*, s.path AS source_path
       FROM chunks c
       JOIN sources s ON s.id = c.source_id
       WHERE c.id IN (${placeholders})
-    `).all(...ids) as Record<string, unknown>[];
+    `)
+      .all(...ids) as Record<string, unknown>[];
 
     // Index by id for quick lookup.
     const rowById = new Map<string, Record<string, unknown>>();
@@ -552,7 +546,8 @@ export class Store {
     // Escape special FTS5 characters
     const escapedText = text.replace(/['"]/g, '""');
 
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT c.*, s.path AS source_path, bm25(chunks_fts) AS rank
       FROM chunks_fts fts
       JOIN chunks c ON c.id = fts.id
@@ -560,7 +555,8 @@ export class Store {
       WHERE chunks_fts MATCH ?
       ORDER BY rank
       LIMIT ?
-    `).all(`"${escapedText}"`, limit) as Record<string, unknown>[];
+    `)
+      .all(`"${escapedText}"`, limit) as Record<string, unknown>[];
 
     // Normalize BM25 scores (they're negative, lower is better)
     const maxRank = Math.max(...rows.map((r) => Math.abs(r.rank as number)), 1);
@@ -666,7 +662,7 @@ export class Store {
         entry.strategy,
         entry.sourcesAdded,
         entry.sourcesUpdated,
-        entry.sourcesSkipped,
+        entry.sourcesSkipped
       );
   }
 
@@ -677,12 +673,18 @@ export class Store {
   async getStats(): Promise<StoreStats> {
     if (!this.db) throw new Error("Store not opened");
 
-    const sources = this.db.prepare("SELECT COUNT(*) as count FROM sources").get() as { count: number };
-    const chunks = this.db.prepare("SELECT COUNT(*) as count FROM chunks").get() as { count: number };
-    const lastUpdated = this.db.prepare("SELECT MAX(indexed_at) as ts FROM sources").get() as { ts: number | null };
+    const sources = this.db.prepare("SELECT COUNT(*) as count FROM sources").get() as {
+      count: number;
+    };
+    const chunks = this.db.prepare("SELECT COUNT(*) as count FROM chunks").get() as {
+      count: number;
+    };
+    const lastUpdated = this.db.prepare("SELECT MAX(indexed_at) as ts FROM sources").get() as {
+      ts: number | null;
+    };
 
     // Get file size
-    const fs = await import("fs/promises");
+    const fs = await import("node:fs/promises");
     const stat = await fs.stat(this.dbPath);
 
     return {

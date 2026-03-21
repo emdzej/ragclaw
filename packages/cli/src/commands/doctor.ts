@@ -5,15 +5,22 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import os from "os";
+import os from "node:os";
+import {
+  checkSystemRequirements,
+  getAvailableMemory,
+  getConfig,
+  listPresets,
+  resolvePreset,
+  Store,
+} from "@emdzej/ragclaw-core";
 import chalk from "chalk";
-import { Store, listPresets, resolvePreset, getConfig, checkSystemRequirements, getAvailableMemory } from "@emdzej/ragclaw-core";
 import { PluginLoader } from "../plugins/loader.js";
 
 function formatBytes(bytes: number): string {
-  const gb = bytes / (1024 ** 3);
+  const gb = bytes / 1024 ** 3;
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / (1024 ** 2);
+  const mb = bytes / 1024 ** 2;
   return `${mb.toFixed(0)} MB`;
 }
 
@@ -48,7 +55,9 @@ export async function doctorCommand(): Promise<void> {
   const nodeVersion = process.version;
 
   console.log(chalk.bold("System Check:"));
-  console.log(`  RAM:   ${formatBytes(totalRAM)} total, ${formatBytes(availableRAM)} available ${chalk.dim("(free + reclaimable cache)")}`);
+  console.log(
+    `  RAM:   ${formatBytes(totalRAM)} total, ${formatBytes(availableRAM)} available ${chalk.dim("(free + reclaimable cache)")}`
+  );
   console.log(`  Node:  ${nodeVersion}`);
   console.log();
 
@@ -59,8 +68,12 @@ export async function doctorCommand(): Promise<void> {
     const via = vec.source === "npm" ? "npm package" : "system extension";
     console.log(`  ${chalk.green("✓")} Available  ${chalk.dim(`(loaded via ${via})`)}`);
   } else {
-    console.log(`  ${chalk.yellow("!")} Not available — vector search will use a slower JS fallback`);
-    console.log(`    ${chalk.dim("To install:")}  npm install sqlite-vec  ${chalk.dim("(or install @emdzej/ragclaw-cli globally)")}`);
+    console.log(
+      `  ${chalk.yellow("!")} Not available — vector search will use a slower JS fallback`
+    );
+    console.log(
+      `    ${chalk.dim("To install:")}  npm install sqlite-vec  ${chalk.dim("(or install @emdzej/ragclaw-cli globally)")}`
+    );
   }
   console.log();
 
@@ -71,7 +84,8 @@ export async function doctorCommand(): Promise<void> {
   const maxAliasLen = Math.max(...aliases.map((a) => a.length));
 
   for (const alias of aliases) {
-    const preset = resolvePreset(alias)!;
+    const preset = resolvePreset(alias);
+    if (!preset) continue;
     const ram = preset.estimatedRAM ?? 0;
     const ramStr = formatBytes(ram);
     const dimStr = preset.dim ? `${preset.dim} dim` : "auto";
@@ -89,7 +103,9 @@ export async function doctorCommand(): Promise<void> {
     const aliasCol = alias.padEnd(maxAliasLen + 2);
     const ramCol = `(~${ramStr})`.padEnd(12);
     const dimCol = dimStr.padEnd(8);
-    console.log(`  ${chalk.cyan(aliasCol)} ${ramCol} ${preset.model.padEnd(48)} ${dimCol}  ${status}`);
+    console.log(
+      `  ${chalk.cyan(aliasCol)} ${ramCol} ${preset.model.padEnd(48)} ${dimCol}  ${status}`
+    );
   }
 
   console.log();
@@ -100,7 +116,9 @@ export async function doctorCommand(): Promise<void> {
   if (typeof embedderConfig === "string") {
     console.log(`  embedder: ${chalk.cyan(embedderConfig)}`);
   } else if (embedderConfig && typeof embedderConfig === "object") {
-    console.log(`  embedder: ${chalk.cyan(embedderConfig.model ?? embedderConfig.plugin ?? "(custom)")}`);
+    console.log(
+      `  embedder: ${chalk.cyan(embedderConfig.model ?? embedderConfig.plugin ?? "(custom)")}`
+    );
   } else {
     console.log(`  embedder: ${chalk.dim("nomic (default)")}`);
   }
@@ -113,12 +131,17 @@ export async function doctorCommand(): Promise<void> {
     config: config.pluginConfig,
   });
   await pluginLoader.loadAll();
-  const plugins = pluginLoader["loadedPlugins"] as Array<{ manifest: { name: string; version: string }; plugin: { embedder?: unknown } }>;
+  const plugins = pluginLoader.getLoadedPlugins() as Array<{
+    manifest: { name: string; version: string };
+    plugin: { embedder?: unknown };
+  }>;
 
   if (plugins.length > 0) {
     console.log(chalk.bold("Plugins:"));
     for (const { manifest, plugin } of plugins) {
-      const embedderNote = plugin.embedder ? chalk.green("(provides embedder)") : chalk.dim("(no embedder)");
+      const embedderNote = plugin.embedder
+        ? chalk.green("(provides embedder)")
+        : chalk.dim("(no embedder)");
       console.log(`  ${manifest.name.padEnd(36)} v${manifest.version}   ${embedderNote}`);
     }
   } else {

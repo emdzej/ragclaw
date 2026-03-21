@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MergeService } from "./merge.js";
 import { Store } from "./store/index.js";
 import type { EmbedderPlugin } from "./types.js";
@@ -29,7 +29,7 @@ function makePluginEmbedder(dims: number, name = "test-embedder"): EmbedderPlugi
     embed: vi.fn(async () => new Float32Array(dims).fill(0.1)),
     embedQuery: vi.fn(async () => new Float32Array(dims).fill(0.1)),
     embedBatch: vi.fn(async (texts: string[]) =>
-      texts.map((_, i) => new Float32Array(dims).fill(0.1 + i * 0.01)),
+      texts.map((_, i) => new Float32Array(dims).fill(0.1 + i * 0.01))
     ),
   };
 }
@@ -51,7 +51,7 @@ async function addSourceWithChunks(
   path: string,
   texts: string[],
   dims = 768,
-  contentHash = "hash-" + randomUUID(),
+  contentHash = `hash-${randomUUID()}`
 ): Promise<string> {
   const sourceId = await store.addSource({
     path,
@@ -72,7 +72,7 @@ async function addSourceWithChunks(
         metadata: { type: "paragraph" as const },
         embedding: fakeEmbedding(i, dims),
         createdAt: Date.now(),
-      })),
+      }))
     );
   }
 
@@ -84,7 +84,7 @@ async function setEmbedderMeta(
   store: Store,
   name = "nomic",
   dims = 768,
-  model = "nomic-embed-text-v1.5",
+  model = "nomic-embed-text-v1.5"
 ): Promise<void> {
   await store.setMeta("embedder_name", name);
   await store.setMeta("embedder_dimensions", String(dims));
@@ -97,9 +97,9 @@ async function setEmbedderMeta(
 // We write a temp file-backed SQLite for the source and keep dest in-memory.
 // ---------------------------------------------------------------------------
 
-import { tmpdir } from "os";
-import { join } from "path";
-import { existsSync, rmSync } from "fs";
+import { existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function tempDbPath(): string {
   return join(tmpdir(), `merge-test-${randomUUID()}.db`);
@@ -107,7 +107,7 @@ function tempDbPath(): string {
 
 /** Create a file-backed store, run setup, return its path. */
 async function makeFileStore(
-  setup: (store: Store) => Promise<void>,
+  setup: (store: Store) => Promise<void>
 ): Promise<{ store: Store; path: string }> {
   const path = tempDbPath();
   const store = new Store();
@@ -322,9 +322,7 @@ describe("MergeService", () => {
       tempFiles.push(srcPath);
       await srcStore.close();
 
-      await expect(mergeService.merge(destStore, srcPath)).rejects.toThrow(
-        /embedder mismatch/i,
-      );
+      await expect(mergeService.merge(destStore, srcPath)).rejects.toThrow(/embedder mismatch/i);
     });
 
     it("records merge history", async () => {
@@ -482,7 +480,7 @@ describe("MergeService", () => {
       const chunks = await destStore.getChunksBySource(src.id);
       expect(chunks).toHaveLength(2);
       expect(chunks[0].embedding).toBeInstanceOf(Float32Array);
-      expect(chunks[0].embedding!.length).toBeGreaterThan(0);
+      expect(chunks[0].embedding?.length).toBeGreaterThan(0);
     });
 
     it("throws when strategy=reindex but no embedder provided", async () => {
@@ -492,9 +490,9 @@ describe("MergeService", () => {
       tempFiles.push(srcPath);
       await srcStore.close();
 
-      await expect(
-        mergeService.merge(destStore, srcPath, { strategy: "reindex" }),
-      ).rejects.toThrow(/embedder/i);
+      await expect(mergeService.merge(destStore, srcPath, { strategy: "reindex" })).rejects.toThrow(
+        /embedder/i
+      );
     });
 
     it("works across different embedders", async () => {

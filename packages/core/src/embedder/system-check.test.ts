@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkSystemRequirements } from "./system-check.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EmbedderPreset } from "../types.js";
+import { checkSystemRequirements } from "./system-check.js";
 
 // Mock the memory utility so tests are isolated from the real OS
 vi.mock("../utils/memory.js", () => ({
@@ -15,6 +15,7 @@ vi.mock("../utils/memory.js", () => ({
 }));
 
 import { getAvailableMemory } from "../utils/memory.js";
+
 const mockGetAvailableMemory = vi.mocked(getAvailableMemory);
 
 const PRESET_600MB: EmbedderPreset = {

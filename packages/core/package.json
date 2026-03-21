@@ -14,6 +14,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
+    "lint": "biome check --error-on-warnings ./src",
+    "lint:fix": "biome check --write ./src",
     "test": "vitest run",
     "test:watch": "vitest"
   },

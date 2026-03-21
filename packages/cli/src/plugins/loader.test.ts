@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { RagClawPlugin, LoadedPlugin } from "@emdzej/ragclaw-core";
+import type { LoadedPlugin, RagClawPlugin } from "@emdzej/ragclaw-core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -154,7 +154,10 @@ describe("PluginLoader", () => {
 
       mockReadFile.mockResolvedValue(fakePackageJson("ragclaw-plugin-npm"));
 
-      const loader = new PluginLoader({ scanGlobalNpm: true, enabledPlugins: ["ragclaw-plugin-npm"] });
+      const loader = new PluginLoader({
+        scanGlobalNpm: true,
+        enabledPlugins: ["ragclaw-plugin-npm"],
+      });
       const manifests = await loader.discover();
 
       // Should only find the ragclaw-plugin-* package
@@ -279,7 +282,7 @@ describe("PluginLoader", () => {
       expect(loaded).toEqual([]);
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("Failed to load plugin"),
-        expect.anything(),
+        expect.anything()
       );
     });
   });
@@ -290,11 +293,20 @@ describe("PluginLoader", () => {
       const loader = new PluginLoader({ enabledPlugins: [] });
 
       // Manually inject loaded plugins
-      const extractor = { canHandle: () => true, extract: async () => ({ text: "", metadata: {}, sourceType: "text" as const }) };
+      const extractor = {
+        canHandle: () => true,
+        extract: async () => ({ text: "", metadata: {}, sourceType: "text" as const }),
+      };
       // @ts-expect-error accessing private for test
       loader.loadedPlugins = [
         {
-          manifest: { name: "test", version: "1.0.0", main: "index.js", path: "/", source: "local" as const },
+          manifest: {
+            name: "test",
+            version: "1.0.0",
+            main: "index.js",
+            path: "/",
+            source: "local" as const,
+          },
           plugin: { name: "test", version: "1.0.0", extractors: [extractor] },
         },
       ];
@@ -310,7 +322,13 @@ describe("PluginLoader", () => {
       // @ts-expect-error accessing private for test
       loader.loadedPlugins = [
         {
-          manifest: { name: "test", version: "1.0.0", main: "index.js", path: "/", source: "local" as const },
+          manifest: {
+            name: "test",
+            version: "1.0.0",
+            main: "index.js",
+            path: "/",
+            source: "local" as const,
+          },
           plugin: { name: "test", version: "1.0.0", schemes: ["github", "gh"] },
         },
       ];
@@ -327,7 +345,13 @@ describe("PluginLoader", () => {
       // @ts-expect-error accessing private for test
       loader.loadedPlugins = [
         {
-          manifest: { name: "test", version: "1.0.0", main: "index.js", path: "/", source: "local" as const },
+          manifest: {
+            name: "test",
+            version: "1.0.0",
+            main: "index.js",
+            path: "/",
+            source: "local" as const,
+          },
           plugin: { name: "test", version: "1.0.0", extensions: [".epub", ".XLSX"] },
         },
       ];
@@ -352,8 +376,18 @@ describe("PluginLoader", () => {
       // @ts-expect-error accessing private for test
       loader.loadedPlugins = [
         {
-          manifest: { name: "test", version: "1.0.0", main: "index.js", path: "/", source: "local" as const },
-          plugin: { name: "test", version: "1.0.0", expand: vi.fn().mockResolvedValue(expandedSources) },
+          manifest: {
+            name: "test",
+            version: "1.0.0",
+            main: "index.js",
+            path: "/",
+            source: "local" as const,
+          },
+          plugin: {
+            name: "test",
+            version: "1.0.0",
+            expand: vi.fn().mockResolvedValue(expandedSources),
+          },
         },
       ];
 
@@ -367,7 +401,13 @@ describe("PluginLoader", () => {
       // @ts-expect-error accessing private for test
       loader.loadedPlugins = [
         {
-          manifest: { name: "test", version: "1.0.0", main: "index.js", path: "/", source: "local" as const },
+          manifest: {
+            name: "test",
+            version: "1.0.0",
+            main: "index.js",
+            path: "/",
+            source: "local" as const,
+          },
           plugin: { name: "test", version: "1.0.0" }, // no expand function
         },
       ];
@@ -386,7 +426,13 @@ describe("PluginLoader", () => {
       // @ts-expect-error accessing private for test
       loader.loadedPlugins = [
         {
-          manifest: { name: "test", version: "1.0.0", main: "index.js", path: "/", source: "local" as const },
+          manifest: {
+            name: "test",
+            version: "1.0.0",
+            main: "index.js",
+            path: "/",
+            source: "local" as const,
+          },
           plugin: { name: "test", version: "1.0.0", dispose: disposeFn },
         },
       ];

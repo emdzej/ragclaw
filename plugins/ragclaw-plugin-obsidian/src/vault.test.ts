@@ -13,8 +13,7 @@
  *   - plugin.init() config
  *   - findMarkdownFiles limits
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Source } from "@emdzej/ragclaw-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -60,7 +59,7 @@ function makeNoteContent(title: string, body: string, tags?: string[]): string {
   return content;
 }
 
-const extractor = plugin.extractors![0];
+const extractor = plugin.extractors?.[0];
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -95,10 +94,17 @@ describe("ObsidianExtractor.extract() — single note", () => {
 
     mockStat.mockResolvedValue({ isFile: () => true, isDirectory: () => false });
 
-    const noteContent = makeNoteContent("Hello", "Hello world! This is my note.\n\nIt has [[links]] and #tags.", ["greeting", "demo"]);
+    const noteContent = makeNoteContent(
+      "Hello",
+      "Hello world! This is my note.\n\nIt has [[links]] and #tags.",
+      ["greeting", "demo"]
+    );
     mockReadFile.mockResolvedValue(noteContent);
 
-    const result = await extractor.extract({ type: "url", url: "obsidian://MyVault/notes/hello.md" });
+    const result = await extractor.extract({
+      type: "url",
+      url: "obsidian://MyVault/notes/hello.md",
+    });
 
     expect(result.sourceType).toBe("markdown");
     expect(result.text).toContain("# hello");
@@ -145,7 +151,8 @@ describe("ObsidianExtractor.extract() — single note", () => {
 
     mockStat.mockResolvedValue({ isFile: () => true, isDirectory: () => false });
 
-    const noteContent = "---\ntitle: Test Note\ntags: [alpha, beta]\naliases: [TN, TestN]\n---\nSome body content.";
+    const noteContent =
+      "---\ntitle: Test Note\ntags: [alpha, beta]\naliases: [TN, TestN]\n---\nSome body content.";
     mockReadFile.mockResolvedValue(noteContent);
 
     const result = await extractor.extract({ type: "url", url: "obsidian://TestVault/test.md" });
@@ -230,9 +237,7 @@ describe("ObsidianExtractor.extract() — vault/folder", () => {
 
     mockStat.mockResolvedValue({ isFile: () => false, isDirectory: () => true });
 
-    mockReaddir.mockResolvedValue([
-      fakeDirent("sub-note.md", false),
-    ]);
+    mockReaddir.mockResolvedValue([fakeDirent("sub-note.md", false)]);
 
     mockReadFile.mockResolvedValue("Sub folder note content");
 
@@ -278,7 +283,10 @@ describe("parseObsidianUrl / findVault — via extractor", () => {
     mockStat.mockResolvedValue({ isFile: () => true, isDirectory: () => false });
     mockReadFile.mockResolvedValue("Note content here");
 
-    const result = await extractor.extract({ type: "url", url: "obsidian://TestVault/folder/note.md" });
+    const result = await extractor.extract({
+      type: "url",
+      url: "obsidian://TestVault/folder/note.md",
+    });
 
     expect(result.metadata.type).toBe("obsidian-note");
     expect(result.metadata.vault).toBe("TestVault");
@@ -288,23 +296,23 @@ describe("parseObsidianUrl / findVault — via extractor", () => {
   it("throws when vault not found by name", async () => {
     mockExistsSync.mockReturnValue(false);
 
-    await expect(
-      extractor.extract({ type: "url", url: "obsidian://NonExistent" }),
-    ).rejects.toThrow("Vault not found: NonExistent");
+    await expect(extractor.extract({ type: "url", url: "obsidian://NonExistent" })).rejects.toThrow(
+      "Vault not found: NonExistent"
+    );
   });
 
   it("throws when absolute path doesn't exist", async () => {
     mockExistsSync.mockReturnValue(false);
 
     await expect(
-      extractor.extract({ type: "url", url: "obsidian:///does/not/exist" }),
+      extractor.extract({ type: "url", url: "obsidian:///does/not/exist" })
     ).rejects.toThrow("Vault not found: /does/not/exist");
   });
 
   it("throws for invalid URL format", async () => {
-    await expect(
-      extractor.extract({ type: "url", url: "invalid://something" }),
-    ).rejects.toThrow("Invalid Obsidian URL");
+    await expect(extractor.extract({ type: "url", url: "invalid://something" })).rejects.toThrow(
+      "Invalid Obsidian URL"
+    );
   });
 
   it("supports vault:// scheme", async () => {
@@ -342,18 +350,15 @@ describe("plugin.expand() — expandObsidian", () => {
       .mockResolvedValueOnce({ isFile: () => true, isDirectory: () => false, size: 100 })
       .mockResolvedValueOnce({ isFile: () => true, isDirectory: () => false, size: 200 });
 
-    mockReaddir.mockResolvedValue([
-      fakeDirent("note-a.md", false),
-      fakeDirent("note-b.md", false),
-    ]);
+    mockReaddir.mockResolvedValue([fakeDirent("note-a.md", false), fakeDirent("note-b.md", false)]);
 
-    const sources = await plugin.expand!({ type: "url", url: "obsidian:///vault" });
+    const sources = await plugin.expand?.({ type: "url", url: "obsidian:///vault" });
 
     expect(sources).toHaveLength(2);
-    expect(sources![0].url).toContain("note-a.md");
-    expect(sources![0].name).toBe("note-a");
-    expect(sources![1].url).toContain("note-b.md");
-    expect(sources![1].name).toBe("note-b");
+    expect(sources?.[0].url).toContain("note-a.md");
+    expect(sources?.[0].name).toBe("note-a");
+    expect(sources?.[1].url).toContain("note-b.md");
+    expect(sources?.[1].name).toBe("note-b");
   });
 
   it("returns null for single file source (no expansion needed)", async () => {
@@ -367,12 +372,12 @@ describe("plugin.expand() — expandObsidian", () => {
 
     mockStat.mockResolvedValue({ isFile: () => true, isDirectory: () => false });
 
-    const result = await plugin.expand!({ type: "url", url: "obsidian://V/note.md" });
+    const result = await plugin.expand?.({ type: "url", url: "obsidian://V/note.md" });
     expect(result).toBeNull();
   });
 
   it("returns null for non-obsidian URL", async () => {
-    const result = await plugin.expand!({ type: "url", url: "https://example.com" });
+    const result = await plugin.expand?.({ type: "url", url: "https://example.com" });
     expect(result).toBeNull();
   });
 
@@ -387,14 +392,12 @@ describe("plugin.expand() — expandObsidian", () => {
       .mockResolvedValueOnce({ isFile: () => false, isDirectory: () => true, size: 0 })
       .mockResolvedValueOnce({ isFile: () => true, isDirectory: () => false, size: 50 });
 
-    mockReaddir.mockResolvedValue([
-      fakeDirent("note.md", false),
-    ]);
+    mockReaddir.mockResolvedValue([fakeDirent("note.md", false)]);
 
-    const sources = await plugin.expand!({ type: "url", url: "vault:///vault" });
+    const sources = await plugin.expand?.({ type: "url", url: "vault:///vault" });
 
     expect(sources).toHaveLength(1);
-    expect(sources![0].url).toMatch(/^vault:\/\//);
+    expect(sources?.[0].url).toMatch(/^vault:\/\//);
   });
 
   it("expands named vault with subpath", async () => {
@@ -409,15 +412,13 @@ describe("plugin.expand() — expandObsidian", () => {
       .mockResolvedValueOnce({ isFile: () => false, isDirectory: () => true, size: 0 })
       .mockResolvedValueOnce({ isFile: () => true, isDirectory: () => false, size: 100 });
 
-    mockReaddir.mockResolvedValue([
-      fakeDirent("deep-note.md", false),
-    ]);
+    mockReaddir.mockResolvedValue([fakeDirent("deep-note.md", false)]);
 
-    const sources = await plugin.expand!({ type: "url", url: "obsidian://MyVault/subfolder" });
+    const sources = await plugin.expand?.({ type: "url", url: "obsidian://MyVault/subfolder" });
 
     expect(sources).toHaveLength(1);
-    expect(sources![0].url).toContain("MyVault");
-    expect(sources![0].url).toContain("deep-note.md");
+    expect(sources?.[0].url).toContain("MyVault");
+    expect(sources?.[0].url).toContain("deep-note.md");
   });
 });
 
@@ -445,10 +446,7 @@ describe("findMarkdownFiles — recursive discovery", () => {
         ];
       }
       if (dir === "/vault/folder") {
-        return [
-          fakeDirent("nested-note.md", false),
-          fakeDirent("not-md.txt", false),
-        ];
+        return [fakeDirent("nested-note.md", false), fakeDirent("not-md.txt", false)];
       }
       return [];
     });
@@ -481,10 +479,7 @@ describe("findMarkdownFiles — recursive discovery", () => {
 
     mockReaddir.mockImplementation(async (dir: string) => {
       if (dir === "/vault") {
-        return [
-          fakeDirent("node_modules", true),
-          fakeDirent("note.md", false),
-        ];
+        return [fakeDirent("node_modules", true), fakeDirent("note.md", false)];
       }
       // node_modules should never be entered
       if (dir === "/vault/node_modules") {
@@ -514,13 +509,10 @@ describe("plugin.init() — config limits", () => {
     });
 
     // Init with a very small maxNoteSize
-    await plugin.init!({ maxNoteSize: "10" });
+    await plugin.init?.({ maxNoteSize: "10" });
 
     mockStat.mockResolvedValue({ isFile: () => false, isDirectory: () => true });
-    mockReaddir.mockResolvedValue([
-      fakeDirent("small.md", false),
-      fakeDirent("big.md", false),
-    ]);
+    mockReaddir.mockResolvedValue([fakeDirent("small.md", false), fakeDirent("big.md", false)]);
 
     mockReadFile.mockImplementation(async (path: string) => {
       if (path === "/vault/small.md") return "Short"; // 5 bytes < 10
@@ -535,14 +527,14 @@ describe("plugin.init() — config limits", () => {
     expect(result.text).not.toContain("## big");
 
     // Reset the limit for other tests
-    await plugin.init!({});
+    await plugin.init?.({});
   });
 
   it("ignores invalid config values", async () => {
     // Should not throw
-    await plugin.init!(undefined);
-    await plugin.init!({});
-    await plugin.init!({ maxNotes: "not-a-number" });
-    await plugin.init!({ maxNoteSize: "-5" });
+    await plugin.init?.(undefined);
+    await plugin.init?.({});
+    await plugin.init?.({ maxNotes: "not-a-number" });
+    await plugin.init?.({ maxNoteSize: "-5" });
   });
 });

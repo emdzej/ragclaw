@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { EmbedderPlugin } from "./types.js";
 
 // ── Mock @huggingface/transformers ──────────────────────────────────────────
@@ -28,9 +28,7 @@ function makePluginEmbedder(dims: number, name = "test-embedder"): EmbedderPlugi
     dimensions: dims,
     embed: vi.fn(async () => new Float32Array(dims)),
     embedQuery: vi.fn(async () => new Float32Array(dims)),
-    embedBatch: vi.fn(async (texts: string[]) =>
-      texts.map(() => new Float32Array(dims)),
-    ),
+    embedBatch: vi.fn(async (texts: string[]) => texts.map(() => new Float32Array(dims))),
   };
 }
 
@@ -82,9 +80,7 @@ describe("IndexingService", () => {
 
       const result = await svc.indexSource(store, source);
       expect(result.status).toBe("error");
-      expect((result as { status: "error"; error: string }).error).toMatch(
-        /dimension mismatch/i,
-      );
+      expect((result as { status: "error"; error: string }).error).toMatch(/dimension mismatch/i);
     });
 
     it("succeeds when embedder dims match stored dims", async () => {
@@ -100,7 +96,7 @@ describe("IndexingService", () => {
       // Should not be a dim-mismatch error
       if (result.status === "error") {
         expect((result as { status: "error"; error: string }).error).not.toMatch(
-          /dimension mismatch/i,
+          /dimension mismatch/i
         );
       }
     });

@@ -5,16 +5,18 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Store } from "./index.js";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChunkRecord } from "../types.js";
+import { Store } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSource(overrides: Partial<{ path: string; type: string; contentHash: string; indexedAt: number }> = {}) {
+function makeSource(
+  overrides: Partial<{ path: string; type: string; contentHash: string; indexedAt: number }> = {}
+) {
   return {
     path: overrides.path ?? `/test/${randomUUID()}.md`,
     type: (overrides.type ?? "file") as "file" | "url",
@@ -23,11 +25,7 @@ function makeSource(overrides: Partial<{ path: string; type: string; contentHash
   };
 }
 
-function makeChunk(
-  sourceId: string,
-  text: string,
-  embedding?: Float32Array,
-): ChunkRecord {
+function makeChunk(sourceId: string, text: string, embedding?: Float32Array): ChunkRecord {
   return {
     id: randomUUID(),
     sourceId,
@@ -86,9 +84,9 @@ describe("Store", () => {
       await expect(fresh.getSource("/foo")).rejects.toThrow("Store not opened");
       await expect(fresh.listSources()).rejects.toThrow("Store not opened");
       await expect(fresh.addChunks([])).rejects.toThrow("Store not opened");
-      await expect(
-        fresh.search({ text: "hello", mode: "keyword" }),
-      ).rejects.toThrow("Store not opened");
+      await expect(fresh.search({ text: "hello", mode: "keyword" })).rejects.toThrow(
+        "Store not opened"
+      );
     });
 
     it("can close and re-open", async () => {
@@ -116,10 +114,10 @@ describe("Store", () => {
 
       const retrieved = await store.getSource("/docs/readme.md");
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.id).toBe(id);
-      expect(retrieved!.path).toBe("/docs/readme.md");
-      expect(retrieved!.type).toBe("file");
-      expect(retrieved!.contentHash).toBe("abc123");
+      expect(retrieved?.id).toBe(id);
+      expect(retrieved?.path).toBe("/docs/readme.md");
+      expect(retrieved?.type).toBe("file");
+      expect(retrieved?.contentHash).toBe("abc123");
     });
 
     it("returns null for non-existent source", async () => {
@@ -137,8 +135,8 @@ describe("Store", () => {
       await store.updateSource(id, { contentHash: "newHash", indexedAt: 99999 });
 
       const updated = await store.getSource("/update-me.md");
-      expect(updated!.contentHash).toBe("newHash");
-      expect(updated!.indexedAt).toBe(99999);
+      expect(updated?.contentHash).toBe("newHash");
+      expect(updated?.indexedAt).toBe(99999);
     });
 
     it("updateSource is a no-op with empty updates", async () => {
@@ -171,10 +169,10 @@ describe("Store", () => {
 
     it("stores and retrieves metadata", async () => {
       const src = makeSource({ path: "/meta.md" });
-      const id = await store.addSource({ ...src, metadata: { author: "test", tags: ["a", "b"] } });
+      const _id = await store.addSource({ ...src, metadata: { author: "test", tags: ["a", "b"] } });
 
       const retrieved = await store.getSource("/meta.md");
-      expect(retrieved!.metadata).toEqual({ author: "test", tags: ["a", "b"] });
+      expect(retrieved?.metadata).toEqual({ author: "test", tags: ["a", "b"] });
     });
   });
 
@@ -343,15 +341,15 @@ describe("Store", () => {
     });
 
     it("throws when vector mode is used without embedding", async () => {
-      await expect(
-        store.search({ text: "hello", mode: "vector" }),
-      ).rejects.toThrow("Vector search requires embedding");
+      await expect(store.search({ text: "hello", mode: "vector" })).rejects.toThrow(
+        "Vector search requires embedding"
+      );
     });
 
     it("respects limit in vector search", async () => {
       // Add 10 chunks
       const chunks = Array.from({ length: 10 }, (_, i) =>
-        makeChunk(sourceId, `Vector chunk ${i}`, fakeEmbedding(i)),
+        makeChunk(sourceId, `Vector chunk ${i}`, fakeEmbedding(i))
       );
       await store.addChunks(chunks);
 
@@ -380,9 +378,9 @@ describe("Store", () => {
     });
 
     it("requires embedding for hybrid search", async () => {
-      await expect(
-        store.search({ text: "hello", mode: "hybrid" }),
-      ).rejects.toThrow("Hybrid search requires embedding");
+      await expect(store.search({ text: "hello", mode: "hybrid" })).rejects.toThrow(
+        "Hybrid search requires embedding"
+      );
     });
 
     it("returns merged results from vector and keyword", async () => {
@@ -434,7 +432,7 @@ describe("Store", () => {
         await store.setMeta("dim", "1024");
         const result = await store.getMeta("dim");
         expect(result).toBe("1024");
-        expect(parseInt(result!, 10)).toBe(1024);
+        expect(parseInt(result ?? "", 10)).toBe(1024);
       });
     });
 
@@ -450,8 +448,8 @@ describe("Store", () => {
         await store.setMeta("a", "1");
         await store.setMeta("b", "2");
         const meta = await store.getAllMeta();
-        expect(meta["a"]).toBe("1");
-        expect(meta["b"]).toBe("2");
+        expect(meta.a).toBe("1");
+        expect(meta.b).toBe("2");
       });
     });
 
@@ -485,10 +483,10 @@ describe("Store", () => {
         // Access the underlying DB via a raw query
         // We need to reach inside the store — for test purposes, create a
         // second store pointing at a temp file
-        const { tmpdir } = await import("os");
-        const { join } = await import("path");
-        const { randomUUID } = await import("crypto");
-        const { unlink } = await import("fs/promises");
+        const { tmpdir } = await import("node:os");
+        const { join } = await import("node:path");
+        const { randomUUID } = await import("node:crypto");
+        const { unlink } = await import("node:fs/promises");
 
         const tmpPath = join(tmpdir(), `ragclaw-test-${randomUUID()}.sqlite`);
         const tmpStore = new Store();
@@ -514,10 +512,7 @@ describe("Store", () => {
   describe("stats", () => {
     it("reports correct source and chunk counts", async () => {
       const sid = await store.addSource(makeSource({ path: "/stats.md" }));
-      await store.addChunks([
-        makeChunk(sid, "Chunk one"),
-        makeChunk(sid, "Chunk two"),
-      ]);
+      await store.addChunks([makeChunk(sid, "Chunk one"), makeChunk(sid, "Chunk two")]);
 
       // getStats calls fs.stat(this.dbPath) which won't work with :memory:
       // so we expect it to throw for :memory: databases

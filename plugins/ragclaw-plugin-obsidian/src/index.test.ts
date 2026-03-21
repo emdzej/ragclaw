@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect } from "vitest";
-import { processObsidianContent, extractFrontmatter } from "./index.js";
+import { describe, expect, it } from "vitest";
+import { extractFrontmatter, processObsidianContent } from "./index.js";
 
 describe("processObsidianContent", () => {
   it("converts [[wikilinks]] to plain text", () => {

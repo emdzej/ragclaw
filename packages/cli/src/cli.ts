@@ -7,22 +7,27 @@
  * LICENSE file in the root directory of this repository.
  */
 
-
-
-import { createRequire } from "module";
+import { createRequire } from "node:module";
 import { Command } from "commander";
-import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
+import { configGet, configList, configSet } from "./commands/config.js";
+import { doctorCommand } from "./commands/doctor.js";
+import { embedderDownload, embedderList } from "./commands/embedder.js";
+import { initCommand } from "./commands/init.js";
+import { listCommand } from "./commands/list.js";
+import { mergeCommand } from "./commands/merge.js";
+import {
+  pluginAdd,
+  pluginCreate,
+  pluginDisable,
+  pluginEnable,
+  pluginList,
+  pluginRemove,
+} from "./commands/plugin.js";
+import { reindex } from "./commands/reindex.js";
+import { removeCommand } from "./commands/remove.js";
 import { searchCommand } from "./commands/search.js";
 import { statusCommand } from "./commands/status.js";
-import { listCommand } from "./commands/list.js";
-import { removeCommand } from "./commands/remove.js";
-import { reindex } from "./commands/reindex.js";
-import { mergeCommand } from "./commands/merge.js";
-import { pluginList, pluginAdd, pluginRemove, pluginCreate, pluginEnable, pluginDisable } from "./commands/plugin.js";
-import { configList, configGet, configSet } from "./commands/config.js";
-import { doctorCommand } from "./commands/doctor.js";
-import { embedderList, embedderDownload } from "./commands/embedder.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -65,8 +70,14 @@ program
   .option("--crawl-max-pages <n>", "Max pages to crawl (default: 100)")
   .option("--crawl-same-origin", "Stay on the same domain (default: true)", true)
   .option("--no-crawl-same-origin", "Allow following links to other domains")
-  .option("--crawl-include <patterns>", "Comma-separated path prefixes to include (e.g. /docs,/api)")
-  .option("--crawl-exclude <patterns>", "Comma-separated path prefixes to exclude (e.g. /blog,/archive)")
+  .option(
+    "--crawl-include <patterns>",
+    "Comma-separated path prefixes to include (e.g. /docs,/api)"
+  )
+  .option(
+    "--crawl-exclude <patterns>",
+    "Comma-separated path prefixes to exclude (e.g. /blog,/archive)"
+  )
   .option("--crawl-concurrency <n>", "Concurrent requests during crawl (default: 1)")
   .option("--crawl-delay <ms>", "Delay between requests in ms (default: 1000)")
   .option("--ignore-robots", "Ignore robots.txt restrictions (use responsibly)")
@@ -125,22 +136,24 @@ program
   .argument("<source-db>", "Path to the source .sqlite database file")
   .option("-d, --db <name>", "Destination knowledge base name", "default")
   .option("--strategy <strategy>", "Merge strategy: strict (default) or reindex", "strict")
-  .option("--on-conflict <resolution>", "Conflict resolution: skip (default), prefer-local, or prefer-remote", "skip")
+  .option(
+    "--on-conflict <resolution>",
+    "Conflict resolution: skip (default), prefer-local, or prefer-remote",
+    "skip"
+  )
   .option("--dry-run", "Preview what would change without writing anything")
-  .option("--include <patterns>", "Only import sources matching these path prefixes (comma-separated)")
+  .option(
+    "--include <patterns>",
+    "Only import sources matching these path prefixes (comma-separated)"
+  )
   .option("--exclude <patterns>", "Skip sources matching these path prefixes (comma-separated)")
   .option("-e, --embedder <name>", "Embedder to use for reindex strategy")
   .action(mergeCommand);
 
 // Plugin commands
-const pluginCmd = program
-  .command("plugin")
-  .description("Manage plugins");
+const pluginCmd = program.command("plugin").description("Manage plugins");
 
-pluginCmd
-  .command("list")
-  .description("List installed plugins")
-  .action(pluginList);
+pluginCmd.command("list").description("List installed plugins").action(pluginList);
 
 pluginCmd
   .command("add")
@@ -174,9 +187,7 @@ pluginCmd
   .action(pluginDisable);
 
 // Config commands
-const configCmd = program
-  .command("config")
-  .description("View and manage configuration");
+const configCmd = program.command("config").description("View and manage configuration");
 
 configCmd
   .command("list")
@@ -202,9 +213,7 @@ program
   .action(doctorCommand);
 
 // Embedder commands
-const embedderCmd = program
-  .command("embedder")
-  .description("Manage and inspect embedders");
+const embedderCmd = program.command("embedder").description("Manage and inspect embedders");
 
 embedderCmd
   .command("list")

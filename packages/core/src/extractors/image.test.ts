@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock tesseract.js ───────────────────────────────────────────────────────
 const mockRecognize = vi.fn();
@@ -43,7 +43,14 @@ describe("ImageExtractor", () => {
     const ext = new ImageExtractor();
 
     it.each([
-      ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".webp",
+      ".bmp",
+      ".tiff",
+      ".tif",
     ])("accepts %s files", (extension) => {
       expect(ext.canHandle({ type: "file", path: `/img/photo${extension}` })).toBe(true);
     });
@@ -62,7 +69,9 @@ describe("ImageExtractor", () => {
     });
 
     it("rejects file source without path", () => {
-      expect(ext.canHandle({ type: "file" })).toBe(false);
+      expect(ext.canHandle({ type: "file" } as unknown as import("../types.js").Source)).toBe(
+        false
+      );
     });
   });
 
@@ -77,24 +86,22 @@ describe("ImageExtractor", () => {
       expect(mockRecognize).toHaveBeenCalledWith(
         "/img/photo.png",
         "eng",
-        expect.objectContaining({ logger: expect.any(Function) }),
+        expect.objectContaining({ logger: expect.any(Function) })
       );
     });
 
     it("throws when source has no path", async () => {
       const ext = new ImageExtractor();
-      await expect(ext.extract({ type: "file" })).rejects.toThrow("requires a file path");
+      await expect(
+        ext.extract({ type: "file" } as unknown as import("../types.js").Source)
+      ).rejects.toThrow("requires a file path");
     });
 
     it("uses custom language", async () => {
       const ext = new ImageExtractor({ language: "deu" });
       await ext.extract({ type: "file", path: "/img/german.png" });
 
-      expect(mockRecognize).toHaveBeenCalledWith(
-        "/img/german.png",
-        "deu",
-        expect.anything(),
-      );
+      expect(mockRecognize).toHaveBeenCalledWith("/img/german.png", "deu", expect.anything());
     });
   });
 
@@ -135,13 +142,12 @@ describe("ImageExtractor", () => {
   // ── extract() — timeout ────────────────────────────────────────────────
   describe("extract() — timeout", () => {
     it("rejects when OCR exceeds timeout", async () => {
-      mockRecognize.mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 5000)),
-      );
+      mockRecognize.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 5000)));
 
       const ext = new ImageExtractor({ limits: { ocrTimeoutMs: 50 } });
-      await expect(ext.extract({ type: "file", path: "/img/slow.png" }))
-        .rejects.toThrow("OCR timed out");
+      await expect(ext.extract({ type: "file", path: "/img/slow.png" })).rejects.toThrow(
+        "OCR timed out"
+      );
     });
   });
 });
@@ -163,7 +169,7 @@ describe("ocrFromBuffer()", () => {
     expect(mockRecognize).toHaveBeenCalledWith(
       buf,
       "eng",
-      expect.objectContaining({ logger: expect.any(Function) }),
+      expect.objectContaining({ logger: expect.any(Function) })
     );
   });
 
@@ -175,12 +181,9 @@ describe("ocrFromBuffer()", () => {
   });
 
   it("rejects when OCR exceeds timeout", async () => {
-    mockRecognize.mockImplementation(
-      () => new Promise((resolve) => setTimeout(resolve, 5000)),
-    );
+    mockRecognize.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 5000)));
 
     const buf = Buffer.from("fake");
-    await expect(ocrFromBuffer(buf, "eng", 50))
-      .rejects.toThrow("OCR timed out");
+    await expect(ocrFromBuffer(buf, "eng", 50)).rejects.toThrow("OCR timed out");
   });
 });

@@ -5,19 +5,19 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { join, dirname } from "path";
-import { existsSync } from "fs";
-import { readdir, readFile } from "fs/promises";
-import { execSync } from "child_process";
+import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
-  RagClawPlugin,
-  PluginManifest,
+  Chunker,
+  EmbedderPlugin,
+  Extractor,
   LoadedPlugin,
   PluginLoaderOptions,
-  Extractor,
-  Chunker,
+  PluginManifest,
+  RagClawPlugin,
   Source,
-  EmbedderPlugin,
 } from "@emdzej/ragclaw-core";
 import { getPluginsDir } from "../config.js";
 
@@ -66,7 +66,7 @@ export class PluginLoader {
    */
   async load(manifest: PluginManifest): Promise<LoadedPlugin> {
     const entryPath = join(manifest.path, manifest.main);
-    
+
     // Dynamic import
     const module = await import(entryPath);
     const plugin: RagClawPlugin = module.default || module;
@@ -84,7 +84,7 @@ export class PluginLoader {
 
     const loaded: LoadedPlugin = { manifest, plugin };
     this.loadedPlugins.push(loaded);
-    
+
     return loaded;
   }
 
@@ -153,6 +153,13 @@ export class PluginLoader {
       }
     }
     return result;
+  }
+
+  /**
+   * Returns all loaded plugins (manifest + plugin instance pairs).
+   */
+  getLoadedPlugins(): LoadedPlugin[] {
+    return this.loadedPlugins;
   }
 
   /**
@@ -239,7 +246,7 @@ export class PluginLoader {
       }
 
       const entries = await readdir(globalNodeModules, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
         if (!entry.name.startsWith("ragclaw-plugin-")) continue;
@@ -258,7 +265,8 @@ export class PluginLoader {
   }
 
   private async discoverLocalPlugins(): Promise<PluginManifest[]> {
-    const dir = this.options.localPluginsDir!;
+    const dir = this.options.localPluginsDir;
+    if (!dir) return [];
     return this.discoverPluginsInDir(dir, "local");
   }
 
@@ -293,7 +301,7 @@ export class PluginLoader {
     source: "npm" | "local" | "workspace"
   ): Promise<PluginManifest | null> {
     const pkgPath = join(pluginPath, "package.json");
-    
+
     if (!existsSync(pkgPath)) {
       // Try index.js directly for simple plugins
       const indexPath = join(pluginPath, "index.js");
@@ -311,7 +319,7 @@ export class PluginLoader {
 
     try {
       const pkgJson = JSON.parse(await readFile(pkgPath, "utf-8"));
-      
+
       return {
         name: pkgJson.name,
         version: pkgJson.version,

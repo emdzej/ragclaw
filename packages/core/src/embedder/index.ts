@@ -5,12 +5,12 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { pipeline, env, Tensor } from "@huggingface/transformers";
-import { homedir } from "os";
-import { join } from "path";
-import { existsSync } from "fs";
-import type { EmbedderPlugin, EmbedderPreset, EmbedderConfig } from "../types.js";
-import { EMBEDDER_PRESETS, DEFAULT_PRESET } from "./presets.js";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { env, pipeline, type Tensor } from "@huggingface/transformers";
+import type { EmbedderConfig, EmbedderPlugin, EmbedderPreset } from "../types.js";
+import { DEFAULT_PRESET, EMBEDDER_PRESETS } from "./presets.js";
 
 // Configure default cache directory
 env.cacheDir = join(homedir(), ".cache", "ragclaw", "models");
@@ -85,7 +85,10 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
   constructor(config: HuggingFaceEmbedderConfig = {}) {
     // Resolve model-specific fields from a preset if only a model was given,
     // otherwise use defaults from the nomic preset.
-    const defaultPreset = EMBEDDER_PRESETS[DEFAULT_PRESET]!;
+    const defaultPreset = EMBEDDER_PRESETS[DEFAULT_PRESET];
+    if (!defaultPreset) {
+      throw new Error(`Built-in preset "${DEFAULT_PRESET}" is missing from EMBEDDER_PRESETS`);
+    }
 
     this.modelId = config.model ?? defaultPreset.model;
     this._dimensions = config.dim ?? 0; // 0 = auto-detect
@@ -124,7 +127,7 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
         progress_callback: this.onProgress
           ? (progress: { status: string; progress?: number }) => {
               if (progress.progress !== undefined) {
-                this.onProgress!(progress.progress / 100);
+                this.onProgress?.(progress.progress / 100);
               }
             }
           : undefined,
@@ -213,9 +216,7 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
     const batchSize = 32;
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize);
-      const prefixed = this.docPrefix
-        ? batch.map((t) => `${this.docPrefix}${t}`)
-        : batch;
+      const prefixed = this.docPrefix ? batch.map((t) => `${this.docPrefix}${t}`) : batch;
 
       // Pass the full batch array — the pipeline tokenises and runs
       // a single forward pass, returning a Tensor of shape [N, dims].
@@ -249,9 +250,11 @@ export class Embedder extends HuggingFaceEmbedder {
     // Map legacy config to the new HuggingFaceEmbedder config.
     // If they specified a model that matches a known preset, use the preset's settings.
     // Otherwise, just pass model through for auto-detect.
-    const defaultPreset = EMBEDDER_PRESETS[DEFAULT_PRESET]!;
-    const isDefaultModel =
-      !config.model || config.model === defaultPreset.model;
+    const defaultPreset = EMBEDDER_PRESETS[DEFAULT_PRESET];
+    if (!defaultPreset) {
+      throw new Error(`Built-in preset "${DEFAULT_PRESET}" is missing from EMBEDDER_PRESETS`);
+    }
+    const isDefaultModel = !config.model || config.model === defaultPreset.model;
 
     if (isDefaultModel) {
       // Use the full nomic preset

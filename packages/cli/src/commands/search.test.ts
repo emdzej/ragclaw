@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import type { SearchResult, ChunkRecord } from "@emdzej/ragclaw-core";
+import type { ChunkRecord, SearchResult } from "@emdzej/ragclaw-core";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // All vi.mock() calls must come before any module imports.
@@ -15,7 +15,12 @@ import type { SearchResult, ChunkRecord } from "@emdzej/ragclaw-core";
 vi.mock("chalk", () => {
   const id = (s: unknown) => String(s);
   const c = Object.assign(id, {
-    bold: id, dim: id, cyan: id, green: id, red: id, yellow: id,
+    bold: id,
+    dim: id,
+    cyan: id,
+    green: id,
+    red: id,
+    yellow: id,
   });
   return { default: c };
 });
@@ -57,12 +62,15 @@ const storeMock = {
   search: vi.fn(async (): Promise<SearchResult[]> => []),
 };
 vi.mock("@emdzej/ragclaw-core", () => ({
-  Store: vi.fn(function () { return storeMock; }),
+  Store: vi.fn(function () {
+    return storeMock;
+  }),
   createEmbedder: vi.fn(),
 }));
 
 // Import subject under test AFTER all vi.mock calls
 const { searchCommand } = await import("./search.js");
+
 import { createEmbedder as mockCreateEmbedder } from "@emdzej/ragclaw-core";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,10 +137,10 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
 
       // Must use { model } not { alias } — the short display name is not a valid alias
       expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" }),
+        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" })
       );
       expect(mockCreateEmbedder).not.toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "nomic-embed-text-v1.5" }),
+        expect.objectContaining({ alias: "nomic-embed-text-v1.5" })
       );
     });
 
@@ -145,9 +153,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
 
       await searchCommand("hello", defaultOptions);
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "bge" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "bge" }));
     });
 
     it("falls back to alias 'nomic' when no metadata is stored", async () => {
@@ -155,9 +161,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
 
       await searchCommand("hello", defaultOptions);
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "nomic" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "nomic" }));
     });
 
     it("does not throw when embedder_name is 'nomic-embed-text-v1.5' (the pre-fix crash case)", async () => {
@@ -177,7 +181,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
       const embedder = makeEmbedder();
       (mockCreateEmbedder as Mock).mockReturnValue(embedder);
       storeMock.getMeta.mockImplementation(async (key: string) =>
-        key === "embedder_model" ? "nomic-ai/nomic-embed-text-v1.5" : null,
+        key === "embedder_model" ? "nomic-ai/nomic-embed-text-v1.5" : null
       );
 
       await searchCommand("find authentication patterns", defaultOptions);
@@ -199,7 +203,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
       await searchCommand("hello", { ...defaultOptions, mode: "keyword" });
 
       expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ embedding: undefined, mode: "keyword" }),
+        expect.objectContaining({ embedding: undefined, mode: "keyword" })
       );
     });
   });
@@ -211,24 +215,20 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
       await searchCommand("jwt expiry", { ...defaultOptions, mode: "keyword" });
 
       expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "jwt expiry" }),
+        expect.objectContaining({ text: "jwt expiry" })
       );
     });
 
     it("parses the limit string and passes it as a number", async () => {
       await searchCommand("hello", { ...defaultOptions, mode: "keyword", limit: "3" });
 
-      expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 3 }),
-      );
+      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ limit: 3 }));
     });
 
     it("passes the mode to store.search", async () => {
       await searchCommand("hello", { ...defaultOptions, mode: "vector" });
 
-      expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ mode: "vector" }),
-      );
+      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "vector" }));
     });
   });
 
@@ -245,9 +245,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     });
 
     it("prints result count and source path when results are returned", async () => {
-      storeMock.search.mockResolvedValue([
-        makeResult("/docs/auth.md", "JWT authentication guide"),
-      ]);
+      storeMock.search.mockResolvedValue([makeResult("/docs/auth.md", "JWT authentication guide")]);
 
       await searchCommand("jwt", { ...defaultOptions, mode: "keyword" });
 
@@ -257,9 +255,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     });
 
     it("outputs valid JSON when --json flag is set", async () => {
-      storeMock.search.mockResolvedValue([
-        makeResult("/docs/auth.md", "JWT authentication guide"),
-      ]);
+      storeMock.search.mockResolvedValue([makeResult("/docs/auth.md", "JWT authentication guide")]);
 
       await searchCommand("jwt", { ...defaultOptions, mode: "keyword", json: true });
 

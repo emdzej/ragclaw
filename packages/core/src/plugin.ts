@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import type { Extractor, Chunker, Source, EmbedderPlugin } from "./types.js";
+import type { Chunker, EmbedderPlugin, Extractor, Source } from "./types.js";
 
 /**
  * Describes a single config key that a plugin accepts.
@@ -29,28 +29,28 @@ export interface PluginConfigKey {
 export interface RagClawPlugin {
   /** Plugin name (should match package name) */
   name: string;
-  
+
   /** Plugin version (semver) */
   version: string;
-  
+
   /** Custom extractors provided by this plugin */
   extractors?: Extractor[];
-  
+
   /** Custom chunkers provided by this plugin */
   chunkers?: Chunker[];
 
   /** Optional embedder provided by this plugin. */
   embedder?: EmbedderPlugin;
-  
+
   /** URL schemes this plugin handles (e.g., "notion", "slack") */
   schemes?: string[];
-  
+
   /** File extensions this plugin handles (e.g., ".epub", ".xlsx") */
   extensions?: string[];
-  
+
   /** Optional initialization function */
   init?: (config?: Record<string, unknown>) => Promise<void>;
-  
+
   /** Optional cleanup function */
   dispose?: () => Promise<void>;
 
@@ -74,19 +74,19 @@ export interface RagClawPlugin {
 export interface PluginManifest {
   /** Package name */
   name: string;
-  
+
   /** Package version */
   version: string;
-  
+
   /** Main entry point */
   main: string;
-  
+
   /** Full path to plugin directory */
   path: string;
-  
+
   /** Plugin source: npm global, local, or workspace */
   source: "npm" | "local" | "workspace";
-  
+
   /** RagClaw-specific metadata from package.json */
   ragclaw?: {
     schemes?: string[];
@@ -108,10 +108,10 @@ export interface LoadedPlugin {
 export interface PluginLoaderOptions {
   /** Path to local plugins directory (default: ~/.openclaw/ragclaw/plugins) */
   localPluginsDir?: string;
-  
+
   /** Additional paths to scan for plugins */
   additionalPaths?: string[];
-  
+
   /** Plugin configuration (passed to plugin.init()) */
   config?: Record<string, Record<string, unknown>>;
 

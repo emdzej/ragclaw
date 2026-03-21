@@ -5,18 +5,18 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import type { RagClawPlugin, Extractor, Source, ExtractedContent, ContentType, PluginConfigKey } from "@emdzej/ragclaw-core";
+import type {
+  ContentType,
+  ExtractedContent,
+  Extractor,
+  RagClawPlugin,
+  Source,
+} from "@emdzej/ragclaw-core";
 
 interface TranscriptSegment {
   text: string;
   start: number;
   duration: number;
-}
-
-interface CaptionTrack {
-  baseUrl: string;
-  name: { simpleText: string };
-  languageCode: string;
 }
 
 /** Configurable fetch timeout in ms (overridable via plugin config). */
@@ -51,12 +51,14 @@ export function extractVideoId(input: string): string | null {
 /**
  * Fetch video metadata from YouTube oEmbed API
  */
-async function fetchVideoMetadata(videoId: string): Promise<{ title: string; author: string } | null> {
+async function fetchVideoMetadata(
+  videoId: string
+): Promise<{ title: string; author: string } | null> {
   try {
     const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
     const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!response.ok) return null;
-    
+
     const data = await response.json();
     return {
       title: data.title || "Unknown Title",
@@ -77,17 +79,17 @@ async function fetchTranscript(videoId: string): Promise<TranscriptSegment[]> {
     context: {
       client: {
         clientName: "ANDROID",
-        clientVersion: "20.10.38"
-      }
+        clientVersion: "20.10.38",
+      },
     },
-    videoId
+    videoId,
   });
 
   const response = await fetch(innertubeUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14)"
+      "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14)",
     },
     body,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -97,26 +99,26 @@ async function fetchTranscript(videoId: string): Promise<TranscriptSegment[]> {
     throw new Error(`Failed to fetch video info: ${response.status}`);
   }
 
-  const data = await response.json() as {
+  const data = (await response.json()) as {
     captions?: {
       playerCaptionsTracklistRenderer?: {
         captionTracks?: Array<{ baseUrl: string; languageCode: string }>;
       };
     };
   };
-  
+
   const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
   if (!tracks || tracks.length === 0) {
     throw new Error("No captions available for this video");
   }
 
   // Prefer English, fall back to first available
-  const track = tracks.find(t => t.languageCode === "en") || tracks[0];
-  
+  const track = tracks.find((t) => t.languageCode === "en") || tracks[0];
+
   // Fetch transcript XML
   const transcriptResponse = await fetch(track.baseUrl, {
     headers: {
-      "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14)"
+      "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14)",
     },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
@@ -126,26 +128,25 @@ async function fetchTranscript(videoId: string): Promise<TranscriptSegment[]> {
   }
 
   const transcriptXml = await transcriptResponse.text();
-  
+
   // Parse XML transcript (format: <p t="start_ms" d="duration_ms">text</p>)
   const segments: TranscriptSegment[] = [];
   const textRegex = /<p\s+t="(\d+)"\s+d="(\d+)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/p>/g;
-  let match;
-  
-  while ((match = textRegex.exec(transcriptXml)) !== null) {
+
+  for (const match of transcriptXml.matchAll(textRegex)) {
     const text = match[3]
       .replace(/<[^>]+>/g, "") // Remove any nested tags
       .trim();
-    
+
     if (text) {
       segments.push({
-        start: parseInt(match[1]) / 1000,
-        duration: parseInt(match[2]) / 1000,
+        start: parseInt(match[1], 10) / 1000,
+        duration: parseInt(match[2], 10) / 1000,
         text: decodeHtmlEntities(text),
       });
     }
   }
-  
+
   return segments;
 }
 
@@ -170,7 +171,7 @@ export function formatTimestamp(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const hours = Math.floor(mins / 60);
   const secs = Math.floor(seconds % 60);
-  
+
   if (hours > 0) {
     return `${hours}:${String(mins % 60).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
@@ -183,26 +184,29 @@ export function formatTimestamp(seconds: number): string {
 class YouTubeExtractor implements Extractor {
   canHandle(source: Source): boolean {
     if (source.type !== "url" || !source.url) return false;
-    
+
     const url = source.url;
-    
+
     // Custom schemes
     if (url.startsWith("youtube://") || url.startsWith("yt://")) {
       return true;
     }
-    
+
     // Standard YouTube URLs
     if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
       return true;
     }
-    
+
     return false;
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    const url = source.url!;
+    if (source.type !== "url") {
+      throw new Error(`YouTube extractor requires a URL source, got: ${source.type}`);
+    }
+    const url = source.url;
     const videoId = extractVideoId(url);
-    
+
     if (!videoId) {
       throw new Error(`Invalid YouTube URL or video ID: ${url}`);
     }
@@ -216,11 +220,11 @@ class YouTubeExtractor implements Extractor {
 
     // Fetch metadata
     const metadata = await fetchVideoMetadata(videoId);
-    
+
     // Format transcript
-    const text = segments.map(s => s.text.trim()).join(" ");
+    const text = segments.map((s) => s.text.trim()).join(" ");
     const lastSegment = segments[segments.length - 1];
-    const duration = lastSegment 
+    const duration = lastSegment
       ? formatTimestamp(lastSegment.start + lastSegment.duration)
       : "unknown";
 
@@ -258,9 +262,9 @@ class YouTubeExtractor implements Extractor {
 
 /**
  * ragclaw-plugin-youtube
- * 
+ *
  * Index YouTube video transcripts into RagClaw knowledge bases.
- * 
+ *
  * Usage:
  *   ragclaw add youtube://dQw4w9WgXcQ
  *   ragclaw add yt://dQw4w9WgXcQ
@@ -269,13 +273,18 @@ class YouTubeExtractor implements Extractor {
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-youtube",
   version: "0.2.0",
-  
+
   extractors: [new YouTubeExtractor()],
-  
+
   schemes: ["youtube", "yt"],
 
   configSchema: [
-    { key: "fetchTimeoutMs", type: "number", description: "HTTP fetch timeout in ms (default: 30000)", defaultValue: 30_000 },
+    {
+      key: "fetchTimeoutMs",
+      type: "number",
+      description: "HTTP fetch timeout in ms (default: 30000)",
+      defaultValue: 30_000,
+    },
   ],
 
   async init(config?: Record<string, unknown>) {

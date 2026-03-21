@@ -5,22 +5,22 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync } from "fs";
-import ora from "ora";
-import chalk from "chalk";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import type { RagclawConfig } from "@emdzej/ragclaw-core";
 import {
-  Store,
+  checkSystemRequirements,
+  createEmbedder,
   IndexingService,
   isPathAllowed,
   isUrlAllowed,
-  createEmbedder,
   resolvePreset,
-  checkSystemRequirements,
+  Store,
 } from "@emdzej/ragclaw-core";
-import type { RagclawConfig } from "@emdzej/ragclaw-core";
-import { getDbPath, getConfig } from "../config.js";
+import chalk from "chalk";
+import ora from "ora";
+import { getConfig, getDbPath } from "../config.js";
 import { PluginLoader } from "../plugins/loader.js";
-import { resolve } from "path";
 
 interface ReindexOptions {
   db: string;
@@ -138,13 +138,14 @@ export async function reindex(options: ReindexOptions): Promise<void> {
       // default (nomic).
     }
 
-    const onProgress = (p: number) => { spinner.text = `Downloading model... ${Math.round(p * 100)}%`; };
+    const onProgress = (p: number) => {
+      spinner.text = `Downloading model... ${Math.round(p * 100)}%`;
+    };
     const embedder = embedderAlias
       ? createEmbedder({ alias: embedderAlias, onProgress })
       : embedderModel
         ? createEmbedder({ model: embedderModel, onProgress })
-        : pluginEmbedder
-          ?? createEmbedder({ onProgress });
+        : (pluginEmbedder ?? createEmbedder({ onProgress }));
 
     // System requirements check (RAM) for known presets.
     // resolvePreset returns null for raw model IDs, so the check is safely skipped.
@@ -179,9 +180,7 @@ export async function reindex(options: ReindexOptions): Promise<void> {
     };
 
     for (const source of sources) {
-      const displayPath = source.path.length > 60
-        ? "..." + source.path.slice(-57)
-        : source.path;
+      const displayPath = source.path.length > 60 ? `...${source.path.slice(-57)}` : source.path;
 
       spinner.text = `Checking ${displayPath}`;
 
@@ -267,7 +266,6 @@ export async function reindex(options: ReindexOptions): Promise<void> {
         console.log(chalk.dim(`    ... and ${result.errors.length - 5} more`));
       }
     }
-
   } finally {
     await store.close();
   }

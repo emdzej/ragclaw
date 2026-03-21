@@ -5,18 +5,18 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import chalk from "chalk";
-import ora from "ora";
 import type { EmbedderPreset } from "@emdzej/ragclaw-core";
 import {
-  listPresets,
-  resolvePreset,
-  getConfig,
   checkSystemRequirements,
   createEmbedder,
-  isModelCached,
+  getConfig,
   getModelCacheDir,
+  isModelCached,
+  listPresets,
+  resolvePreset,
 } from "@emdzej/ragclaw-core";
+import chalk from "chalk";
+import ora from "ora";
 import { PluginLoader } from "../plugins/loader.js";
 
 function formatBytes(bytes: number): string {
@@ -40,7 +40,7 @@ export async function embedderList(): Promise<void> {
   const current =
     typeof config.embedder === "string"
       ? config.embedder
-      : config.embedder?.model ?? config.embedder?.plugin ?? null;
+      : (config.embedder?.model ?? config.embedder?.plugin ?? null);
 
   // ── Built-in presets ──────────────────────────────────────────────────────
   const aliases = listPresets();
@@ -49,10 +49,7 @@ export async function embedderList(): Promise<void> {
   console.log();
 
   const aliasW = Math.max(...aliases.map((a) => a.length), 5);
-  const modelW = Math.max(
-    ...aliases.map((a) => resolvePreset(a)!.model.length),
-    5
-  );
+  const modelW = Math.max(...aliases.map((a) => resolvePreset(a)?.model.length ?? 0), 5);
 
   const header = [
     "  ",
@@ -63,10 +60,11 @@ export async function embedderList(): Promise<void> {
     "Status",
   ].join("");
   console.log(chalk.dim(header));
-  console.log(chalk.dim("  " + "─".repeat(header.length - 2)));
+  console.log(chalk.dim(`  ${"─".repeat(header.length - 2)}`));
 
   for (const alias of aliases) {
-    const preset = resolvePreset(alias)!;
+    const preset = resolvePreset(alias);
+    if (!preset) continue;
     const isCurrent = alias === current || preset.model === current;
     const marker = isCurrent ? chalk.cyan("*") : " ";
     const aliasCol = chalk.cyan(alias.padEnd(aliasW + 2));
@@ -98,14 +96,9 @@ export async function embedderList(): Promise<void> {
     const nameW = Math.max(...pluginEmbedders.map((e) => e.embedder.name.length), 4);
     const pluginW = Math.max(...pluginEmbedders.map((e) => e.pluginName.length), 6);
 
-    const ph = [
-      "  ",
-      "Name".padEnd(nameW + 2),
-      "Plugin".padEnd(pluginW + 2),
-      "Dims",
-    ].join("");
+    const ph = ["  ", "Name".padEnd(nameW + 2), "Plugin".padEnd(pluginW + 2), "Dims"].join("");
     console.log(chalk.dim(ph));
-    console.log(chalk.dim("  " + "─".repeat(ph.length - 2)));
+    console.log(chalk.dim(`  ${"─".repeat(ph.length - 2)}`));
 
     for (const { pluginName, embedder } of pluginEmbedders) {
       const isCurrent = embedder.name === current || pluginName === current;
@@ -136,10 +129,7 @@ interface DownloadResult {
  * Returns a DownloadResult indicating whether it was already cached, newly
  * downloaded, or failed.
  */
-async function downloadBuiltin(
-  alias: string,
-  modelId: string,
-): Promise<DownloadResult> {
+async function downloadBuiltin(alias: string, modelId: string): Promise<DownloadResult> {
   const alreadyCached = isModelCached(modelId);
 
   if (alreadyCached) {
@@ -180,7 +170,12 @@ async function downloadBuiltin(
  */
 async function downloadPlugin(
   pluginName: string,
-  embedder: { name: string; dimensions: number; init?: () => Promise<void>; dispose?: () => Promise<void> },
+  embedder: {
+    name: string;
+    dimensions: number;
+    init?: () => Promise<void>;
+    dispose?: () => Promise<void>;
+  }
 ): Promise<DownloadResult> {
   const modelId = embedder.name;
   const looksLikeHfModel = modelId.includes("/");
@@ -224,7 +219,7 @@ interface DownloadOptions {
  */
 export async function embedderDownload(
   name: string | undefined,
-  options: DownloadOptions,
+  options: DownloadOptions
 ): Promise<void> {
   const config = getConfig();
   const cacheDir = getModelCacheDir();
@@ -251,7 +246,8 @@ export async function embedderDownload(
     // Download all built-in presets
     console.log(chalk.bold("Built-in presets:"));
     for (const alias of listPresets()) {
-      const preset = resolvePreset(alias)!;
+      const preset = resolvePreset(alias);
+      if (!preset) continue;
       results.push(await downloadBuiltin(alias, preset.model));
     }
 
@@ -265,17 +261,20 @@ export async function embedderDownload(
     }
   } else {
     // Single target — could be a preset alias, HF model ID, or plugin embedder name
-    const preset = resolvePreset(name!);
+    // name is always defined here: downloadAll is only false when name !== undefined
+    if (name === undefined) {
+      throw new Error("Expected a name argument");
+    }
+    const preset = resolvePreset(name);
 
     if (preset) {
       // Known preset alias
       console.log(chalk.bold("Built-in preset:"));
-      results.push(await downloadBuiltin(name!, preset.model));
+      results.push(await downloadBuiltin(name, preset.model));
     } else {
       // Check if it matches a plugin embedder name or plugin name
       const matched = pluginEmbedders.find(
-        ({ pluginName, embedder }) =>
-          embedder.name === name || pluginName === name,
+        ({ pluginName, embedder }) => embedder.name === name || pluginName === name
       );
 
       if (matched) {
@@ -284,7 +283,7 @@ export async function embedderDownload(
       } else {
         // Treat as a raw HuggingFace model ID
         console.log(chalk.bold("Model:"));
-        results.push(await downloadBuiltin(name!, name!));
+        results.push(await downloadBuiltin(name, name));
       }
     }
   }

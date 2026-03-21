@@ -5,11 +5,11 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
+import type { SearchMode } from "@emdzej/ragclaw-core";
+import { createEmbedder, Store } from "@emdzej/ragclaw-core";
 import chalk from "chalk";
 import ora from "ora";
-import { Store, createEmbedder } from "@emdzej/ragclaw-core";
-import type { SearchMode } from "@emdzej/ragclaw-core";
 import { getDbPath } from "../config.js";
 
 interface SearchOptions {
@@ -42,7 +42,7 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
       // Prefer embedder_model (full HF model ID) over embedder_name (which may
       // be a short display name like "nomic-embed-text-v1.5", not a valid alias).
       const storedModel = await store.getMeta("embedder_model");
-      const storedName = await store.getMeta("embedder_name") ?? "nomic";
+      const storedName = (await store.getMeta("embedder_name")) ?? "nomic";
       const embedder = storedModel
         ? createEmbedder({ model: storedModel })
         : createEmbedder({ alias: storedName });
@@ -83,7 +83,11 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
       console.log(chalk.dim(`    Score: ${scoreStr}`));
 
       if (scoreVector !== undefined && scoreKeyword !== undefined) {
-        console.log(chalk.dim(`    (vector: ${(scoreVector * 100).toFixed(1)}%, keyword: ${(scoreKeyword * 100).toFixed(1)}%)`));
+        console.log(
+          chalk.dim(
+            `    (vector: ${(scoreVector * 100).toFixed(1)}%, keyword: ${(scoreKeyword * 100).toFixed(1)}%)`
+          )
+        );
       }
 
       // Show snippet (first 200 chars)

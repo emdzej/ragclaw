@@ -5,20 +5,20 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { readFile } from "fs/promises";
-import { basename, extname } from "path";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import mammoth from "mammoth";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
+import type { ExtractedContent, Extractor, Source } from "../types.js";
 
 export class DocxExtractor implements Extractor {
   canHandle(source: Source): boolean {
-    if (source.type !== "file" || !source.path) return false;
+    if (source.type !== "file") return false;
     const ext = extname(source.path).toLowerCase();
     return ext === ".docx";
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    if (!source.path) {
+    if (source.type !== "file") {
       throw new Error("DocxExtractor requires a file path");
     }
 

@@ -6,9 +6,9 @@
  */
 
 import * as cheerio from "cheerio";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
 import type { ExtractorLimits } from "../config.js";
 import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
+import type { ExtractedContent, Extractor, Source } from "../types.js";
 
 type CheerioElement = ReturnType<ReturnType<typeof cheerio.load>>[number];
 
@@ -41,46 +41,51 @@ export class WebExtractor implements Extractor {
 
   constructor(limits?: Partial<ExtractorLimits>) {
     this.fetchTimeoutMs = limits?.fetchTimeoutMs ?? DEFAULT_EXTRACTOR_LIMITS.fetchTimeoutMs;
-    this.maxResponseSizeBytes = limits?.maxResponseSizeBytes ?? DEFAULT_EXTRACTOR_LIMITS.maxResponseSizeBytes;
+    this.maxResponseSizeBytes =
+      limits?.maxResponseSizeBytes ?? DEFAULT_EXTRACTOR_LIMITS.maxResponseSizeBytes;
   }
 
   canHandle(source: Source): boolean {
-    if (source.type !== "url" || !source.url) return false;
-    return source.url.startsWith("http://") || source.url.startsWith("https://");
+    if (source.type !== "url") return false;
+    return (
+      typeof source.url === "string" &&
+      (source.url.startsWith("http://") || source.url.startsWith("https://"))
+    );
   }
 
   async extract(source: Source): Promise<ExtractedContent> {
-    if (!source.url) {
+    if (source.type !== "url" || !source.url) {
       throw new Error("WebExtractor requires a URL");
     }
+    const { url } = source;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
 
     let response: Response;
     try {
-      response = await fetch(source.url, {
+      response = await fetch(url, {
         headers: {
           "User-Agent": "RagClaw/0.1 (local RAG indexer)",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
         signal: controller.signal,
       });
     } catch (err: unknown) {
       clearTimeout(timer);
       if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error(`Fetch timed out after ${this.fetchTimeoutMs}ms: ${source.url}`);
+        throw new Error(`Fetch timed out after ${this.fetchTimeoutMs}ms: ${url}`);
       }
       throw err;
     }
 
     if (!response.ok) {
       clearTimeout(timer);
-      throw new Error(`Failed to fetch ${source.url}: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
     }
 
     // Stream the body, enforcing a byte-size cap
-    const html = await this.readBodyWithLimit(response, source.url);
+    const html = await this.readBodyWithLimit(response, url);
     clearTimeout(timer);
 
     const contentType = response.headers.get("content-type") || "";
@@ -94,7 +99,7 @@ export class WebExtractor implements Extractor {
 
     // Extract metadata
     const metadata: Record<string, unknown> = {
-      url: source.url,
+      url,
       title: $("title").text().trim() || $("h1").first().text().trim(),
     };
 
@@ -175,12 +180,12 @@ export class WebExtractor implements Extractor {
       // Add markdown-style formatting for headings
       if (tagName.startsWith("h")) {
         const level = parseInt(tagName[1], 10);
-        text = "#".repeat(level) + " " + text;
+        text = `${"#".repeat(level)} ${text}`;
       }
 
       // Add bullet for list items
       if (tagName === "li") {
-        text = "• " + text;
+        text = `• ${text}`;
       }
 
       lines.push(text);
@@ -206,7 +211,7 @@ export class WebExtractor implements Extractor {
    */
   async *crawl(
     startUrl: string,
-    options: CrawlOptions = {},
+    options: CrawlOptions = {}
   ): AsyncGenerator<ExtractedContent & { url: string }> {
     const maxDepth = options.maxDepth ?? 3;
     const maxPages = options.maxPages ?? 100;
@@ -273,7 +278,7 @@ export class WebExtractor implements Extractor {
           }
 
           return { extracted, links, url, depth };
-        }),
+        })
       );
 
       for (const result of results) {
@@ -334,7 +339,7 @@ export class WebExtractor implements Extractor {
         response = await fetch(pageUrl, {
           headers: {
             "User-Agent": "RagClaw/0.1 (local RAG indexer)",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           },
           signal: controller.signal,
         });

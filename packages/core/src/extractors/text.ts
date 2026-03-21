@@ -5,14 +5,14 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { readFile } from "fs/promises";
-import { basename, extname } from "path";
-import type { Extractor, ExtractedContent, Source } from "../types.js";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
+import type { ExtractedContent, Extractor, Source } from "../types.js";
 
 export class TextExtractor implements Extractor {
   canHandle(source: Source): boolean {
     if (source.type === "text") return true;
-    if (source.type !== "file" || !source.path) return false;
+    if (source.type !== "file") return false;
 
     const ext = extname(source.path).toLowerCase();
     return [".txt", ".text", ""].includes(ext);
@@ -20,12 +20,13 @@ export class TextExtractor implements Extractor {
 
   async extract(source: Source): Promise<ExtractedContent> {
     let text: string;
-    let metadata: Record<string, unknown> = {};
+    const metadata: Record<string, unknown> = {};
 
-    if (source.type === "text" && source.content) {
+    if (source.type === "text") {
+      if (!source.content) throw new Error("TextExtractor requires content or file path");
       text = source.content;
       metadata.name = source.name ?? "inline-text";
-    } else if (source.path) {
+    } else if (source.type === "file") {
       text = await readFile(source.path, "utf-8");
       metadata.filename = basename(source.path);
     } else {

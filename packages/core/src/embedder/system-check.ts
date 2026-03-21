@@ -52,14 +52,14 @@ export function checkSystemRequirements(preset: EmbedderPreset): SystemCheck {
     result.canRun = false;
     result.errors.push(
       `Insufficient available RAM for ${preset.model}: ` +
-      `needs ~${formatBytes(needed)}, only ${formatBytes(availableRAM)} available. ` +
-      `Consider using a lighter model (e.g. minilm ~90 MB).`
+        `needs ~${formatBytes(needed)}, only ${formatBytes(availableRAM)} available. ` +
+        `Consider using a lighter model (e.g. minilm ~90 MB).`
     );
   } else if (availableRAM < needed * 2.0) {
     result.warnings.push(
       `Low available RAM for ${preset.model}: ` +
-      `needs ~${formatBytes(needed)}, ${formatBytes(availableRAM)} available. ` +
-      `The model may run slowly or cause swapping.`
+        `needs ~${formatBytes(needed)}, ${formatBytes(availableRAM)} available. ` +
+        `The model may run slowly or cause swapping.`
     );
   }
 
@@ -67,8 +67,8 @@ export function checkSystemRequirements(preset: EmbedderPreset): SystemCheck {
 }
 
 function formatBytes(bytes: number): string {
-  const gb = bytes / (1024 ** 3);
+  const gb = bytes / 1024 ** 3;
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / (1024 ** 2);
+  const mb = bytes / 1024 ** 2;
   return `${mb.toFixed(0)} MB`;
 }

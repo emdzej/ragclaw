@@ -6,9 +6,9 @@
  */
 
 import chalk from "chalk";
+import { getEnabledPlugins, getPluginsDir, setEnabledPlugins } from "../config.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { pluginCreate as createScaffold } from "../plugins/scaffold.js";
-import { getPluginsDir, getEnabledPlugins, setEnabledPlugins } from "../config.js";
 
 const BUILT_IN_EXTRACTORS = [
   { name: "markdown", extensions: ".md, .mdx" },
@@ -44,18 +44,18 @@ export async function pluginList(): Promise<void> {
     for (const manifest of manifests) {
       const schemes = manifest.ragclaw?.schemes?.join(", ") || "";
       const extensions = manifest.ragclaw?.extensions?.join(", ") || "";
-      const handlers = [schemes, extensions].filter(Boolean).join(", ") || chalk.dim("(no handlers)");
-      
-      const sourceLabel = manifest.source === "npm" 
-        ? chalk.blue("npm") 
-        : manifest.source === "local"
-          ? chalk.yellow("local")
-          : chalk.green("workspace");
+      const handlers =
+        [schemes, extensions].filter(Boolean).join(", ") || chalk.dim("(no handlers)");
+
+      const sourceLabel =
+        manifest.source === "npm"
+          ? chalk.blue("npm")
+          : manifest.source === "local"
+            ? chalk.yellow("local")
+            : chalk.green("workspace");
 
       const isEnabled = enabled.has(manifest.name);
-      const statusLabel = isEnabled
-        ? chalk.green("✓ enabled")
-        : chalk.dim("✗ not enabled");
+      const statusLabel = isEnabled ? chalk.green("✓ enabled") : chalk.dim("✗ not enabled");
 
       if (!isEnabled) disabledCount++;
 
@@ -77,9 +77,7 @@ export async function pluginList(): Promise<void> {
   console.log("");
 
   for (const extractor of BUILT_IN_EXTRACTORS) {
-    console.log(
-      `  ${chalk.white(extractor.name.padEnd(12))} ${chalk.dim(extractor.extensions)}`
-    );
+    console.log(`  ${chalk.white(extractor.name.padEnd(12))} ${chalk.dim(extractor.extensions)}`);
   }
 
   console.log("");
@@ -89,7 +87,10 @@ export interface PluginEnableOptions {
   all?: boolean;
 }
 
-export async function pluginEnable(name: string | undefined, options: PluginEnableOptions): Promise<void> {
+export async function pluginEnable(
+  name: string | undefined,
+  options: PluginEnableOptions
+): Promise<void> {
   const loader = new PluginLoader();
   const manifests = await loader.discover();
   const enabled = getEnabledPlugins();

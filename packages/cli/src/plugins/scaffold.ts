@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import chalk from "chalk";
 
 const PLUGIN_TEMPLATE_PACKAGE_JSON = (name: string) => `{
@@ -53,7 +53,9 @@ const PLUGIN_TEMPLATE_TSCONFIG = `{
 }
 `;
 
-const PLUGIN_TEMPLATE_INDEX = (name: string) => `import type { RagClawPlugin, Extractor, Source, ExtractedContent } from "@emdzej/ragclaw-core";
+const PLUGIN_TEMPLATE_INDEX = (
+  name: string
+) => `import type { RagClawPlugin, Extractor, Source, ExtractedContent } from "@emdzej/ragclaw-core";
 
 /**
  * Example extractor - replace with your implementation
@@ -167,34 +169,32 @@ dist/
 
 export async function createPluginScaffold(name: string, targetDir?: string): Promise<string> {
   // Ensure name follows convention
-  const pluginName = name.startsWith("ragclaw-plugin-") 
-    ? name 
-    : `ragclaw-plugin-${name}`;
-  
+  const pluginName = name.startsWith("ragclaw-plugin-") ? name : `ragclaw-plugin-${name}`;
+
   const dir = targetDir || join(process.cwd(), pluginName);
-  
+
   if (existsSync(dir)) {
     throw new Error(`Directory already exists: ${dir}`);
   }
-  
+
   // Create directories
   await mkdir(dir, { recursive: true });
   await mkdir(join(dir, "src"), { recursive: true });
-  
+
   // Write files
   await writeFile(join(dir, "package.json"), PLUGIN_TEMPLATE_PACKAGE_JSON(pluginName));
   await writeFile(join(dir, "tsconfig.json"), PLUGIN_TEMPLATE_TSCONFIG);
   await writeFile(join(dir, "src", "index.ts"), PLUGIN_TEMPLATE_INDEX(pluginName));
   await writeFile(join(dir, "README.md"), PLUGIN_TEMPLATE_README(pluginName));
   await writeFile(join(dir, ".gitignore"), PLUGIN_TEMPLATE_GITIGNORE);
-  
+
   return dir;
 }
 
 export async function pluginCreate(name: string): Promise<void> {
   try {
     const dir = await createPluginScaffold(name);
-    
+
     console.log("");
     console.log(chalk.green("✓ Plugin scaffold created!"));
     console.log("");

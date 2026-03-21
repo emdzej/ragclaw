@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { EmbedderPlugin } from "@emdzej/ragclaw-core";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 // Must be hoisted before any module imports that transitively use them.
@@ -15,7 +15,12 @@ import type { EmbedderPlugin } from "@emdzej/ragclaw-core";
 vi.mock("chalk", () => {
   const id = (s: unknown) => String(s);
   const c = Object.assign(id, {
-    bold: id, dim: id, cyan: id, green: id, red: id, yellow: id,
+    bold: id,
+    dim: id,
+    cyan: id,
+    green: id,
+    red: id,
+    yellow: id,
   });
   return { default: c };
 });
@@ -42,9 +47,17 @@ vi.mock("@emdzej/ragclaw-core", () => ({
   resolvePreset: vi.fn((alias: string) => {
     const presets: Record<string, { model: string; dim: number; estimatedRAM: number }> = {
       nomic: { model: "nomic-ai/nomic-embed-text-v1.5", dim: 768, estimatedRAM: 600 * 1024 * 1024 },
-      bge:   { model: "BAAI/bge-m3",                   dim: 1024, estimatedRAM: 2.3 * 1024 ** 3 },
-      mxbai: { model: "mixedbread-ai/mxbai-embed-large-v1", dim: 1024, estimatedRAM: 1.4 * 1024 ** 3 },
-      minilm:{ model: "sentence-transformers/all-MiniLM-L6-v2", dim: 384, estimatedRAM: 90 * 1024 * 1024 },
+      bge: { model: "BAAI/bge-m3", dim: 1024, estimatedRAM: 2.3 * 1024 ** 3 },
+      mxbai: {
+        model: "mixedbread-ai/mxbai-embed-large-v1",
+        dim: 1024,
+        estimatedRAM: 1.4 * 1024 ** 3,
+      },
+      minilm: {
+        model: "sentence-transformers/all-MiniLM-L6-v2",
+        dim: 384,
+        estimatedRAM: 90 * 1024 * 1024,
+      },
     };
     return presets[alias.toLowerCase()];
   }),
@@ -67,14 +80,17 @@ const pluginLoaderMock = {
 };
 vi.mock("../plugins/loader.js", () => ({
   // Must use a real constructor function (not an arrow fn) so `new PluginLoader(...)` works
-  PluginLoader: vi.fn(function () { return pluginLoaderMock; }),
+  PluginLoader: vi.fn(function () {
+    return pluginLoaderMock;
+  }),
 }));
 
 // Import the functions under test AFTER all vi.mock calls
 const { embedderList, embedderDownload } = await import("./embedder.js");
+
 import {
-  isModelCached as mockIsModelCached,
   createEmbedder as mockCreateEmbedder,
+  isModelCached as mockIsModelCached,
 } from "@emdzej/ragclaw-core";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -146,9 +162,7 @@ describe("embedderDownload()", () => {
     it("calls createEmbedder with the correct alias", async () => {
       await embedderDownload("nomic", {});
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "nomic" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "nomic" }));
     });
 
     it("calls init() then dispose() on the created embedder", async () => {
@@ -179,16 +193,18 @@ describe("embedderDownload()", () => {
       await embedderDownload("nomic", {});
 
       expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ onProgress: expect.any(Function) }),
+        expect.objectContaining({ onProgress: expect.any(Function) })
       );
     });
 
     it("updates spinner text with progress percentage during download", async () => {
       let capturedProgress: ((p: number) => void) | undefined;
-      (mockCreateEmbedder as Mock).mockImplementation((cfg: { onProgress?: (p: number) => void }) => {
-        capturedProgress = cfg.onProgress;
-        return makeEmbedder();
-      });
+      (mockCreateEmbedder as Mock).mockImplementation(
+        (cfg: { onProgress?: (p: number) => void }) => {
+          capturedProgress = cfg.onProgress;
+          return makeEmbedder();
+        }
+      );
 
       await embedderDownload("nomic", {});
 
@@ -206,7 +222,7 @@ describe("embedderDownload()", () => {
 
       // Should create an embedder without an alias (raw model path)
       expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "some-org/custom-model" }),
+        expect.objectContaining({ model: "some-org/custom-model" })
       );
     });
 
@@ -247,7 +263,7 @@ describe("embedderDownload()", () => {
     it("skips presets that are already cached and downloads the rest", async () => {
       // nomic is cached, others are not
       (mockIsModelCached as Mock).mockImplementation((modelId: string) =>
-        modelId.includes("nomic"),
+        modelId.includes("nomic")
       );
 
       await embedderDownload(undefined, { all: true });
@@ -340,9 +356,7 @@ describe("embedderDownload()", () => {
         { pluginName: "ragclaw-plugin-nodispose", embedder: pluginEmbedder },
       ]);
 
-      await expect(
-        embedderDownload("ragclaw-plugin-nodispose", {}),
-      ).resolves.not.toThrow();
+      await expect(embedderDownload("ragclaw-plugin-nodispose", {})).resolves.not.toThrow();
 
       expect(pluginEmbedder.init).toHaveBeenCalledTimes(1);
     });
@@ -357,7 +371,7 @@ describe("embedderDownload()", () => {
           init: vi.fn(async () => {
             throw new Error("network error");
           }),
-        }),
+        })
       );
 
       const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -378,7 +392,7 @@ describe("embedderDownload()", () => {
           init: vi.fn(async () => {
             throw new Error("timeout fetching model");
           }),
-        }),
+        })
       );
 
       vi.spyOn(process, "exit").mockImplementation((() => {

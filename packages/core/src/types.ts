@@ -12,13 +12,25 @@
 export type SourceType = "file" | "url" | "text";
 export type ContentType = "markdown" | "text" | "pdf" | "docx" | "web" | "code";
 
-export interface Source {
-  type: SourceType;
-  path?: string; // For files
-  url?: string; // For URLs
-  content?: string; // For raw text
-  name?: string; // Display name
+export interface FileSource {
+  type: "file";
+  path: string;
+  name?: string;
 }
+
+export interface UrlSource {
+  type: "url";
+  url: string;
+  name?: string;
+}
+
+export interface TextSource {
+  type: "text";
+  content: string;
+  name?: string;
+}
+
+export type Source = FileSource | UrlSource | TextSource;
 
 export interface SourceRecord {
   id: string;

@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect } from "vitest";
-import { cosineSimilarity, cosineDistance } from "../utils/math.js";
+import { describe, expect, it } from "vitest";
+import { cosineDistance, cosineSimilarity } from "../utils/math.js";
 
 describe("cosineSimilarity", () => {
   it("returns 1 for identical vectors", () => {

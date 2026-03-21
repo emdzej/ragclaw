@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import os from "os";
-import fs from "fs";
-import { execSync } from "child_process";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Available memory — platform-aware

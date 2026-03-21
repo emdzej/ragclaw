@@ -5,22 +5,22 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { existsSync, statSync } from "fs";
-import { readdir } from "fs/promises";
-import { join, resolve, extname } from "path";
-import chalk from "chalk";
-import ora from "ora";
+import { existsSync, statSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { extname, join, resolve } from "node:path";
+import type { RagclawConfig, Source } from "@emdzej/ragclaw-core";
 import {
-  Store,
+  checkSystemRequirements,
+  createEmbedder,
   IndexingService,
   isPathAllowed,
   isUrlAllowed,
-  createEmbedder,
   resolvePreset,
-  checkSystemRequirements,
+  Store,
 } from "@emdzej/ragclaw-core";
-import type { Source, RagclawConfig } from "@emdzej/ragclaw-core";
-import { getDbPath, ensureDataDir, getConfig } from "../config.js";
+import chalk from "chalk";
+import ora from "ora";
+import { ensureDataDir, getConfig, getDbPath } from "../config.js";
 import { PluginLoader } from "../plugins/loader.js";
 
 interface AddOptions {
@@ -69,11 +69,17 @@ function buildOverrides(options: AddOptions): Partial<RagclawConfig> | undefined
   }
   if (options.maxDepth !== undefined) {
     const n = parseInt(options.maxDepth, 10);
-    if (Number.isFinite(n) && n > 0) { o.maxDepth = n; hasAny = true; }
+    if (Number.isFinite(n) && n > 0) {
+      o.maxDepth = n;
+      hasAny = true;
+    }
   }
   if (options.maxFiles !== undefined) {
     const n = parseInt(options.maxFiles, 10);
-    if (Number.isFinite(n) && n > 0) { o.maxFiles = n; hasAny = true; }
+    if (Number.isFinite(n) && n > 0) {
+      o.maxFiles = n;
+      hasAny = true;
+    }
   }
   if (options.allowUrls !== undefined) {
     o.allowUrls = options.allowUrls;
@@ -123,14 +129,15 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   //   3. plugin-provided embedder (first one wins)
   //   4. default: nomic
   const pluginEmbedder = pluginLoader.getEmbedder();
-  const embedderAlias = options.embedder
-    ?? (typeof config.embedder === "string" ? config.embedder : undefined);
+  const embedderAlias =
+    options.embedder ?? (typeof config.embedder === "string" ? config.embedder : undefined);
 
-  const onProgress = (p: number) => { spinner.text = `Downloading model... ${Math.round(p * 100)}%`; };
+  const onProgress = (p: number) => {
+    spinner.text = `Downloading model... ${Math.round(p * 100)}%`;
+  };
   const embedder = embedderAlias
     ? createEmbedder({ alias: embedderAlias, onProgress })
-    : pluginEmbedder
-      ?? createEmbedder({ onProgress });
+    : (pluginEmbedder ?? createEmbedder({ onProgress }));
 
   // System requirements check (RAM) for known presets
   const presetAlias = embedderAlias ?? "nomic";
@@ -183,12 +190,26 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
         }
       }
 
-      const crawlMaxDepth = options.crawlMaxDepth !== undefined ? parseInt(options.crawlMaxDepth, 10) : undefined;
-      const crawlMaxPages = options.crawlMaxPages !== undefined ? parseInt(options.crawlMaxPages, 10) : undefined;
-      const crawlConcurrency = options.crawlConcurrency !== undefined ? parseInt(options.crawlConcurrency, 10) : undefined;
-      const crawlDelay = options.crawlDelay !== undefined ? parseInt(options.crawlDelay, 10) : undefined;
-      const crawlInclude = options.crawlInclude ? options.crawlInclude.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
-      const crawlExclude = options.crawlExclude ? options.crawlExclude.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+      const crawlMaxDepth =
+        options.crawlMaxDepth !== undefined ? parseInt(options.crawlMaxDepth, 10) : undefined;
+      const crawlMaxPages =
+        options.crawlMaxPages !== undefined ? parseInt(options.crawlMaxPages, 10) : undefined;
+      const crawlConcurrency =
+        options.crawlConcurrency !== undefined ? parseInt(options.crawlConcurrency, 10) : undefined;
+      const crawlDelay =
+        options.crawlDelay !== undefined ? parseInt(options.crawlDelay, 10) : undefined;
+      const crawlInclude = options.crawlInclude
+        ? options.crawlInclude
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+      const crawlExclude = options.crawlExclude
+        ? options.crawlExclude
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
 
       console.log(chalk.dim(`Crawling ${source}...`));
 
@@ -220,7 +241,9 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
       crawlSpinner.succeed(`Crawl complete`);
       console.log();
-      console.log(chalk.green(`✓ Indexed ${summary.indexed} page(s), ${summary.totalChunks} chunks`));
+      console.log(
+        chalk.green(`✓ Indexed ${summary.indexed} page(s), ${summary.totalChunks} chunks`)
+      );
       if (summary.skipped > 0) console.log(chalk.dim(`  Skipped: ${summary.skipped}`));
       if (summary.errors > 0) console.log(chalk.yellow(`  Errors:  ${summary.errors}`));
 
@@ -249,19 +272,20 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
     let indexed = 0;
 
     for (const src of expandedSources) {
-      const displayPath = src.path || src.url || "unknown";
+      const displayPath =
+        src.type === "url" ? src.url : src.type === "file" ? src.path : (src.name ?? "inline");
       const fileSpinner = ora(`Processing ${displayPath}`).start();
 
       try {
         // Guard enforcement (when enabled)
         if (config.enforceGuards) {
           if (src.type === "url") {
-            const urlCheck = await isUrlAllowed(src.url!, config);
+            const urlCheck = await isUrlAllowed(src.url, config);
             if (!urlCheck.allowed) {
               fileSpinner.warn(`Blocked: ${urlCheck.reason}`);
               continue;
             }
-          } else if (src.path) {
+          } else if (src.type === "file") {
             const pathCheck = isPathAllowed(src.path, config);
             if (!pathCheck.allowed) {
               fileSpinner.warn(`Blocked: ${pathCheck.reason}`);
@@ -300,7 +324,11 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   }
 }
 
-async function collectSources(source: string, options: AddOptions, config: RagclawConfig): Promise<Source[]> {
+async function collectSources(
+  source: string,
+  options: AddOptions,
+  config: RagclawConfig
+): Promise<Source[]> {
   const resolved = resolve(source);
 
   if (!existsSync(resolved)) {
@@ -329,7 +357,7 @@ async function collectFilesRecursive(
   options: AddOptions,
   config: RagclawConfig,
   depth: number = 0,
-  collected: Source[] = [],
+  collected: Source[] = []
 ): Promise<Source[]> {
   // Enforce maxDepth when guards are active
   if (config.enforceGuards && depth >= config.maxDepth) {
@@ -363,9 +391,30 @@ async function collectFilesRecursive(
 
       // Only include supported extensions
       const supportedExts = [
-        ".md", ".markdown", ".mdx", ".txt", ".text", ".pdf", ".docx",
-        ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java",
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
+        ".md",
+        ".markdown",
+        ".mdx",
+        ".txt",
+        ".text",
+        ".pdf",
+        ".docx",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".py",
+        ".go",
+        ".java",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".tiff",
+        ".tif",
       ];
       if (supportedExts.includes(ext)) {
         collected.push({ type: "file", path: fullPath });

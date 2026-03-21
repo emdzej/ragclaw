@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { SourceRecord } from "@emdzej/ragclaw-core";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 type ReindexOutcome =
   | { status: "updated"; sourceId: string; chunks: number }
@@ -23,7 +23,12 @@ type ReindexOutcome =
 vi.mock("chalk", () => {
   const id = (s: unknown) => String(s);
   const c = Object.assign(id, {
-    bold: id, dim: id, cyan: id, green: id, red: id, yellow: id,
+    bold: id,
+    dim: id,
+    cyan: id,
+    green: id,
+    red: id,
+    yellow: id,
   });
   return { default: c };
 });
@@ -77,12 +82,18 @@ const storeMock = {
 // IndexingService mock
 const indexingServiceMock = {
   init: vi.fn(async () => {}),
-  reindexSource: vi.fn(async (): Promise<ReindexOutcome> => ({ status: "unchanged", sourceId: "s1" })),
+  reindexSource: vi.fn(
+    async (): Promise<ReindexOutcome> => ({ status: "unchanged", sourceId: "s1" })
+  ),
 };
 
 vi.mock("@emdzej/ragclaw-core", () => ({
-  Store: vi.fn(function () { return storeMock; }),
-  IndexingService: vi.fn(function () { return indexingServiceMock; }),
+  Store: vi.fn(function () {
+    return storeMock;
+  }),
+  IndexingService: vi.fn(function () {
+    return indexingServiceMock;
+  }),
   createEmbedder: vi.fn(),
   resolvePreset: vi.fn((_alias: string) => null),
   checkSystemRequirements: vi.fn(() => ({ errors: [], warnings: [] })),
@@ -96,11 +107,14 @@ const pluginLoaderMock = {
   getEmbedder: vi.fn((): unknown => undefined),
 };
 vi.mock("../plugins/loader.js", () => ({
-  PluginLoader: vi.fn(function () { return pluginLoaderMock; }),
+  PluginLoader: vi.fn(function () {
+    return pluginLoaderMock;
+  }),
 }));
 
 // Import SUT after all vi.mock calls
 const { reindex } = await import("./reindex.js");
+
 import { createEmbedder as mockCreateEmbedder } from "@emdzej/ragclaw-core";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -167,7 +181,7 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
       await reindex(defaultOptions);
 
       expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" }),
+        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" })
       );
     });
 
@@ -182,7 +196,7 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
       await reindex(defaultOptions);
 
       expect(mockCreateEmbedder).not.toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "nomic-embed-text-v1.5" }),
+        expect.objectContaining({ alias: "nomic-embed-text-v1.5" })
       );
     });
 
@@ -195,9 +209,7 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
 
       await reindex(defaultOptions);
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "bge" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "bge" }));
     });
 
     it("calls createEmbedder with no alias/model when neither metadata key is stored", async () => {
@@ -223,11 +235,9 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
 
       await reindex({ ...defaultOptions, embedder: "bge" });
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "bge" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "bge" }));
       expect(mockCreateEmbedder).not.toHaveBeenCalledWith(
-        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" }),
+        expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" })
       );
     });
 
@@ -239,9 +249,7 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
 
       await reindex({ ...defaultOptions, embedder: "minilm" });
 
-      expect(mockCreateEmbedder).toHaveBeenCalledWith(
-        expect.objectContaining({ alias: "minilm" }),
-      );
+      expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "minilm" }));
     });
   });
 
@@ -319,7 +327,11 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
     });
 
     it("reports updated count when sources are updated", async () => {
-      indexingServiceMock.reindexSource.mockResolvedValue({ status: "updated", sourceId: "s1", chunks: 3 });
+      indexingServiceMock.reindexSource.mockResolvedValue({
+        status: "updated",
+        sourceId: "s1",
+        chunks: 3,
+      });
 
       await reindex(defaultOptions);
 

@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CodeChunker } from "../chunkers/code.js";
 import type { ExtractedContent } from "../types.js";
 
@@ -27,15 +27,11 @@ describe("CodeChunker", () => {
     });
 
     it("does not handle markdown content", () => {
-      expect(
-        chunker.canHandle({ text: "", metadata: {}, sourceType: "markdown" })
-      ).toBe(false);
+      expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "markdown" })).toBe(false);
     });
 
     it("does not handle text content", () => {
-      expect(
-        chunker.canHandle({ text: "", metadata: {}, sourceType: "text" })
-      ).toBe(false);
+      expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "text" })).toBe(false);
     });
   });
 

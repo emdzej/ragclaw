@@ -11,6 +11,8 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "dev": "tsc --watch",
+    "lint": "biome check --error-on-warnings ./src",
+    "lint:fix": "biome check --write ./src",
     "test": "vitest run",
     "test:watch": "vitest"
   },

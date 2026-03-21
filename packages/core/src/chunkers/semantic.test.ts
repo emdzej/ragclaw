@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { SemanticChunker } from "../chunkers/semantic.js";
 import type { ExtractedContent } from "../types.js";
 
@@ -53,9 +53,7 @@ describe("SemanticChunker", () => {
       const pad = "Lorem ipsum dolor sit amet. ".repeat(10); // ~280 chars
       const chunker = new SemanticChunker();
       const content = makeContent(
-        `# Section 1\n\n${pad}\n\n` +
-        `# Section 2\n\n${pad}\n\n` +
-        `# Section 3\n\n${pad}`
+        `# Section 1\n\n${pad}\n\n` + `# Section 2\n\n${pad}\n\n` + `# Section 3\n\n${pad}`
       );
       const chunks = await chunker.chunk(content, "src-1", "/test.md");
 
@@ -115,7 +113,7 @@ describe("SemanticChunker", () => {
 
     it("generates unique IDs for each chunk", async () => {
       const chunker = new SemanticChunker({ chunkSize: 10, overlap: 0 });
-      const content = makeContent("Line 1\nLine 2\nLine 3\n" + "X".repeat(200));
+      const content = makeContent(`Line 1\nLine 2\nLine 3\n${"X".repeat(200)}`);
       const chunks = await chunker.chunk(content, "src-1", "/test.md");
 
       const ids = chunks.map((c) => c.id);

@@ -7,7 +7,7 @@
 
 import type { EmbedderPlugin } from "../types.js";
 import { HuggingFaceEmbedder } from "./index.js";
-import { resolvePreset, EMBEDDER_PRESETS, DEFAULT_PRESET } from "./presets.js";
+import { DEFAULT_PRESET, EMBEDDER_PRESETS, resolvePreset } from "./presets.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Embedder Factory
@@ -76,7 +76,7 @@ export function createEmbedder(config: EmbedderResolvedConfig = {}): EmbedderPlu
     if (!preset) {
       throw new Error(
         `Unknown embedder preset "${config.alias}". ` +
-          `Known presets: ${Object.keys(EMBEDDER_PRESETS).join(", ")}`,
+          `Known presets: ${Object.keys(EMBEDDER_PRESETS).join(", ")}`
       );
     }
 
@@ -113,7 +113,10 @@ export function createEmbedder(config: EmbedderResolvedConfig = {}): EmbedderPlu
   }
 
   // 4. Default to nomic preset
-  const defaultPreset = EMBEDDER_PRESETS[DEFAULT_PRESET]!;
+  const defaultPreset = EMBEDDER_PRESETS[DEFAULT_PRESET];
+  if (!defaultPreset) {
+    throw new Error(`Built-in preset "${DEFAULT_PRESET}" is missing from EMBEDDER_PRESETS`);
+  }
   return new HuggingFaceEmbedder({
     ...defaultPreset,
     onProgress: config.onProgress,

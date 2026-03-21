@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import type { Chunk, Chunker, ExtractedContent } from "../types.js";
 
 const DEFAULT_CHUNK_SIZE = 512; // tokens (approximate)
@@ -30,11 +30,7 @@ export class SemanticChunker implements Chunker {
     return ["markdown", "text"].includes(content.sourceType);
   }
 
-  async chunk(
-    content: ExtractedContent,
-    sourceId: string,
-    sourcePath: string
-  ): Promise<Chunk[]> {
+  async chunk(content: ExtractedContent, sourceId: string, sourcePath: string): Promise<Chunk[]> {
     const chunks: Chunk[] = [];
     const lines = content.text.split("\n");
 
@@ -55,14 +51,16 @@ export class SemanticChunker implements Chunker {
       if (headingMatch) {
         // Flush current chunk if we have content and hit a new section
         if (currentChunk.length > 0 && chunkCharCount > overlapChars) {
-          chunks.push(this.createChunk(
-            currentChunk,
-            sourceId,
-            sourcePath,
-            currentStartLine,
-            lineNum - 1,
-            currentHeading
-          ));
+          chunks.push(
+            this.createChunk(
+              currentChunk,
+              sourceId,
+              sourcePath,
+              currentStartLine,
+              lineNum - 1,
+              currentHeading
+            )
+          );
 
           // Keep overlap from end of previous chunk
           const overlapLines = this.getOverlapLines(currentChunk, overlapChars);
@@ -79,14 +77,16 @@ export class SemanticChunker implements Chunker {
 
       // Flush if chunk is too large
       if (chunkCharCount >= maxChars) {
-        chunks.push(this.createChunk(
-          currentChunk,
-          sourceId,
-          sourcePath,
-          currentStartLine,
-          lineNum,
-          currentHeading
-        ));
+        chunks.push(
+          this.createChunk(
+            currentChunk,
+            sourceId,
+            sourcePath,
+            currentStartLine,
+            lineNum,
+            currentHeading
+          )
+        );
 
         // Keep overlap
         const overlapLines = this.getOverlapLines(currentChunk, overlapChars);
@@ -100,14 +100,16 @@ export class SemanticChunker implements Chunker {
     if (currentChunk.length > 0) {
       const text = currentChunk.join("\n").trim();
       if (text.length > 0) {
-        chunks.push(this.createChunk(
-          currentChunk,
-          sourceId,
-          sourcePath,
-          currentStartLine,
-          lines.length,
-          currentHeading
-        ));
+        chunks.push(
+          this.createChunk(
+            currentChunk,
+            sourceId,
+            sourcePath,
+            currentStartLine,
+            lines.length,
+            currentHeading
+          )
+        );
       }
     }
 
