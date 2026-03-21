@@ -1,62 +1,64 @@
 {
   "name": "ragclaw",
   "version": "0.5.0",
-  "description": "Local-first RAG for OpenClaw - index and search documents, code, and web pages",
+  "description": "Local-first knowledge base for OpenClaw - index and search documents, code, and web pages",
   "triggers": [
-    "/rag",
+    "/kb",
+    "knowledge base",
     "index documents",
-    "search knowledge base",
-    "add to rag",
-    "rag search"
+    "search knowledge",
+    "add to knowledge base",
+    "kb search",
+    "find in docs"
   ],
   "commands": {
     "add": {
       "description": "Index a file, directory, or URL",
-      "usage": "/rag add <source> [--db <name>] [--embedder <preset>] [--crawl]"
+      "usage": "/kb add <source> [--db <name>] [--embedder <preset>] [--crawl]"
     },
     "search": {
       "description": "Search the knowledge base",
-      "usage": "/rag search <query> [--db <name>] [--limit <n>] [--mode vector|keyword|hybrid]"
+      "usage": "/kb search <query> [--db <name>] [--limit <n>] [--mode vector|keyword|hybrid]"
     },
     "reindex": {
       "description": "Re-process changed sources; optionally force full rebuild or prune missing sources",
-      "usage": "/rag reindex [--db <name>] [--force] [--prune] [--embedder <preset>]"
+      "usage": "/kb reindex [--db <name>] [--force] [--prune] [--embedder <preset>]"
     },
     "merge": {
       "description": "Merge another knowledge base SQLite file into the local one",
-      "usage": "/rag merge <source.sqlite> [--db <name>] [--strategy strict|reindex] [--dry-run]"
+      "usage": "/kb merge <source.sqlite> [--db <name>] [--strategy strict|reindex] [--dry-run]"
     },
     "status": {
       "description": "Show knowledge base statistics (chunks, sources, vector backend, embedder)",
-      "usage": "/rag status [--db <name>]"
+      "usage": "/kb status [--db <name>]"
     },
     "list": {
       "description": "List indexed sources",
-      "usage": "/rag list [--db <name>] [-t file|url]"
+      "usage": "/kb list [--db <name>] [-t file|url]"
     },
     "remove": {
       "description": "Remove a source from the index",
-      "usage": "/rag remove <source> [--db <name>] [-y]"
+      "usage": "/kb remove <source> [--db <name>] [-y]"
     },
     "embedder": {
       "description": "Manage embedder presets (list, download)",
-      "usage": "/rag embedder list | download [preset|--all]"
+      "usage": "/kb embedder list | download [preset|--all]"
     },
     "doctor": {
       "description": "Check system health: Node.js, RAM, sqlite-vec, embedder compatibility, plugins",
-      "usage": "/rag doctor"
+      "usage": "/kb doctor"
     },
     "plugin": {
       "description": "Manage plugins (list, enable, disable)",
-      "usage": "/rag plugin list | enable <name> | disable <name>"
+      "usage": "/kb plugin list | enable <name> | disable <name>"
     },
     "config": {
       "description": "View and set configuration values",
-      "usage": "/rag config list | get <key> | set <key> <value>"
+      "usage": "/kb config list | get <key> | set <key> <value>"
     },
     "init": {
       "description": "Initialize a new named knowledge base",
-      "usage": "/rag init <name>"
+      "usage": "/kb init <name>"
     }
   },
   "dependencies": {

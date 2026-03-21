@@ -1,6 +1,6 @@
-# RagClaw Skill
+# RagClaw Knowledge Base Skill
 
-Local-first RAG (Retrieval-Augmented Generation) for OpenClaw.
+Local-first knowledge base for OpenClaw.
 
 ## Description
 
@@ -8,15 +8,15 @@ Index and search your documents, code, and web pages locally. Zero external APIs
 
 ## Commands
 
-### `/rag add <source>`
+### `/kb add <source>`
 Index a file, directory, or URL.
 
 **Examples:**
 ```
-/rag add ./docs/
-/rag add https://docs.example.com
-/rag add ~/projects/my-app/src/
-/rag add https://docs.example.com --crawl --crawl-max-depth 2
+/kb add ./docs/
+/kb add https://docs.example.com
+/kb add ~/projects/my-app/src/
+/kb add https://docs.example.com --crawl --crawl-max-depth 2
 ```
 
 **Options:**
@@ -37,14 +37,14 @@ Index a file, directory, or URL.
 - `--crawl-delay <ms>` — Delay between requests in ms (default: 1000)
 - `--enforce-guards` — Enable path/URL security guards
 
-### `/rag search <query>`
+### `/kb search <query>`
 Search the knowledge base.
 
 **Examples:**
 ```
-/rag search how to configure authentication
-/rag search async function error handling
-/rag search "memory leak" --mode hybrid --limit 10
+/kb search how to configure authentication
+/kb search async function error handling
+/kb search "memory leak" --mode hybrid --limit 10
 ```
 
 **Options:**
@@ -53,7 +53,7 @@ Search the knowledge base.
 - `--mode <mode>` — Search mode: vector|keyword|hybrid (default: hybrid)
 - `--json` — Machine-readable JSON output
 
-### `/rag reindex`
+### `/kb reindex`
 Re-process changed sources and keep vectors up to date.
 
 **Options:**
@@ -62,7 +62,7 @@ Re-process changed sources and keep vectors up to date.
 - `-p, --prune` — Remove sources that no longer exist on disk
 - `--embedder <preset>` — Switch embedder and rebuild all vectors
 
-### `/rag merge <source.sqlite>`
+### `/kb merge <source.sqlite>`
 Merge another knowledge base into the local one.
 
 **Options:**
@@ -73,55 +73,55 @@ Merge another knowledge base into the local one.
 - `--include <paths>` — Comma-separated path prefixes to import
 - `--exclude <paths>` — Comma-separated path prefixes to skip
 
-### `/rag status`
+### `/kb status`
 Show knowledge base statistics (chunks, sources, vector backend, embedder).
 
 **Options:**
 - `--db <name>` — Knowledge base name (default: "default")
 
-### `/rag list`
+### `/kb list`
 List indexed sources.
 
 **Options:**
 - `--db <name>` — Knowledge base name (default: "default")
 - `-t <file|url>` — Filter by source type
 
-### `/rag remove <source>`
+### `/kb remove <source>`
 Remove a source from the index.
 
 **Options:**
 - `--db <name>` — Knowledge base name (default: "default")
 - `-y` — Skip confirmation prompt
 
-### `/rag embedder list`
+### `/kb embedder list`
 List all available embedder presets with RAM requirements and status.
 
-### `/rag embedder download [preset]`
+### `/kb embedder download [preset]`
 Pre-download a model for offline use.
 
 **Options:**
 - `--all` — Download all built-in presets
 
-### `/rag doctor`
+### `/kb doctor`
 Check system health: Node.js version, RAM, sqlite-vec status, embedder compatibility, loaded plugins.
 
-### `/rag plugin list`
+### `/kb plugin list`
 List discovered plugins with enabled/disabled status.
 
-### `/rag plugin enable <name>`
+### `/kb plugin enable <name>`
 Enable a plugin (use `--all` for all discovered plugins).
 
-### `/rag plugin disable <name>`
+### `/kb plugin disable <name>`
 Disable a plugin.
 
-### `/rag config list`
+### `/kb config list`
 Show all configuration values and their source (env / config file / default).
 
-### `/rag config get <key>`
+### `/kb config get <key>`
 Show a single config value.
 
-### `/rag config set <key> <value>`
-Persist a config value to `~/.config/ragclaw/config.yaml`.
+### `/kb config set <key> <value>`
+Persist a config value to `~/.config/kbclaw/config.yaml`.
 
 ## Supported Formats
 
@@ -144,15 +144,15 @@ Persist a config value to `~/.config/ragclaw/config.yaml`.
 | `mxbai` | `mixedbread-ai/mxbai-embed-large-v1` | English | 512 tok | 1024 | ~1.4 GB | Best English MTEB |
 | `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | English | 256 tok | 384 | ~90 MB | Minimal RAM |
 
-Run `/rag doctor` to check which presets fit your available RAM.
+Run `/kb doctor` to check which presets fit your available RAM.
 
 ## Storage
 
 Knowledge bases are stored as SQLite files following XDG conventions:
 
-- Default data dir: `~/.local/share/ragclaw/`
-- Config file: `~/.config/ragclaw/config.yaml`
-- Backwards compat: if `~/.openclaw/ragclaw/` exists it will be used automatically.
+- Default data dir: `~/.local/share/kbclaw/`
+- Config file: `~/.config/kbclaw/config.yaml`
+- Backwards compat: if `~/.openclaw/kbclaw/` exists it will be used automatically.
 
 ## How It Works
 

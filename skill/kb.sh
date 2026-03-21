@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# RagClaw skill entry point for OpenClaw
-# Usage: rag.sh <command> [args...]
+# RagClaw knowledge base skill entry point for OpenClaw
+# Usage: kb.sh <command> [args...]
 
 set -e
 
@@ -54,7 +54,7 @@ case "$CMD" in
         ;;
     help|--help|-h)
         cat << 'EOF'
-RagClaw - Local-first RAG for OpenClaw
+RagClaw - Local-first knowledge base for OpenClaw
 
 Commands:
   add <source>           Index a file, directory, or URL
@@ -91,20 +91,20 @@ Web crawl options (for add with a URL):
   --crawl-same-origin    Stay on same domain (default: true)
 
 Examples:
-  rag add ./docs/
-  rag add https://docs.example.com --crawl --crawl-max-depth 2
-  rag search "how to configure auth"
-  rag search "error handling" --mode hybrid --limit 10
-  rag reindex --force
-  rag merge /path/to/other.sqlite --dry-run
-  rag embedder list
-  rag doctor
-  rag status
+  kb add ./docs/
+  kb add https://docs.example.com --crawl --crawl-max-depth 2
+  kb search "how to configure auth"
+  kb search "error handling" --mode hybrid --limit 10
+  kb reindex --force
+  kb merge /path/to/other.sqlite --dry-run
+  kb embedder list
+  kb doctor
+  kb status
 EOF
         ;;
     *)
         echo "Unknown command: $CMD"
-        echo "Run 'rag help' for usage"
+        echo "Run 'kb help' for usage"
         exit 1
         ;;
 esac
