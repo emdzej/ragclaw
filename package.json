@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @emdzej/ragclaw-e2e test",
     "lint": "turbo run lint",
     "clean": "turbo run clean"
   },

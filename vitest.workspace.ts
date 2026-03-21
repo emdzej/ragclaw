@@ -14,4 +14,5 @@ export default defineWorkspace([
   "plugins/ragclaw-plugin-github",
   "plugins/ragclaw-plugin-obsidian",
   "plugins/ragclaw-plugin-youtube",
+  "e2e",
 ]);

@@ -30,10 +30,31 @@ jobs:
         run: pnpm build
 
       - name: Test
-        run: pnpm test
+        run: pnpm turbo run test --filter=!@emdzej/ragclaw-e2e
 
       - name: Type check
         run: pnpm exec tsc --noEmit -p packages/core/tsconfig.json
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
 
   # Test on multiple platforms for native modules (better-sqlite3, tree-sitter, sharp)
   test-platforms:
@@ -65,7 +86,7 @@ jobs:
         run: pnpm build
 
       - name: Test
-        run: pnpm test
+        run: pnpm turbo run test --filter=!@emdzej/ragclaw-e2e
 
       - name: Verify CLI build
         run: test -f packages/cli/dist/cli.js
@@ -101,3 +122,4 @@ jobs:
 
       - name: CodeQL analysis
         uses: github/codeql-action/analyze@603b797f8b14b413fe025cd935a91c16c4782713 # v3
+
