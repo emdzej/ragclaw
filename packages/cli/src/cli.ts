@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from "module";
 import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
@@ -14,12 +15,15 @@ import { configList, configGet, configSet } from "./commands/config.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { embedderList, embedderDownload } from "./commands/embedder.js";
 
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
+
 const program = new Command();
 
 program
   .name("ragclaw")
   .description("Local-first RAG engine - index and search your documents")
-  .version("0.2.0");
+  .version(version);
 
 program
   .command("init")
