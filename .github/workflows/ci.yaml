@@ -33,7 +33,10 @@ jobs:
         run: pnpm turbo run test --filter=!@emdzej/ragclaw-e2e
 
       - name: Type check
-        run: pnpm exec tsc --noEmit -p packages/core/tsconfig.json
+        run: |
+          pnpm exec tsc --noEmit -p packages/core/tsconfig.json
+          pnpm exec tsc --noEmit -p packages/cli/tsconfig.json
+          pnpm exec tsc --noEmit -p packages/mcp/tsconfig.json
 
   lint:
     runs-on: ubuntu-latest

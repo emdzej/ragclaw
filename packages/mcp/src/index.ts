@@ -21,238 +21,12 @@ import {
   MergeService,
   Store,
 } from "@emdzej/ragclaw-core";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  type Tool,
-} from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 const config = getConfig();
 const RAGCLAW_DIR = config.dataDir;
-
-// Tool definitions
-const TOOLS: Tool[] = [
-  {
-    name: "rag_search",
-    description:
-      "Search the local knowledge base for relevant documents and code. Returns matching chunks with source paths and relevance scores.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Search query text",
-        },
-        db: {
-          type: "string",
-          description: "Knowledge base name (default: 'default')",
-          default: "default",
-        },
-        limit: {
-          type: "number",
-          description: "Maximum number of results (default: 5)",
-          default: 5,
-        },
-        mode: {
-          type: "string",
-          enum: ["vector", "keyword", "hybrid"],
-          description: "Search mode (default: 'hybrid')",
-          default: "hybrid",
-        },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "rag_add",
-    description:
-      "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        source: {
-          type: "string",
-          description: "File path, directory path, or URL to index",
-        },
-        db: {
-          type: "string",
-          description: "Knowledge base name (default: 'default')",
-          default: "default",
-        },
-        recursive: {
-          type: "boolean",
-          description: "Recurse into directories (default: true)",
-          default: true,
-        },
-        crawl: {
-          type: "boolean",
-          description: "Enable crawling — follow links from the seed URL (requires a URL source)",
-          default: false,
-        },
-        crawlMaxDepth: {
-          type: "number",
-          description: "Max link depth from start URL (default: 3)",
-          default: 3,
-        },
-        crawlMaxPages: {
-          type: "number",
-          description: "Max pages to crawl (default: 100)",
-          default: 100,
-        },
-        crawlSameOrigin: {
-          type: "boolean",
-          description: "Stay on the same domain (default: true)",
-          default: true,
-        },
-        crawlInclude: {
-          type: "string",
-          description: "Comma-separated path prefixes to include (e.g. '/docs,/api')",
-        },
-        crawlExclude: {
-          type: "string",
-          description: "Comma-separated path prefixes to exclude (e.g. '/blog,/archive')",
-        },
-        crawlConcurrency: {
-          type: "number",
-          description: "Concurrent requests during crawl (default: 1)",
-          default: 1,
-        },
-        crawlDelay: {
-          type: "number",
-          description: "Delay between requests in milliseconds (default: 1000)",
-          default: 1000,
-        },
-        ignoreRobots: {
-          type: "boolean",
-          description: "Ignore robots.txt restrictions — use responsibly (default: false)",
-          default: false,
-        },
-      },
-      required: ["source"],
-    },
-  },
-  {
-    name: "rag_status",
-    description: "Get statistics about a knowledge base (number of sources, chunks, size).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        db: {
-          type: "string",
-          description: "Knowledge base name (default: 'default')",
-          default: "default",
-        },
-      },
-    },
-  },
-  {
-    name: "rag_list",
-    description: "List all indexed sources in a knowledge base.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        db: {
-          type: "string",
-          description: "Knowledge base name (default: 'default')",
-          default: "default",
-        },
-      },
-    },
-  },
-  {
-    name: "rag_remove",
-    description: "Remove a source from the knowledge base index.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        source: {
-          type: "string",
-          description: "Source path or URL to remove",
-        },
-        db: {
-          type: "string",
-          description: "Knowledge base name (default: 'default')",
-          default: "default",
-        },
-      },
-      required: ["source"],
-    },
-  },
-  {
-    name: "rag_reindex",
-    description:
-      "Re-process changed sources in the knowledge base. Only re-indexes files that have changed since last indexing.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        db: {
-          type: "string",
-          description: "Knowledge base name (default: 'default')",
-          default: "default",
-        },
-        force: {
-          type: "boolean",
-          description: "Reindex all sources regardless of hash (default: false)",
-          default: false,
-        },
-        prune: {
-          type: "boolean",
-          description: "Remove sources that no longer exist (default: false)",
-          default: false,
-        },
-      },
-    },
-  },
-  {
-    name: "rag_merge",
-    description:
-      "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        sourceDb: {
-          type: "string",
-          description: "Absolute path to the source .db file to merge from",
-        },
-        db: {
-          type: "string",
-          description: "Destination knowledge base name (default: 'default')",
-          default: "default",
-        },
-        strategy: {
-          type: "string",
-          enum: ["strict", "reindex"],
-          description:
-            "Merge strategy: 'strict' (copy embeddings, requires identical embedder) or 'reindex' (re-embed text, works across embedders). Default: 'strict'.",
-          default: "strict",
-        },
-        onConflict: {
-          type: "string",
-          enum: ["skip", "prefer-local", "prefer-remote"],
-          description:
-            "Conflict resolution when the same source exists in both DBs. Default: 'skip' (keep local).",
-          default: "skip",
-        },
-        dryRun: {
-          type: "boolean",
-          description: "Preview what would change without writing anything (default: false)",
-          default: false,
-        },
-        include: {
-          type: "string",
-          description: "Comma-separated path prefixes — only import matching sources",
-        },
-        exclude: {
-          type: "string",
-          description: "Comma-separated path prefixes — skip matching sources",
-        },
-      },
-      required: ["sourceDb"],
-    },
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Cached singletons (expensive to initialise)
@@ -827,66 +601,243 @@ async function collectFilesRecursive(
 
 // Main server
 async function main() {
-  const server = new Server(
+  const server = new McpServer({
+    name: "ragclaw-mcp",
+    version: "0.2.0",
+  });
+
+  server.registerTool(
+    "rag_search",
     {
-      name: "ragclaw-mcp",
-      version: "0.2.0",
-    },
-    {
-      capabilities: {
-        tools: {},
+      description:
+        "Search the local knowledge base for relevant documents and code. Returns matching chunks with source paths and relevance scores.",
+      inputSchema: {
+        query: z.string().describe("Search query text"),
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+        limit: z.number().optional().describe("Maximum number of results (default: 5)"),
+        mode: z
+          .enum(["vector", "keyword", "hybrid"])
+          .optional()
+          .describe("Search mode (default: 'hybrid')"),
       },
+    },
+    async ({ query, db, limit, mode }) => {
+      try {
+        const result = await ragSearch({ query, db, limit, mode });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
     }
   );
 
-  // List tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS,
-  }));
-
-  // Call tool
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-
-    try {
-      let result: string;
-
-      switch (name) {
-        case "rag_search":
-          result = await ragSearch(args as Parameters<typeof ragSearch>[0]);
-          break;
-        case "rag_add":
-          result = await ragAdd(args as Parameters<typeof ragAdd>[0]);
-          break;
-        case "rag_status":
-          result = await ragStatus(args as Parameters<typeof ragStatus>[0]);
-          break;
-        case "rag_list":
-          result = await ragList(args as Parameters<typeof ragList>[0]);
-          break;
-        case "rag_remove":
-          result = await ragRemove(args as Parameters<typeof ragRemove>[0]);
-          break;
-        case "rag_reindex":
-          result = await ragReindex(args as Parameters<typeof ragReindex>[0]);
-          break;
-        case "rag_merge":
-          result = await ragMerge(args as Parameters<typeof ragMerge>[0]);
-          break;
-        default:
-          throw new Error(`Unknown tool: ${name}`);
+  server.registerTool(
+    "rag_add",
+    {
+      description:
+        "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
+      inputSchema: {
+        source: z.string().describe("File path, directory path, or URL to index"),
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+        recursive: z.boolean().optional().describe("Recurse into directories (default: true)"),
+        crawl: z
+          .boolean()
+          .optional()
+          .describe("Enable crawling — follow links from the seed URL (requires a URL source)"),
+        crawlMaxDepth: z.number().optional().describe("Max link depth from start URL (default: 3)"),
+        crawlMaxPages: z.number().optional().describe("Max pages to crawl (default: 100)"),
+        crawlSameOrigin: z.boolean().optional().describe("Stay on the same domain (default: true)"),
+        crawlInclude: z
+          .string()
+          .optional()
+          .describe("Comma-separated path prefixes to include (e.g. '/docs,/api')"),
+        crawlExclude: z
+          .string()
+          .optional()
+          .describe("Comma-separated path prefixes to exclude (e.g. '/blog,/archive')"),
+        crawlConcurrency: z
+          .number()
+          .optional()
+          .describe("Concurrent requests during crawl (default: 1)"),
+        crawlDelay: z
+          .number()
+          .optional()
+          .describe("Delay between requests in milliseconds (default: 1000)"),
+        ignoreRobots: z
+          .boolean()
+          .optional()
+          .describe("Ignore robots.txt restrictions — use responsibly (default: false)"),
+      },
+    },
+    async ({
+      source,
+      db,
+      recursive,
+      crawl,
+      crawlMaxDepth,
+      crawlMaxPages,
+      crawlSameOrigin,
+      crawlInclude,
+      crawlExclude,
+      crawlConcurrency,
+      crawlDelay,
+      ignoreRobots,
+    }) => {
+      try {
+        const result = await ragAdd({
+          source,
+          db,
+          recursive,
+          crawl,
+          crawlMaxDepth,
+          crawlMaxPages,
+          crawlSameOrigin,
+          crawlInclude,
+          crawlExclude,
+          crawlConcurrency,
+          crawlDelay,
+          ignoreRobots,
+        });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
       }
-
-      return {
-        content: [{ type: "text", text: result }],
-      };
-    } catch (error) {
-      return {
-        content: [{ type: "text", text: `Error: ${error}` }],
-        isError: true,
-      };
     }
-  });
+  );
+
+  server.registerTool(
+    "rag_status",
+    {
+      description: "Get statistics about a knowledge base (number of sources, chunks, size).",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+      },
+    },
+    async ({ db }) => {
+      try {
+        const result = await ragStatus({ db });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_list",
+    {
+      description: "List all indexed sources in a knowledge base.",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+      },
+    },
+    async ({ db }) => {
+      try {
+        const result = await ragList({ db });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_remove",
+    {
+      description: "Remove a source from the knowledge base index.",
+      inputSchema: {
+        source: z.string().describe("Source path or URL to remove"),
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+      },
+    },
+    async ({ source, db }) => {
+      try {
+        const result = await ragRemove({ source, db });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_reindex",
+    {
+      description:
+        "Re-process changed sources in the knowledge base. Only re-indexes files that have changed since last indexing.",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+        force: z
+          .boolean()
+          .optional()
+          .describe("Reindex all sources regardless of hash (default: false)"),
+        prune: z
+          .boolean()
+          .optional()
+          .describe("Remove sources that no longer exist (default: false)"),
+      },
+    },
+    async ({ db, force, prune }) => {
+      try {
+        const result = await ragReindex({ db, force, prune });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_merge",
+    {
+      description:
+        "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
+      inputSchema: {
+        sourceDb: z.string().describe("Absolute path to the source .db file to merge from"),
+        db: z.string().optional().describe("Destination knowledge base name (default: 'default')"),
+        strategy: z
+          .enum(["strict", "reindex"])
+          .optional()
+          .describe(
+            "Merge strategy: 'strict' (copy embeddings, requires identical embedder) or 'reindex' (re-embed text, works across embedders). Default: 'strict'."
+          ),
+        onConflict: z
+          .enum(["skip", "prefer-local", "prefer-remote"])
+          .optional()
+          .describe(
+            "Conflict resolution when the same source exists in both DBs. Default: 'skip' (keep local)."
+          ),
+        dryRun: z
+          .boolean()
+          .optional()
+          .describe("Preview what would change without writing anything (default: false)"),
+        include: z
+          .string()
+          .optional()
+          .describe("Comma-separated path prefixes — only import matching sources"),
+        exclude: z
+          .string()
+          .optional()
+          .describe("Comma-separated path prefixes — skip matching sources"),
+      },
+    },
+    async ({ sourceDb, db, strategy, onConflict, dryRun, include, exclude }) => {
+      try {
+        const result = await ragMerge({
+          sourceDb,
+          db,
+          strategy,
+          onConflict,
+          dryRun,
+          include,
+          exclude,
+        });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
 
   // Start server
   const transport = new StdioServerTransport();
