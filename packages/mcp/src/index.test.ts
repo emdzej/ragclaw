@@ -12,29 +12,26 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite
 // All vi.mock() calls must be hoisted before any module imports.
 
 // ── MCP SDK mocks — prevent real server/transport initialisation ──────────────
-// Capture the CallTool request handler so we can invoke it directly in tests.
-let capturedCallToolHandler:
-  | ((req: { params: { name: string; arguments: unknown } }) => Promise<unknown>)
-  | undefined;
-let capturedListToolsHandler: (() => Promise<unknown>) | undefined;
+// Capture tool handlers registered via McpServer.registerTool so we can invoke
+// them directly in tests.
+type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
+const capturedToolHandlers = new Map<string, ToolHandler>();
 
 const serverMock = {
-  setRequestHandler: vi.fn((_schema: unknown, handler: (req: unknown) => Promise<unknown>) => {
-    // Identify handlers by the schema object reference at mock-setup time.
-    // We tag them by calling order: ListTools first, CallTool second (per main()).
-    if (!capturedListToolsHandler) {
-      capturedListToolsHandler = handler as () => Promise<unknown>;
-    } else {
-      capturedCallToolHandler = handler as (req: {
-        params: { name: string; arguments: unknown };
-      }) => Promise<unknown>;
+  registerTool: vi.fn(
+    (
+      _name: string,
+      _config: unknown,
+      handler: (args: Record<string, unknown>) => Promise<unknown>
+    ) => {
+      capturedToolHandlers.set(_name, handler);
     }
-  }),
+  ),
   connect: vi.fn(async () => {}),
 };
 
-vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
-  Server: vi.fn(function () {
+vi.mock("@modelcontextprotocol/sdk/server/mcp.js", () => ({
+  McpServer: vi.fn(function () {
     return serverMock;
   }),
 }));
@@ -43,11 +40,6 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
   StdioServerTransport: vi.fn(function () {
     return {};
   }),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
-  CallToolRequestSchema: "call-tool-schema",
-  ListToolsRequestSchema: "list-tools-schema",
 }));
 
 // ── fs mocks ──────────────────────────────────────────────────────────────────
@@ -159,9 +151,9 @@ function makeResult(sourcePath: string, text: string): SearchResult {
 
 /** Call the rag_search tool handler and return the text content. */
 async function callRagSearch(args: Record<string, unknown>): Promise<string> {
-  const response = (await capturedCallToolHandler?.({
-    params: { name: "rag_search", arguments: args },
-  })) as { content: Array<{ type: string; text: string }> };
+  const handler = capturedToolHandlers.get("rag_search");
+  if (!handler) throw new Error("rag_search handler not registered");
+  const response = (await handler(args)) as { content: Array<{ type: string; text: string }> };
   return response.content[0].text;
 }
 
