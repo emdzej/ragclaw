@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * Copyright (c) 2026 Michał Jaskólski and contributors
  *
@@ -5,7 +7,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
-#!/usr/bin/env node
+
 
 import { createRequire } from "module";
 import { Command } from "commander";
