@@ -9,6 +9,7 @@
 
 import { existsSync } from "node:fs";
 import { mkdir, readdir, stat } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
 import type { EmbedderPlugin, Source } from "@emdzej/ragclaw-core";
 import {
@@ -24,6 +25,9 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+
+const _require = createRequire(import.meta.url);
+const { version } = _require("../package.json") as { version: string };
 
 const config = getConfig();
 const RAGCLAW_DIR = config.dataDir;
@@ -603,7 +607,7 @@ async function collectFilesRecursive(
 async function main() {
   const server = new McpServer({
     name: "ragclaw-mcp",
-    version: "0.2.0",
+    version,
   });
 
   server.registerTool(

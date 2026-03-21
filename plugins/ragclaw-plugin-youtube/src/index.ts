@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this repository.
  */
 
+import { createRequire } from "node:module";
 import type {
   ContentType,
   ExtractedContent,
@@ -12,6 +13,9 @@ import type {
   RagClawPlugin,
   Source,
 } from "@emdzej/ragclaw-core";
+
+const _require = createRequire(import.meta.url);
+const { version } = _require("../package.json") as { version: string };
 
 interface TranscriptSegment {
   text: string;
@@ -272,7 +276,7 @@ class YouTubeExtractor implements Extractor {
  */
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-youtube",
-  version: "0.2.0",
+  version,
 
   extractors: [new YouTubeExtractor()],
 

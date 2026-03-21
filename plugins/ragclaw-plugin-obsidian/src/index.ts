@@ -7,9 +7,13 @@
 
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { basename, extname, join, relative } from "node:path";
 import type { ExtractedContent, Extractor, RagClawPlugin, Source } from "@emdzej/ragclaw-core";
+
+const _require = createRequire(import.meta.url);
+const { version } = _require("../package.json") as { version: string };
 
 // ---------------------------------------------------------------------------
 // Configurable limits (overridable via plugin config)
@@ -377,7 +381,7 @@ async function expandObsidian(source: Source): Promise<Source[] | null> {
 
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-obsidian",
-  version: "0.2.0",
+  version: version,
   extractors: [new ObsidianExtractor()],
   schemes: ["obsidian", "vault"],
 

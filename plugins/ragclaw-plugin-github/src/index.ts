@@ -6,7 +6,11 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import type { ExtractedContent, Extractor, RagClawPlugin, Source } from "@emdzej/ragclaw-core";
+
+const _require = createRequire(import.meta.url);
+const { version } = _require("../package.json") as { version: string };
 
 /**
  * GitHub content types
@@ -396,7 +400,7 @@ class GitHubExtractor implements Extractor {
  */
 const plugin: RagClawPlugin = {
   name: "ragclaw-plugin-github",
-  version: "0.2.0",
+  version: version,
   extractors: [new GitHubExtractor()],
   schemes: ["github", "gh"],
 
