@@ -586,14 +586,6 @@ Override the local plugins directory with `RAGCLAW_PLUGINS_DIR` or the config fi
 
 ---
 
-## Roadmap
-
-Planned improvements for upcoming releases:
-
-- **At-rest protection** — Optional filesystem permission hardening and encryption for sensitive knowledge bases (SQLite files containing private code, documents, vault notes, or GitHub content are currently stored in plaintext)
-
----
-
 ## Packages
 
 | Package | Description |
