@@ -36,20 +36,25 @@ This guide is a feature-complete reference for the RagClaw CLI. It is scenario-d
 
 Install from npm (recommended) or run from source.
 
-Install globally via npm:
+Install the CLI globally via npm:
 
 ```bash
-npm install -g ragclaw
+npm install -g @emdzej/ragclaw-cli
+```
+
+Install the MCP server globally via npm:
+
+```bash
+npm install -g @emdzej/ragclaw-mcp
 ```
 
 From source (requires Node.js 22+):
 
 ```bash
-git clone https://github.com/yourorg/ragclaw.git
+git clone https://github.com/emdzej/ragclaw.git
 cd ragclaw
-npm install
-npm run build
-npm link    # optional: symlink into global PATH
+pnpm install
+pnpm run build
 ```
 
 Verify your installation and environment with the doctor command (recommended):
