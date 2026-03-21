@@ -1,6 +1,6 @@
 {
   "name": "@emdzej/ragclaw-cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "CLI for RagClaw - local-first RAG engine",
   "type": "module",
   "bin": {

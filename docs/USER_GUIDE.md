@@ -16,8 +16,9 @@ Table of contents
 - [10. Configuration](#10-configuration)
 - [11. Portability and backups](#11-portability-and-backups)
 - [12. MCP server and tools](#12-mcp-server-and-tools)
-- [13. Plugins](#13-plugins)
-- [14. Troubleshooting](#14-troubleshooting)
+- [13. OpenClaw skill setup](#13-openclaw-skill-setup)
+- [14. Plugins](#14-plugins)
+- [15. Troubleshooting](#15-troubleshooting)
 - [Appendix A — Supported formats](#appendix-a---supported-formats)
 - [Appendix B — Environment variables](#appendix-b---environment-variables)
 
@@ -396,7 +397,7 @@ If any model fails to download the command exits with code 1 and lists the failu
 
 **Tip:** Run `ragclaw embedder download --all` in your Dockerfile or CI setup step so that all workers have models available before any indexing job starts.
 
-
+## 10. Configuration
 
 Primary config location: `~/.config/ragclaw/config.yaml`. RagClaw adheres to XDG: use XDG_DATA_HOME and XDG_CONFIG_HOME for custom locations. If you prefer env vars, RagClaw respects them (see Appendix B).
 
@@ -534,7 +535,67 @@ Crawl https://docs.example.com and index it into ragclaw
 
 **Security note:** the MCP server always enforces guards. Configure `allowedPaths` and other guard settings in `~/.config/ragclaw/config.yaml` before exposing RagClaw to external clients.
 
-## 13. Plugins
+## 13. OpenClaw skill setup
+
+The `skill/` directory in the RagClaw repository bundles a ready-to-use OpenClaw skill. It exposes all RagClaw commands as `/rag` slash commands directly inside the OpenClaw chat interface — no MCP server required.
+
+### Install the skill
+
+Copy the `skill/` directory into your OpenClaw skills folder:
+
+```bash
+cp -r skill/ ~/.openclaw/workspace/skills/ragclaw/
+```
+
+OpenClaw discovers skills automatically on startup. After copying, restart OpenClaw (or reload skills if your version supports hot-reload).
+
+### Usage
+
+Once installed, the `/rag` command is available in chat:
+
+```
+/rag add ./docs/
+/rag add https://docs.example.com --crawl
+/rag search "authentication flow"
+/rag reindex --force
+/rag status
+/rag embedder list
+/rag doctor
+```
+
+All commands and flags are identical to the CLI — the skill is a thin wrapper around the `ragclaw` binary. Run `/rag help` inside OpenClaw to see the full command reference.
+
+### Prerequisites
+
+The skill requires the RagClaw CLI to be installed and available on your `PATH`:
+
+```bash
+npm install -g @emdzej/ragclaw-cli
+```
+
+Verify with:
+
+```bash
+ragclaw doctor
+```
+
+### Configuration
+
+The skill respects all standard RagClaw configuration. Set defaults in `~/.config/ragclaw/config.yaml`:
+
+```yaml
+embedder: nomic       # default embedder preset
+enforceGuards: false  # set to true for automated/non-interactive use
+```
+
+### Storage
+
+Knowledge bases created via the skill are stored in the same location as the CLI:
+
+- Default: `~/.local/share/ragclaw/<name>.sqlite`
+- Backwards compat: `~/.openclaw/ragclaw/` (used automatically if it exists)
+
+## 14. Plugins
 
 Plugin discovery and locations:
 
@@ -572,7 +633,7 @@ ragclaw plugin enable ragclaw-plugin-github
 ragclaw add github://myorg/myrepo -d code-kb
 ```
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 Problem: sqlite-vec native extension missing → fallback to JS vectors is slow above ~5k chunks
 

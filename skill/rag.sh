@@ -22,6 +22,12 @@ case "$CMD" in
     search)
         "$RAGCLAW_BIN" search "$@"
         ;;
+    reindex)
+        "$RAGCLAW_BIN" reindex "$@"
+        ;;
+    merge)
+        "$RAGCLAW_BIN" merge "$@"
+        ;;
     status)
         "$RAGCLAW_BIN" status "$@"
         ;;
@@ -34,27 +40,65 @@ case "$CMD" in
     init)
         "$RAGCLAW_BIN" init "$@"
         ;;
+    embedder)
+        "$RAGCLAW_BIN" embedder "$@"
+        ;;
+    doctor)
+        "$RAGCLAW_BIN" doctor "$@"
+        ;;
+    plugin)
+        "$RAGCLAW_BIN" plugin "$@"
+        ;;
+    config)
+        "$RAGCLAW_BIN" config "$@"
+        ;;
     help|--help|-h)
         cat << 'EOF'
 RagClaw - Local-first RAG for OpenClaw
 
 Commands:
-  add <source>      Index a file, directory, or URL
-  search <query>    Search the knowledge base
-  status            Show knowledge base stats
-  list              List indexed sources
-  remove <source>   Remove a source from index
-  init [name]       Initialize a new knowledge base
+  add <source>           Index a file, directory, or URL
+  search <query>         Search the knowledge base
+  reindex                Re-process changed sources
+  merge <source.sqlite>  Merge another knowledge base into this one
+  status                 Show knowledge base stats (chunks, embedder, backend)
+  list                   List indexed sources
+  remove <source>        Remove a source from index
+  init [name]            Initialize a new knowledge base
+  embedder list          List embedder presets with RAM requirements
+  embedder download [n]  Pre-download a model for offline use (--all for all)
+  doctor                 Check system health and embedder compatibility
+  plugin list            List discovered plugins
+  plugin enable <name>   Enable a plugin
+  plugin disable <name>  Disable a plugin
+  config list            Show all config values and sources
+  config get <key>       Show a single config value
+  config set <key> <v>   Persist a config value
 
-Options:
-  --db <name>       Knowledge base name (default: "default")
-  --limit <n>       Max search results (default: 5)
-  --mode <mode>     Search mode: vector|keyword|hybrid
+Common options:
+  --db <name>            Knowledge base name (default: "default")
+  --limit <n>            Max search results (default: 5)
+  --mode <mode>          Search mode: vector|keyword|hybrid
+  --embedder <preset>    Embedder preset: nomic|bge|mxbai|minilm
+  --force                Force full reindex (ignore hashes)
+  --prune                Remove missing sources during reindex
+  --dry-run              Preview merge changes without writing
+
+Web crawl options (for add with a URL):
+  --crawl                Follow links from the seed URL
+  --crawl-max-depth <n>  Link traversal depth (default: 3)
+  --crawl-max-pages <n>  Max pages to fetch (default: 100)
+  --crawl-same-origin    Stay on same domain (default: true)
 
 Examples:
   rag add ./docs/
-  rag add https://docs.example.com
+  rag add https://docs.example.com --crawl --crawl-max-depth 2
   rag search "how to configure auth"
+  rag search "error handling" --mode hybrid --limit 10
+  rag reindex --force
+  rag merge /path/to/other.sqlite --dry-run
+  rag embedder list
+  rag doctor
   rag status
 EOF
         ;;

@@ -1,6 +1,6 @@
 {
   "name": "ragclaw",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "description": "Local-first RAG for OpenClaw - index and search documents, code, and web pages",
   "triggers": [
     "/rag",
@@ -12,28 +12,56 @@
   "commands": {
     "add": {
       "description": "Index a file, directory, or URL",
-      "usage": "/rag add <source> [--db <name>]"
+      "usage": "/rag add <source> [--db <name>] [--embedder <preset>] [--crawl]"
     },
     "search": {
       "description": "Search the knowledge base",
-      "usage": "/rag search <query> [--limit <n>] [--mode <mode>]"
+      "usage": "/rag search <query> [--db <name>] [--limit <n>] [--mode vector|keyword|hybrid]"
+    },
+    "reindex": {
+      "description": "Re-process changed sources; optionally force full rebuild or prune missing sources",
+      "usage": "/rag reindex [--db <name>] [--force] [--prune] [--embedder <preset>]"
+    },
+    "merge": {
+      "description": "Merge another knowledge base SQLite file into the local one",
+      "usage": "/rag merge <source.sqlite> [--db <name>] [--strategy strict|reindex] [--dry-run]"
     },
     "status": {
-      "description": "Show knowledge base statistics",
+      "description": "Show knowledge base statistics (chunks, sources, vector backend, embedder)",
       "usage": "/rag status [--db <name>]"
     },
     "list": {
       "description": "List indexed sources",
-      "usage": "/rag list [--db <name>]"
+      "usage": "/rag list [--db <name>] [-t file|url]"
     },
     "remove": {
       "description": "Remove a source from the index",
-      "usage": "/rag remove <source> [--db <name>]"
+      "usage": "/rag remove <source> [--db <name>] [-y]"
+    },
+    "embedder": {
+      "description": "Manage embedder presets (list, download)",
+      "usage": "/rag embedder list | download [preset|--all]"
+    },
+    "doctor": {
+      "description": "Check system health: Node.js, RAM, sqlite-vec, embedder compatibility, plugins",
+      "usage": "/rag doctor"
+    },
+    "plugin": {
+      "description": "Manage plugins (list, enable, disable)",
+      "usage": "/rag plugin list | enable <name> | disable <name>"
+    },
+    "config": {
+      "description": "View and set configuration values",
+      "usage": "/rag config list | get <key> | set <key> <value>"
+    },
+    "init": {
+      "description": "Initialize a new named knowledge base",
+      "usage": "/rag init <name>"
     }
   },
   "dependencies": {
     "cli": "@emdzej/ragclaw-cli"
   },
-  "storage": "~/.openclaw/ragclaw/",
+  "storage": "~/.local/share/ragclaw/",
   "offline": true
 }
