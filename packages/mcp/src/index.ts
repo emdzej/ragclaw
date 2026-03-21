@@ -59,7 +59,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "rag_add",
-    description: "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages.",
+    description: "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
     inputSchema: {
       type: "object",
       properties: {
@@ -76,6 +76,49 @@ const TOOLS: Tool[] = [
           type: "boolean",
           description: "Recurse into directories (default: true)",
           default: true,
+        },
+        crawl: {
+          type: "boolean",
+          description: "Enable crawling — follow links from the seed URL (requires a URL source)",
+          default: false,
+        },
+        crawlMaxDepth: {
+          type: "number",
+          description: "Max link depth from start URL (default: 3)",
+          default: 3,
+        },
+        crawlMaxPages: {
+          type: "number",
+          description: "Max pages to crawl (default: 100)",
+          default: 100,
+        },
+        crawlSameOrigin: {
+          type: "boolean",
+          description: "Stay on the same domain (default: true)",
+          default: true,
+        },
+        crawlInclude: {
+          type: "string",
+          description: "Comma-separated path prefixes to include (e.g. '/docs,/api')",
+        },
+        crawlExclude: {
+          type: "string",
+          description: "Comma-separated path prefixes to exclude (e.g. '/blog,/archive')",
+        },
+        crawlConcurrency: {
+          type: "number",
+          description: "Concurrent requests during crawl (default: 1)",
+          default: 1,
+        },
+        crawlDelay: {
+          type: "number",
+          description: "Delay between requests in milliseconds (default: 1000)",
+          default: 1000,
+        },
+        ignoreRobots: {
+          type: "boolean",
+          description: "Ignore robots.txt restrictions — use responsibly (default: false)",
+          default: false,
         },
       },
       required: ["source"],
@@ -248,6 +291,15 @@ async function ragAdd(args: {
   source: string;
   db?: string;
   recursive?: boolean;
+  crawl?: boolean;
+  crawlMaxDepth?: number;
+  crawlMaxPages?: number;
+  crawlSameOrigin?: boolean;
+  crawlInclude?: string;
+  crawlExclude?: string;
+  crawlConcurrency?: number;
+  crawlDelay?: number;
+  ignoreRobots?: boolean;
 }): Promise<string> {
   const dbName = args.db || "default";
   const dbPath = getDbPath(dbName);
@@ -260,6 +312,47 @@ async function ragAdd(args: {
 
   try {
     const indexingService = await getIndexingService();
+
+    // -------------------------------------------------------------------------
+    // Crawl mode
+    // -------------------------------------------------------------------------
+    if (args.crawl) {
+      if (!args.source.startsWith("http://") && !args.source.startsWith("https://")) {
+        return "Error: crawl=true requires a URL source (http:// or https://)";
+      }
+
+      const urlCheck = await isUrlAllowed(args.source, config);
+      if (!urlCheck.allowed) {
+        return `Error: ${urlCheck.reason}`;
+      }
+
+      const crawlInclude = args.crawlInclude
+        ? args.crawlInclude.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
+      const crawlExclude = args.crawlExclude
+        ? args.crawlExclude.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
+
+      const summary = await indexingService.indexCrawl(store, args.source, {
+        maxDepth: args.crawlMaxDepth,
+        maxPages: args.crawlMaxPages,
+        sameOrigin: args.crawlSameOrigin,
+        include: crawlInclude,
+        exclude: crawlExclude,
+        concurrency: args.crawlConcurrency,
+        delayMs: args.crawlDelay,
+        ignoreRobots: args.ignoreRobots,
+      });
+
+      let result = `Crawl complete: ${summary.indexed} page(s) indexed, ${summary.totalChunks} chunks.`;
+      if (summary.skipped > 0) result += ` Skipped: ${summary.skipped}.`;
+      if (summary.errors > 0) result += ` Errors: ${summary.errors}.`;
+      return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Normal mode
+    // -------------------------------------------------------------------------
     const sources = await collectSources(args.source, args.recursive ?? true);
     
     let indexed = 0;

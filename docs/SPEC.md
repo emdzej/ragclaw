@@ -282,12 +282,29 @@ ragclaw add ./paper.pdf                # Single file
 ragclaw add https://example.com/page   # Web page
 ragclaw add ./src/ --type code         # Code files
 
+# Web crawling — follow links from a seed URL
+ragclaw add https://docs.example.com --crawl
+ragclaw add https://docs.example.com --crawl --crawl-max-depth 2 --crawl-max-pages 50
+ragclaw add https://example.com --crawl --crawl-include /docs,/api --crawl-exclude /blog
+
 Options:
-  --db <name>       Knowledge base name (default: "default")
-  --type <type>     Force source type: auto|text|code|web
-  --recursive       Recurse into directories (default: true)
-  --include <glob>  Include pattern (e.g., "*.md")
-  --exclude <glob>  Exclude pattern (e.g., "node_modules")
+  --db <name>              Knowledge base name (default: "default")
+  --type <type>            Force source type: auto|text|code|web
+  --recursive              Recurse into directories (default: true)
+  --include <glob>         Include pattern (e.g., "*.md")
+  --exclude <glob>         Exclude pattern (e.g., "node_modules")
+
+  # Crawl options (require a URL source + --crawl)
+  --crawl                  Enable crawling — follow links from the seed URL
+  --crawl-max-depth <n>    Max link depth from start URL (default: 3)
+  --crawl-max-pages <n>    Max pages to crawl (default: 100)
+  --crawl-same-origin      Stay on same domain (default: true)
+  --no-crawl-same-origin   Allow following links to other domains
+  --crawl-include <paths>  Comma-separated path prefixes to include
+  --crawl-exclude <paths>  Comma-separated path prefixes to exclude
+  --crawl-concurrency <n>  Concurrent fetch requests (default: 1)
+  --crawl-delay <ms>       Delay between requests in ms (default: 1000)
+  --ignore-robots          Ignore robots.txt (use responsibly)
 ```
 
 ### `ragclaw search <query> [options]`

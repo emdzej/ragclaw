@@ -32,6 +32,7 @@ Different file types need different approaches:
 | PDF (`.pdf`) | Parse the PDF structure, extract text layer |
 | Word (`.docx`) | Unzip (it's actually a ZIP!), parse XML inside |
 | Web pages | Fetch HTML, strip tags, keep the content |
+| Web crawls | BFS from a seed URL — follows `<a>` links, respects robots.txt, deduplicates by URL |
 | Code (`.ts`, `.py`, etc.) | Read as text, but treat it specially later |
 | Images (`.png`, `.jpg`) | Run OCR (optical character recognition) |
 

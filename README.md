@@ -60,6 +60,12 @@ cd packages/cli && npm link
 # Index some docs
 ragclaw add ./docs/
 
+# Index a web page
+ragclaw add https://example.com/page
+
+# Crawl an entire docs site
+ragclaw add https://docs.example.com --crawl
+
 # Index with a specific embedder
 ragclaw add --embedder bge ./docs/
 
@@ -124,6 +130,18 @@ ragclaw config set <key> <value>  # Persist a config value
 --no-allow-urls           # Disallow URL sources
 --block-private-urls      # Block private/reserved IPs
 --no-block-private-urls   # Allow private/reserved IPs
+
+# Web crawl flags (for `add` with a URL source)
+--crawl                        # Follow links and index the whole site section
+--crawl-max-depth <n>          # Max link depth from start URL (default: 3)
+--crawl-max-pages <n>          # Max pages to crawl (default: 100)
+--crawl-same-origin            # Stay on same domain (default: true)
+--no-crawl-same-origin         # Allow following links to other domains
+--crawl-include <patterns>     # Comma-separated path prefixes to include
+--crawl-exclude <patterns>     # Comma-separated path prefixes to exclude
+--crawl-concurrency <n>        # Concurrent fetch requests (default: 1)
+--crawl-delay <ms>             # Delay between requests in ms (default: 1000)
+--ignore-robots                # Ignore robots.txt (use responsibly)
 ```
 
 ## Storage & Portability
@@ -337,7 +355,7 @@ Once configured, these tools are available to AI agents:
 | Tool | Description |
 |------|-------------|
 | `rag_search` | Search knowledge base |
-| `rag_add` | Index file/directory/URL |
+| `rag_add` | Index file/directory/URL — pass `crawl: true` to follow links |
 | `rag_reindex` | Re-process changed sources |
 | `rag_status` | Get KB statistics (includes embedder info) |
 | `rag_list` | List indexed sources |
@@ -348,6 +366,7 @@ Once configured, these tools are available to AI agents:
 Index the ./src directory into ragclaw
 Search ragclaw for "error handling patterns"
 Reindex ragclaw with force=true
+Crawl https://docs.example.com and index it into ragclaw
 ```
 
 ---

@@ -28,7 +28,7 @@ export { MarkdownExtractor } from "./extractors/markdown.js";
 export { TextExtractor } from "./extractors/text.js";
 export { PdfExtractor } from "./extractors/pdf.js";
 export { DocxExtractor } from "./extractors/docx.js";
-export { WebExtractor } from "./extractors/web.js";
+export { WebExtractor, type CrawlOptions } from "./extractors/web.js";
 export { CodeExtractor } from "./extractors/code.js";
 export { ImageExtractor, ocrFromBuffer } from "./extractors/image.js";
 
@@ -79,4 +79,7 @@ export {
   type ReindexOutcome,
   type IndexSourceOptions,
   type ReindexSourceOptions,
+  type IndexCrawlOptions,
+  type IndexCrawlPageResult,
+  type IndexCrawlSummary,
 } from "./indexing.js";

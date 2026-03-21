@@ -11,6 +11,7 @@ import { TextExtractor } from "./extractors/text.js";
 import { PdfExtractor } from "./extractors/pdf.js";
 import { DocxExtractor } from "./extractors/docx.js";
 import { WebExtractor } from "./extractors/web.js";
+import type { CrawlOptions } from "./extractors/web.js";
 import { CodeExtractor } from "./extractors/code.js";
 import { ImageExtractor } from "./extractors/image.js";
 import { hashFile } from "./utils/hash.js";
@@ -50,6 +51,26 @@ export interface ReindexSourceOptions {
   force?: boolean;
   /** Remove the source record if the file no longer exists. */
   prune?: boolean;
+}
+
+/** Per-page result emitted by `indexCrawl()`. */
+export interface IndexCrawlPageResult {
+  url: string;
+  outcome: IndexOutcome;
+}
+
+/** Summary returned by `indexCrawl()` after all pages are processed. */
+export interface IndexCrawlSummary {
+  indexed: number;
+  skipped: number;
+  errors: number;
+  totalChunks: number;
+}
+
+/** Options for `indexCrawl()`. */
+export interface IndexCrawlOptions extends CrawlOptions {
+  /** Callback fired after each page is indexed. */
+  onPage?: (result: IndexCrawlPageResult) => void;
 }
 
 /** Configuration for `IndexingService`. */
@@ -369,5 +390,61 @@ export class IndexingService {
     } catch (err) {
       return { status: "error", error: String(err) };
     }
+  }
+
+  /**
+   * Crawl a website starting from `startUrl` and index every discovered page.
+   *
+   * Uses the built-in `WebExtractor.crawl()` generator under the hood.
+   * Each fetched page is run through the normal index pipeline (chunk → embed
+   * → store).  Progress can be tracked via the `onPage` callback.
+   *
+   * Returns a summary of the crawl after all pages have been processed.
+   */
+  async indexCrawl(
+    store: Store,
+    startUrl: string,
+    options: IndexCrawlOptions = {},
+  ): Promise<IndexCrawlSummary> {
+    // Find the WebExtractor instance (always present in the built-in list)
+    const webExtractor = this.extractors.find(
+      (e): e is WebExtractor => e instanceof WebExtractor,
+    );
+
+    if (!webExtractor) {
+      throw new Error("WebExtractor not available — cannot crawl");
+    }
+
+    const { onPage, ...crawlOptions } = options;
+
+    const summary: IndexCrawlSummary = {
+      indexed: 0,
+      skipped: 0,
+      errors: 0,
+      totalChunks: 0,
+    };
+
+    for await (const page of webExtractor.crawl(startUrl, crawlOptions)) {
+      const source: Source = { type: "url", url: page.url };
+      const outcome = await this.indexSource(store, source);
+
+      switch (outcome.status) {
+        case "indexed":
+          summary.indexed++;
+          summary.totalChunks += outcome.chunks;
+          break;
+        case "unchanged":
+        case "skipped":
+          summary.skipped++;
+          break;
+        case "error":
+          summary.errors++;
+          break;
+      }
+
+      onPage?.({ url: page.url, outcome });
+    }
+
+    return summary;
   }
 }

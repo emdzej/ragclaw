@@ -45,6 +45,17 @@ program
   .option("--no-block-private-urls", "Allow fetches to private/reserved IPs")
   .option("--enforce-guards", "Enforce path/URL security guards")
   .option("--no-enforce-guards", "Skip path/URL security guards (default)")
+  // Crawl options
+  .option("--crawl", "Enable crawling — follow links from the seed URL")
+  .option("--crawl-max-depth <n>", "Max link depth from start URL (default: 3)")
+  .option("--crawl-max-pages <n>", "Max pages to crawl (default: 100)")
+  .option("--crawl-same-origin", "Stay on the same domain (default: true)", true)
+  .option("--no-crawl-same-origin", "Allow following links to other domains")
+  .option("--crawl-include <patterns>", "Comma-separated path prefixes to include (e.g. /docs,/api)")
+  .option("--crawl-exclude <patterns>", "Comma-separated path prefixes to exclude (e.g. /blog,/archive)")
+  .option("--crawl-concurrency <n>", "Concurrent requests during crawl (default: 1)")
+  .option("--crawl-delay <ms>", "Delay between requests in ms (default: 1000)")
+  .option("--ignore-robots", "Ignore robots.txt restrictions (use responsibly)")
   .action(addCommand);
 
 program

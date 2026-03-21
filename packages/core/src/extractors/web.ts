@@ -5,6 +5,29 @@ import { DEFAULT_EXTRACTOR_LIMITS } from "../config.js";
 
 type CheerioElement = ReturnType<ReturnType<typeof cheerio.load>>[number];
 
+// ---------------------------------------------------------------------------
+// Crawl types
+// ---------------------------------------------------------------------------
+
+export interface CrawlOptions {
+  /** Maximum link depth from the start URL (default: 3). */
+  maxDepth?: number;
+  /** Maximum number of pages to crawl (default: 100). */
+  maxPages?: number;
+  /** Stay on the same origin as the start URL (default: true). */
+  sameOrigin?: boolean;
+  /** Glob-style path prefixes to include (e.g. ["/docs/**"]). */
+  include?: string[];
+  /** Glob-style path prefixes to exclude (e.g. ["/blog/**"]). */
+  exclude?: string[];
+  /** Number of concurrent fetch requests (default: 1). */
+  concurrency?: number;
+  /** Delay between requests in milliseconds (default: 1000). */
+  delayMs?: number;
+  /** When true, skip robots.txt checks (default: false). */
+  ignoreRobots?: boolean;
+}
+
 export class WebExtractor implements Extractor {
   private fetchTimeoutMs: number;
   private maxResponseSizeBytes: number;
@@ -159,5 +182,241 @@ export class WebExtractor implements Extractor {
     // Dedupe consecutive identical lines and join
     const deduped = lines.filter((line, i) => i === 0 || line !== lines[i - 1]);
     return deduped.join("\n\n");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Crawl support
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Crawl a site starting from `startUrl`, yielding an `ExtractedContent` for
+   * each successfully fetched page.
+   *
+   * The crawl is BFS-ordered: pages at depth N are fully processed before any
+   * page at depth N+1 is enqueued.  Visited URLs are tracked by their
+   * normalised href (no hash fragment, no trailing slash variation) so redirect
+   * chains and duplicate links are naturally deduplicated.
+   */
+  async *crawl(
+    startUrl: string,
+    options: CrawlOptions = {},
+  ): AsyncGenerator<ExtractedContent & { url: string }> {
+    const maxDepth = options.maxDepth ?? 3;
+    const maxPages = options.maxPages ?? 100;
+    const sameOrigin = options.sameOrigin ?? true;
+    const concurrency = Math.max(1, options.concurrency ?? 1);
+    const delayMs = options.delayMs ?? 1000;
+    const ignoreRobots = options.ignoreRobots ?? false;
+
+    const origin = new URL(startUrl).origin;
+
+    // robots.txt cache: origin → Set of disallowed path prefixes
+    const robotsCache = new Map<string, Set<string>>();
+
+    if (!ignoreRobots) {
+      const disallowed = await this.fetchRobotsTxt(origin);
+      robotsCache.set(origin, disallowed);
+    }
+
+    // BFS queue: [url, depth]
+    type QueueEntry = { url: string; depth: number };
+    const queue: QueueEntry[] = [{ url: this.normaliseUrl(startUrl), depth: 0 }];
+    const visited = new Set<string>([this.normaliseUrl(startUrl)]);
+    let pagesIndexed = 0;
+
+    while (queue.length > 0 && pagesIndexed < maxPages) {
+      // Take up to `concurrency` entries from the front of the queue
+      const batch = queue.splice(0, concurrency);
+
+      const results = await Promise.allSettled(
+        batch.map(async ({ url, depth }) => {
+          // robots.txt check
+          if (!ignoreRobots) {
+            const urlObj = new URL(url);
+            let disallowed = robotsCache.get(urlObj.origin);
+            if (!disallowed) {
+              disallowed = await this.fetchRobotsTxt(urlObj.origin);
+              robotsCache.set(urlObj.origin, disallowed);
+            }
+            if (this.isRobotsDisallowed(urlObj.pathname, disallowed)) {
+              return null;
+            }
+          }
+
+          // include/exclude path filters
+          const pathname = new URL(url).pathname;
+          if (options.include && options.include.length > 0) {
+            if (!options.include.some((p) => pathname.startsWith(p.replace(/\*\*$/, "")))) {
+              return null;
+            }
+          }
+          if (options.exclude && options.exclude.length > 0) {
+            if (options.exclude.some((p) => pathname.startsWith(p.replace(/\*\*$/, "")))) {
+              return null;
+            }
+          }
+
+          const source: Source = { type: "url", url };
+          const extracted = await this.extract(source);
+
+          // Discover links for next depth if we haven't hit maxDepth yet
+          let links: string[] = [];
+          if (depth < maxDepth) {
+            links = await this.extractLinks(url, sameOrigin ? origin : null);
+          }
+
+          return { extracted, links, url, depth };
+        }),
+      );
+
+      for (const result of results) {
+        if (pagesIndexed >= maxPages) break;
+        if (result.status === "rejected" || result.value === null) continue;
+
+        const { extracted, links, url, depth } = result.value;
+
+        yield { ...extracted, url };
+        pagesIndexed++;
+
+        // Enqueue undiscovered links
+        for (const link of links) {
+          const norm = this.normaliseUrl(link);
+          if (!visited.has(norm)) {
+            visited.add(norm);
+            queue.push({ url: norm, depth: depth + 1 });
+          }
+        }
+      }
+
+      // Polite delay between batches (skip after the last batch)
+      if (queue.length > 0 && pagesIndexed < maxPages && delayMs > 0) {
+        await this.sleep(delayMs);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Crawl helpers
+  // ---------------------------------------------------------------------------
+
+  /** Remove hash fragments and normalise trailing slashes for dedup. */
+  private normaliseUrl(raw: string): string {
+    try {
+      const u = new URL(raw);
+      u.hash = "";
+      // Normalise: strip trailing slash from path (except root "/")
+      if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+        u.pathname = u.pathname.slice(0, -1);
+      }
+      return u.toString();
+    } catch {
+      return raw;
+    }
+  }
+
+  /**
+   * Extract all `<a href>` links from a fetched page that are same-origin
+   * (when `allowedOrigin` is set) and have an http(s) scheme.
+   */
+  private async extractLinks(pageUrl: string, allowedOrigin: string | null): Promise<string[]> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
+      let response: Response;
+      try {
+        response = await fetch(pageUrl, {
+          headers: {
+            "User-Agent": "RagClaw/0.1 (local RAG indexer)",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (!response.ok) return [];
+
+      const html = await this.readBodyWithLimit(response, pageUrl);
+      const $ = cheerio.load(html);
+      const base = new URL(pageUrl);
+      const links: string[] = [];
+
+      $("a[href]").each((_, el) => {
+        const href = $(el).attr("href");
+        if (!href) return;
+        try {
+          const resolved = new URL(href, base);
+          if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return;
+          if (allowedOrigin && resolved.origin !== allowedOrigin) return;
+          links.push(resolved.toString());
+        } catch {
+          // Ignore malformed hrefs
+        }
+      });
+
+      return links;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Fetch and parse robots.txt for the given origin.
+   * Returns a Set of disallowed path prefixes for `User-agent: *` and
+   * `User-agent: RagClaw`.  On any fetch error, returns an empty set
+   * (allow-all).
+   */
+  private async fetchRobotsTxt(origin: string): Promise<Set<string>> {
+    const disallowed = new Set<string>();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5_000);
+      let response: Response;
+      try {
+        response = await fetch(`${origin}/robots.txt`, {
+          headers: { "User-Agent": "RagClaw/0.1" },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (!response.ok) return disallowed;
+
+      const text = await response.text();
+      let applicable = false;
+
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (line.startsWith("#") || line === "") {
+          applicable = false;
+          continue;
+        }
+        const [field, ...rest] = line.split(":");
+        const value = rest.join(":").trim();
+
+        if (field.toLowerCase() === "user-agent") {
+          applicable = value === "*" || value.toLowerCase() === "ragclaw";
+        } else if (applicable && field.toLowerCase() === "disallow" && value) {
+          disallowed.add(value);
+        }
+      }
+    } catch {
+      // Network error → treat as allow-all
+    }
+    return disallowed;
+  }
+
+  /** Returns true if `pathname` matches any disallowed prefix. */
+  private isRobotsDisallowed(pathname: string, disallowed: Set<string>): boolean {
+    for (const prefix of disallowed) {
+      if (pathname.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

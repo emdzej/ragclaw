@@ -31,6 +31,16 @@ interface AddOptions {
   allowUrls?: boolean;
   blockPrivateUrls?: boolean;
   enforceGuards?: boolean;
+  // Crawl options
+  crawl?: boolean;
+  crawlMaxDepth?: string;
+  crawlMaxPages?: string;
+  crawlSameOrigin?: boolean;
+  crawlInclude?: string;
+  crawlExclude?: string;
+  crawlConcurrency?: string;
+  crawlDelay?: string;
+  ignoreRobots?: boolean;
 }
 
 /**
@@ -147,6 +157,72 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   }
 
   try {
+    // -------------------------------------------------------------------------
+    // Crawl mode: follow links from a seed URL
+    // -------------------------------------------------------------------------
+    if (options.crawl) {
+      if (!source.includes("://")) {
+        console.error(chalk.red("--crawl requires a URL source (e.g. https://docs.example.com)"));
+        await store.close();
+        process.exit(1);
+      }
+
+      if (config.enforceGuards) {
+        const urlCheck = await isUrlAllowed(source, config);
+        if (!urlCheck.allowed) {
+          console.error(chalk.red(`Blocked: ${urlCheck.reason}`));
+          await store.close();
+          process.exit(1);
+        }
+      }
+
+      const crawlMaxDepth = options.crawlMaxDepth !== undefined ? parseInt(options.crawlMaxDepth, 10) : undefined;
+      const crawlMaxPages = options.crawlMaxPages !== undefined ? parseInt(options.crawlMaxPages, 10) : undefined;
+      const crawlConcurrency = options.crawlConcurrency !== undefined ? parseInt(options.crawlConcurrency, 10) : undefined;
+      const crawlDelay = options.crawlDelay !== undefined ? parseInt(options.crawlDelay, 10) : undefined;
+      const crawlInclude = options.crawlInclude ? options.crawlInclude.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+      const crawlExclude = options.crawlExclude ? options.crawlExclude.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+
+      console.log(chalk.dim(`Crawling ${source}...`));
+
+      let indexed = 0;
+
+      const crawlSpinner = ora("Crawling...").start();
+
+      const summary = await indexingService.indexCrawl(store, source, {
+        maxDepth: crawlMaxDepth,
+        maxPages: crawlMaxPages,
+        sameOrigin: options.crawlSameOrigin,
+        include: crawlInclude,
+        exclude: crawlExclude,
+        concurrency: crawlConcurrency,
+        delayMs: crawlDelay,
+        ignoreRobots: options.ignoreRobots,
+        onPage: ({ url, outcome }) => {
+          switch (outcome.status) {
+            case "indexed":
+              indexed++;
+              crawlSpinner.text = `Crawled ${indexed} pages — ${url}`;
+              break;
+            case "error":
+              crawlSpinner.text = `Error on ${url}: ${outcome.error}`;
+              break;
+          }
+        },
+      });
+
+      crawlSpinner.succeed(`Crawl complete`);
+      console.log();
+      console.log(chalk.green(`✓ Indexed ${summary.indexed} page(s), ${summary.totalChunks} chunks`));
+      if (summary.skipped > 0) console.log(chalk.dim(`  Skipped: ${summary.skipped}`));
+      if (summary.errors > 0) console.log(chalk.yellow(`  Errors:  ${summary.errors}`));
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Normal mode: file / directory / single URL
+    // -------------------------------------------------------------------------
     const sources = await collectSources(source, options, config);
 
     // Let plugins expand compound sources (e.g. vault URL → individual notes)
