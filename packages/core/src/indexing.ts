@@ -37,6 +37,23 @@ import type {
 import { hashFile } from "./utils/hash.js";
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when `contentMime` starts with `prefix` (case-insensitive),
+ * using the same semantics as `matchesContent` in chunkers/utils.ts —
+ * a semicolon delimiter is required to avoid partial token matches
+ * (e.g. "text/htmlextra" must NOT match "text/html").
+ */
+function mimeMatchesPrefix(contentMime: string | undefined, prefix: string): boolean {
+  if (!contentMime) return false;
+  const mime = contentMime.toLowerCase();
+  const p = prefix.toLowerCase();
+  return mime === p || mime.startsWith(`${p};`) || mime.startsWith(`${p} `);
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -275,8 +292,13 @@ export class IndexingService {
 
     // Priority 2: config pattern overrides
     for (const override of this.chunkerOverrides) {
-      const isMatch = picomatch(override.pattern, { dot: true });
-      if (isMatch(sourcePath)) {
+      const pathMatch = override.pattern
+        ? picomatch(override.pattern, { dot: true })(sourcePath)
+        : true;
+      const mimeMatch = override.mimeType
+        ? mimeMatchesPrefix(extracted.mimeType, override.mimeType)
+        : true;
+      if (pathMatch && mimeMatch) {
         return this.requireChunkerByName(override.chunker, all);
       }
     }

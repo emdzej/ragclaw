@@ -10,6 +10,7 @@ export { FixedChunker, type FixedChunkerOptions } from "./chunkers/fixed.js";
 // Chunkers
 export { SemanticChunker } from "./chunkers/semantic.js";
 export { SentenceChunker, type SentenceChunkerOptions } from "./chunkers/sentence.js";
+export { matchesContent } from "./chunkers/utils.js";
 // Config
 export {
   type ChunkingConfig,

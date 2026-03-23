@@ -139,11 +139,14 @@ interface IndexingServiceConfig {
 }
 
 interface ChunkingOverride {
-  pattern: string;   // picomatch glob against source path
-  chunker: string;   // chunker name to use when pattern matches
+  pattern?: string;   // picomatch glob against source path (omit to match any path)
+  mimeType?: string;  // MIME prefix match against content mimeType (omit to match any MIME)
+  chunker: string;    // chunker name to use when conditions match
   chunkSize?: number;
   overlap?: number;
 }
+// At least one of pattern or mimeType must be provided.
+// When both are present, both must match (AND logic).
 ```
 
 #### `RagclawConfig` — `chunking` field
@@ -161,6 +164,11 @@ chunking:
     - pattern: "docs/**"
       chunker: semantic
       chunkSize: 400
+    - mimeType: "text/html"   # mimeType-only: force sentence for all HTML content
+      chunker: sentence
+    - pattern: "https://docs.example.com/**"
+      mimeType: "text/html"   # both: path AND MIME must match (AND logic)
+      chunker: semantic
 ```
 
 #### `ChunkerInfo` (returned by `IndexingService.listChunkers()`)

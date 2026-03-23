@@ -44,12 +44,55 @@ describe("SentenceChunker", () => {
       expect(chunker.canHandle(makeContent("", "text"))).toBe(true);
     });
 
+    it("handles web content via sourceType", () => {
+      expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "web" })).toBe(true);
+    });
+
+    it("handles HTML MIME type", () => {
+      expect(
+        chunker.canHandle({ text: "", metadata: {}, sourceType: "web", mimeType: "text/html" })
+      ).toBe(true);
+    });
+
+    it("handles HTML MIME type with charset parameter", () => {
+      expect(
+        chunker.canHandle({
+          text: "",
+          metadata: {},
+          sourceType: "web",
+          mimeType: "text/html; charset=utf-8",
+        })
+      ).toBe(true);
+    });
+
+    it("handles XHTML MIME type", () => {
+      expect(
+        chunker.canHandle({
+          text: "",
+          metadata: {},
+          sourceType: "web",
+          mimeType: "application/xhtml+xml",
+        })
+      ).toBe(true);
+    });
+
     it("does not handle code content", () => {
-      expect(chunker.canHandle(makeContent("", "code"))).toBe(false);
+      expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "code" })).toBe(false);
     });
 
     it("does not handle pdf content", () => {
       expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "pdf" })).toBe(false);
+    });
+
+    it("does not handle application/pdf MIME type", () => {
+      expect(
+        chunker.canHandle({
+          text: "",
+          metadata: {},
+          sourceType: "pdf",
+          mimeType: "application/pdf",
+        })
+      ).toBe(false);
     });
   });
 

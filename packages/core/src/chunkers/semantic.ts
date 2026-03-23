@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Chunk, Chunker, ExtractedContent } from "../types.js";
+import { matchesContent } from "./utils.js";
 
 const DEFAULT_CHUNK_SIZE = 512; // tokens (approximate)
 const DEFAULT_OVERLAP = 50; // tokens
@@ -17,11 +18,27 @@ interface SemanticChunkerOptions {
   overlap?: number;
 }
 
+const SOURCE_TYPES = ["markdown", "text", "web"] as const;
+
+/**
+ * MIME types treated as prose by SemanticChunker.
+ * Includes the HTML/XML family produced by WebExtractor and any plain-text
+ * variants an extractor might emit.
+ */
+const MIME_TYPES = [
+  "text/html",
+  "application/xhtml+xml",
+  "application/xml",
+  "text/xml",
+  "text/plain",
+  "text/markdown",
+] as const;
+
 export class SemanticChunker implements Chunker {
   readonly name = "semantic";
   readonly description =
     "Heading-aware paragraph splitting with configurable token window and overlap";
-  readonly handles = ["markdown", "text"];
+  readonly handles: string[] = [...SOURCE_TYPES, ...MIME_TYPES];
 
   private chunkSize: number;
   private overlap: number;
@@ -32,7 +49,7 @@ export class SemanticChunker implements Chunker {
   }
 
   canHandle(content: ExtractedContent): boolean {
-    return ["markdown", "text"].includes(content.sourceType);
+    return matchesContent(SOURCE_TYPES, MIME_TYPES, content);
   }
 
   async chunk(content: ExtractedContent, sourceId: string, sourcePath: string): Promise<Chunk[]> {

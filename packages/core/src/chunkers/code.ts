@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Chunk, Chunker, ExtractedContent } from "../types.js";
+import { matchesContent } from "./utils.js";
 
 type Language = "typescript" | "javascript" | "python" | "go" | "java";
 
@@ -54,17 +55,33 @@ interface TreeSitterParser {
   parse(source: string): TreeSitterTree;
 }
 
+const SOURCE_TYPES = ["code"] as const;
+
+/**
+ * MIME types for source code that CodeChunker can handle when sourceType alone
+ * is insufficient (e.g. a plugin emitting a non-standard sourceType but a
+ * recognisable code MIME type).
+ */
+const MIME_TYPES = [
+  "text/javascript",
+  "application/javascript",
+  "text/typescript",
+  "text/x-python",
+  "text/x-java",
+  "text/x-go",
+] as const;
+
 export class CodeChunker implements Chunker {
   readonly name = "code";
   readonly description =
     "Tree-sitter AST-based splitting by functions and classes (TS, JS, Python, Go, Java)";
-  readonly handles = ["code"];
+  readonly handles: string[] = [...SOURCE_TYPES, ...MIME_TYPES];
 
   private parsers: Map<Language, TreeSitterParser> = new Map();
   private initPromise: Promise<void> | null = null;
 
   canHandle(content: ExtractedContent): boolean {
-    return content.sourceType === "code";
+    return matchesContent(SOURCE_TYPES, MIME_TYPES, content);
   }
 
   private async ensureInitialized(): Promise<void> {

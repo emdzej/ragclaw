@@ -26,12 +26,63 @@ describe("CodeChunker", () => {
       expect(chunker.canHandle(makeCodeContent("", "typescript"))).toBe(true);
     });
 
+    it("handles text/javascript MIME type", () => {
+      expect(
+        chunker.canHandle({
+          text: "",
+          metadata: {},
+          sourceType: "code",
+          mimeType: "text/javascript",
+        })
+      ).toBe(true);
+    });
+
+    it("handles application/javascript MIME type", () => {
+      expect(
+        chunker.canHandle({
+          text: "",
+          metadata: {},
+          sourceType: "code",
+          mimeType: "application/javascript",
+        })
+      ).toBe(true);
+    });
+
+    it("handles text/typescript MIME type", () => {
+      expect(
+        chunker.canHandle({
+          text: "",
+          metadata: {},
+          sourceType: "code",
+          mimeType: "text/typescript",
+        })
+      ).toBe(true);
+    });
+
+    it("handles text/x-python MIME type", () => {
+      expect(
+        chunker.canHandle({ text: "", metadata: {}, sourceType: "code", mimeType: "text/x-python" })
+      ).toBe(true);
+    });
+
+    it("handles text/x-go MIME type", () => {
+      expect(
+        chunker.canHandle({ text: "", metadata: {}, sourceType: "code", mimeType: "text/x-go" })
+      ).toBe(true);
+    });
+
     it("does not handle markdown content", () => {
       expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "markdown" })).toBe(false);
     });
 
     it("does not handle text content", () => {
       expect(chunker.canHandle({ text: "", metadata: {}, sourceType: "text" })).toBe(false);
+    });
+
+    it("does not handle text/html MIME type", () => {
+      expect(
+        chunker.canHandle({ text: "", metadata: {}, sourceType: "web", mimeType: "text/html" })
+      ).toBe(false);
     });
   });
 

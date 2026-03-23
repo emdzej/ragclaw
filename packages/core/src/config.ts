@@ -83,12 +83,28 @@ export interface EmbedderConfigBlock {
 /**
  * A single pattern-based chunker override.
  *
- * The `pattern` is a glob matched against the source path (file path or URL).
+ * An override matches when **both** specified conditions are satisfied
+ * (logical AND).  Either field may be omitted — omitting a field means
+ * "always matches for that dimension":
+ *
+ * - `pattern` only  → matches any content whose source path satisfies the glob
+ * - `mimeType` only → matches any content whose MIME type starts with the prefix
+ * - both             → source path AND MIME type must both match
+ *
  * The first matching override in the array wins.
  */
 export interface ChunkingOverride {
-  /** Glob pattern matched against the source path. */
-  pattern: string;
+  /**
+   * Picomatch glob matched against the source path (file path or URL).
+   * Omit to match any path (rely on `mimeType` alone).
+   */
+  pattern?: string;
+  /**
+   * MIME type prefix matched against `ExtractedContent.mimeType`.
+   * Prefix comparison: `"text/html"` matches `"text/html; charset=utf-8"`.
+   * Omit to match any MIME type (rely on `pattern` alone).
+   */
+  mimeType?: string;
   /** Chunker name to use (e.g. "semantic", "sentence", "fixed", or a plugin name). */
   chunker: string;
   /**
@@ -190,6 +206,8 @@ export interface RagclawConfig {
    *   overrides:
    *     - pattern: "docs/**"
    *       chunker: sentence
+   *     - mimeType: "text/html"
+   *       chunker: semantic
    *     - pattern: "data/raw/**"
    *       chunker: fixed
    *       options:
@@ -417,11 +435,16 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
           parsedChunking.overrides = (cb.overrides as unknown[]).flatMap((o) => {
             if (!o || typeof o !== "object" || Array.isArray(o)) return [];
             const ov = o as Record<string, unknown>;
-            if (typeof ov.pattern !== "string" || typeof ov.chunker !== "string") return [];
+            if (typeof ov.chunker !== "string") return [];
+            // At least one of pattern or mimeType must be present
+            const hasPattern = typeof ov.pattern === "string";
+            const hasMimeType = typeof ov.mimeType === "string";
+            if (!hasPattern && !hasMimeType) return [];
             const override: ChunkingOverride = {
-              pattern: ov.pattern,
               chunker: ov.chunker,
             };
+            if (hasPattern) override.pattern = ov.pattern as string;
+            if (hasMimeType) override.mimeType = ov.mimeType as string;
             if (ov.options && typeof ov.options === "object" && !Array.isArray(ov.options)) {
               override.options = ov.options as Record<string, unknown>;
             }

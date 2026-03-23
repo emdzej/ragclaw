@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Chunk, Chunker, ExtractedContent } from "../types.js";
+import { matchesContent } from "./utils.js";
 
 const DEFAULT_CHUNK_SIZE = 512; // tokens (approximate)
 const DEFAULT_OVERLAP = 1; // sentences
@@ -22,6 +23,21 @@ export interface SentenceChunkerOptions {
   overlap?: number;
 }
 
+const SOURCE_TYPES = ["markdown", "text", "web"] as const;
+
+/**
+ * MIME types treated as prose by SentenceChunker — mirrors SemanticChunker's
+ * set, since both chunkers are suitable for HTML/text web content.
+ */
+const MIME_TYPES = [
+  "text/html",
+  "application/xhtml+xml",
+  "application/xml",
+  "text/xml",
+  "text/plain",
+  "text/markdown",
+] as const;
+
 /**
  * Splits content by sentence boundaries using \`Intl.Segmenter\`.
  *
@@ -35,7 +51,7 @@ export interface SentenceChunkerOptions {
 export class SentenceChunker implements Chunker {
   readonly name = "sentence";
   readonly description = "Sentence-boundary splitting via Intl.Segmenter with configurable overlap";
-  readonly handles = ["markdown", "text"];
+  readonly handles: string[] = [...SOURCE_TYPES, ...MIME_TYPES];
 
   private chunkSize: number;
   private overlap: number;
@@ -48,7 +64,7 @@ export class SentenceChunker implements Chunker {
   }
 
   canHandle(content: ExtractedContent): boolean {
-    return ["markdown", "text"].includes(content.sourceType);
+    return matchesContent(SOURCE_TYPES, MIME_TYPES, content);
   }
 
   async chunk(content: ExtractedContent, sourceId: string, sourcePath: string): Promise<Chunk[]> {

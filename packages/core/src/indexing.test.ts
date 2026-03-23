@@ -32,8 +32,11 @@ function makeChunker(name: string, handles: string[], alwaysHandle = false): Chu
   };
 }
 
-function makeExtractedContent(sourceType: ExtractedContent["sourceType"]): ExtractedContent {
-  return { text: "test content", metadata: {}, sourceType };
+function makeExtractedContent(
+  sourceType: ExtractedContent["sourceType"],
+  mimeType?: string
+): ExtractedContent {
+  return { text: "test content", metadata: {}, sourceType, mimeType };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -190,6 +193,92 @@ describe("IndexingService", () => {
         }
       ).resolveChunker(makeExtractedContent("code"), "/src/index.ts");
       expect(result.name).toBe("code");
+    });
+
+    it("priority 2: mimeType override matches when MIME prefix matches", () => {
+      const svc = new IndexingService({
+        embedder,
+        chunkerOverrides: [{ mimeType: "text/html", chunker: "sentence" }],
+      });
+      const result = (
+        svc as unknown as {
+          resolveChunker: (c: ExtractedContent, p: string, f?: string) => Chunker;
+        }
+      ).resolveChunker(makeExtractedContent("web", "text/html"), "https://example.com/");
+      expect(result.name).toBe("sentence");
+    });
+
+    it("priority 2: mimeType override matches MIME with charset parameter", () => {
+      const svc = new IndexingService({
+        embedder,
+        chunkerOverrides: [{ mimeType: "text/html", chunker: "fixed" }],
+      });
+      const result = (
+        svc as unknown as {
+          resolveChunker: (c: ExtractedContent, p: string, f?: string) => Chunker;
+        }
+      ).resolveChunker(
+        makeExtractedContent("web", "text/html; charset=utf-8"),
+        "https://example.com/"
+      );
+      expect(result.name).toBe("fixed");
+    });
+
+    it("priority 2: mimeType override does not match a different MIME type", () => {
+      const svc = new IndexingService({
+        embedder,
+        chunkerOverrides: [{ mimeType: "text/html", chunker: "sentence" }],
+      });
+      // application/pdf should NOT match text/html → falls through to auto
+      const result = (
+        svc as unknown as {
+          resolveChunker: (c: ExtractedContent, p: string, f?: string) => Chunker;
+        }
+      ).resolveChunker(makeExtractedContent("web", "application/pdf"), "https://example.com/");
+      expect(result.name).toBe("semantic"); // web → SemanticChunker in auto
+    });
+
+    it("priority 2: combined pattern+mimeType override requires both to match", () => {
+      const svc = new IndexingService({
+        embedder,
+        chunkerOverrides: [
+          { pattern: "https://docs.example.com/**", mimeType: "text/html", chunker: "sentence" },
+        ],
+      });
+      const resolve = (
+        svc as unknown as {
+          resolveChunker: (c: ExtractedContent, p: string, f?: string) => Chunker;
+        }
+      ).resolveChunker.bind(svc);
+
+      // Both match → sentence
+      expect(
+        resolve(makeExtractedContent("web", "text/html"), "https://docs.example.com/guide").name
+      ).toBe("sentence");
+
+      // Path matches, MIME doesn't → no override, falls through to auto
+      expect(
+        resolve(makeExtractedContent("web", "application/pdf"), "https://docs.example.com/guide")
+          .name
+      ).toBe("semantic");
+
+      // MIME matches, path doesn't → no override, falls through to auto
+      expect(resolve(makeExtractedContent("web", "text/html"), "https://other.com/page").name).toBe(
+        "semantic"
+      );
+    });
+
+    it("priority 2: pattern-only override (no mimeType) still works as before", () => {
+      const svc = new IndexingService({
+        embedder,
+        chunkerOverrides: [{ pattern: "**/*.md", chunker: "sentence" }],
+      });
+      const result = (
+        svc as unknown as {
+          resolveChunker: (c: ExtractedContent, p: string, f?: string) => Chunker;
+        }
+      ).resolveChunker(makeExtractedContent("markdown"), "/docs/readme.md");
+      expect(result.name).toBe("sentence");
     });
 
     it("priority 3: plugin chunker wins via canHandle() before built-ins", () => {
