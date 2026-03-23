@@ -27,29 +27,70 @@ vi.mock("chalk", () => {
 // Capture console output
 const consoleSpy = {
   log: vi.spyOn(console, "log").mockImplementation(() => {}),
+  error: vi.spyOn(console, "error").mockImplementation(() => {}),
 };
 
 // fs.existsSync — controlled per test
 const mockExistsSync = vi.fn((_path: string) => true);
-vi.mock("node:fs", () => ({ existsSync: (path: string) => mockExistsSync(path) }));
+// fs.statSync — defaults to being a file
+const mockStatSync = vi.fn((_path: string) => ({ isFile: () => true }));
+vi.mock("node:fs", () => ({
+  existsSync: (path: string) => mockExistsSync(path),
+  statSync: (path: string) => mockStatSync(path),
+}));
 
-// fs/promises.readdir — controlled per test
+// fs/promises — controlled per test
 const mockReaddir = vi.fn(async () => [] as string[]);
-vi.mock("node:fs/promises", () => ({ readdir: () => mockReaddir() }));
+const mockRm = vi.fn(async (_path: string) => {});
+const mockRename = vi.fn(async (_oldPath: string, _newPath: string) => {});
+vi.mock("node:fs/promises", () => ({
+  readdir: () => mockReaddir(),
+  rm: (path: string) => mockRm(path),
+  rename: (oldPath: string, newPath: string) => mockRename(oldPath, newPath),
+}));
+
+// @emdzej/ragclaw-core — mock Store and sanitizeDbName
+const mockStoreOpen = vi.fn(async () => {});
+const mockStoreClose = vi.fn(async () => {});
+vi.mock("@emdzej/ragclaw-core", () => {
+  class Store {
+    open = mockStoreOpen;
+    close = mockStoreClose;
+  }
+  return {
+    Store,
+    sanitizeDbName: (name: string) => {
+      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name)) {
+        throw new Error(`Invalid knowledge base name: "${name}".`);
+      }
+      return name;
+    },
+    getDbPath: (name: string) => `/mock/data/${name}.sqlite`,
+    MergeService: vi.fn(),
+    createEmbedder: vi.fn(),
+  };
+});
 
 // Config helpers
 const MOCK_DATA_DIR = "/mock/data";
 vi.mock("../config.js", () => ({
   getDataDir: vi.fn(() => MOCK_DATA_DIR),
+  getDbPath: (name: string) => `/mock/data/${name}.sqlite`,
+  ensureDataDir: vi.fn(),
+  getConfig: vi.fn(() => ({ embedder: undefined })),
 }));
 
-// Import subject under test AFTER all vi.mock calls
-const { dbList } = await import("./db.js");
+// Import subjects under test AFTER all vi.mock calls
+const { dbList, dbInit, dbDelete, dbRename } = await import("./db.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function logOutput(): string {
   return consoleSpy.log.mock.calls.flat().join("\n");
+}
+
+function errOutput(): string {
+  return consoleSpy.error.mock.calls.flat().join("\n");
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -175,5 +216,174 @@ describe("dbList()", () => {
 
       expect(logOutput()).toBe("[]");
     });
+  });
+});
+
+// ── dbInit ─────────────────────────────────────────────────────────────────────
+
+describe("dbInit()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("creates a new database when it does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await dbInit("mydb");
+
+    expect(mockStoreOpen).toHaveBeenCalledWith("/mock/data/mydb.sqlite");
+    expect(mockStoreClose).toHaveBeenCalled();
+    expect(logOutput()).toContain("mydb");
+  });
+
+  it("prints a message when the database already exists", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbInit("existing");
+
+    expect(mockStoreOpen).not.toHaveBeenCalled();
+    expect(logOutput()).toContain("already exists");
+  });
+
+  it("includes next-steps hints in output", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await dbInit("hints-db");
+
+    const output = logOutput();
+    expect(output).toContain("ragclaw add");
+    expect(output).toContain("ragclaw search");
+  });
+});
+
+// ── dbDelete ───────────────────────────────────────────────────────────────────
+
+describe("dbDelete()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  it("deletes the .sqlite file when --yes is passed and DB exists", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockRm.mockResolvedValue(undefined);
+
+    await dbDelete("mydb", { yes: true });
+
+    expect(mockRm).toHaveBeenCalledWith("/mock/data/mydb.sqlite");
+    expect(logOutput()).toContain("Deleted");
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("sets exitCode=1 when the DB does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await dbDelete("ghost", { yes: true });
+
+    expect(mockRm).not.toHaveBeenCalled();
+    expect(errOutput()).toContain("not found");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 for an invalid DB name", async () => {
+    await dbDelete("bad/name!", { yes: true });
+
+    expect(mockRm).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 when rm fails", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockRm.mockRejectedValue(new Error("permission denied"));
+
+    await dbDelete("locked", { yes: true });
+
+    expect(errOutput()).toContain("Failed to delete");
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+// ── dbRename ───────────────────────────────────────────────────────────────────
+
+describe("dbRename()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  it("renames the .sqlite file when old exists and new does not", async () => {
+    // existsSync: true for old path, false for new path
+    mockExistsSync
+      .mockReturnValueOnce(true) // old path exists
+      .mockReturnValueOnce(false); // new path does not exist
+    mockRename.mockResolvedValue(undefined);
+
+    await dbRename("old", "new");
+
+    expect(mockRename).toHaveBeenCalledWith("/mock/data/old.sqlite", "/mock/data/new.sqlite");
+    expect(logOutput()).toContain("old");
+    expect(logOutput()).toContain("new");
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("sets exitCode=1 when old DB does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await dbRename("missing", "target");
+
+    expect(mockRename).not.toHaveBeenCalled();
+    expect(errOutput()).toContain("not found");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 when new name already exists", async () => {
+    // Both old and new exist
+    mockExistsSync.mockReturnValue(true);
+
+    await dbRename("source", "taken");
+
+    expect(mockRename).not.toHaveBeenCalled();
+    expect(errOutput()).toContain("already exists");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 for an invalid old name", async () => {
+    await dbRename("bad/name", "ok");
+
+    expect(mockRename).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 for an invalid new name", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbRename("ok", "bad/name");
+
+    expect(mockRename).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 when rename fails", async () => {
+    mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    mockRename.mockRejectedValue(new Error("cross-device rename"));
+
+    await dbRename("src", "dst");
+
+    expect(errOutput()).toContain("Failed to rename");
+    expect(process.exitCode).toBe(1);
   });
 });

@@ -11,12 +11,10 @@ import { createRequire } from "node:module";
 import { Command } from "commander";
 import { addCommand } from "./commands/add.js";
 import { configGet, configList, configSet } from "./commands/config.js";
-import { dbList } from "./commands/db.js";
+import { dbDelete, dbInit, dbList, dbMerge, dbRename } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { embedderDownload, embedderList } from "./commands/embedder.js";
-import { initCommand } from "./commands/init.js";
 import { listCommand } from "./commands/list.js";
-import { mergeCommand } from "./commands/merge.js";
 import {
   pluginAdd,
   pluginCreate,
@@ -42,9 +40,12 @@ program
 
 program
   .command("init")
-  .description("Initialize a new knowledge base")
+  .description("[deprecated] Use 'ragclaw db init' instead")
   .argument("[name]", "Name of the knowledge base", "default")
-  .action(initCommand);
+  .action(async (name: string) => {
+    console.error("Warning: 'ragclaw init' is deprecated. Use 'ragclaw db init' instead.");
+    await dbInit(name);
+  });
 
 program
   .command("add")
@@ -133,7 +134,7 @@ program
 
 program
   .command("merge")
-  .description("Merge another knowledge base into this one")
+  .description("[deprecated] Use 'ragclaw db merge' instead")
   .argument("<source-db>", "Path to the source .sqlite database file")
   .option("-d, --db <name>", "Destination knowledge base name", "default")
   .option("--strategy <strategy>", "Merge strategy: strict (default) or reindex", "strict")
@@ -149,7 +150,23 @@ program
   )
   .option("--exclude <patterns>", "Skip sources matching these path prefixes (comma-separated)")
   .option("-e, --embedder <name>", "Embedder to use for reindex strategy")
-  .action(mergeCommand);
+  .action(
+    async (
+      sourceDb: string,
+      opts: {
+        db: string;
+        strategy?: string;
+        onConflict?: string;
+        dryRun?: boolean;
+        include?: string;
+        exclude?: string;
+        embedder?: string;
+      }
+    ) => {
+      console.error("Warning: 'ragclaw merge' is deprecated. Use 'ragclaw db merge' instead.");
+      await dbMerge(sourceDb, opts);
+    }
+  );
 
 // Plugin commands
 const pluginCmd = program.command("plugin").description("Manage plugins");
@@ -236,5 +253,45 @@ dbCmd
   .description("List all available knowledge bases")
   .option("--json", "Output as JSON")
   .action(dbList);
+
+dbCmd
+  .command("init")
+  .description("Initialize a new knowledge base")
+  .argument("[name]", "Name of the knowledge base", "default")
+  .action(dbInit);
+
+dbCmd
+  .command("delete")
+  .description("Delete a knowledge base and its .sqlite file")
+  .argument("<name>", "Name of the knowledge base to delete")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .action(dbDelete);
+
+dbCmd
+  .command("rename")
+  .description("Rename a knowledge base")
+  .argument("<old-name>", "Current name of the knowledge base")
+  .argument("<new-name>", "New name for the knowledge base")
+  .action(dbRename);
+
+dbCmd
+  .command("merge")
+  .description("Merge another knowledge base into this one")
+  .argument("<source-db>", "Path to the source .sqlite database file")
+  .option("-d, --db <name>", "Destination knowledge base name", "default")
+  .option("--strategy <strategy>", "Merge strategy: strict (default) or reindex", "strict")
+  .option(
+    "--on-conflict <resolution>",
+    "Conflict resolution: skip (default), prefer-local, or prefer-remote",
+    "skip"
+  )
+  .option("--dry-run", "Preview what would change without writing anything")
+  .option(
+    "--include <patterns>",
+    "Only import sources matching these path prefixes (comma-separated)"
+  )
+  .option("--exclude <patterns>", "Skip sources matching these path prefixes (comma-separated)")
+  .option("-e, --embedder <name>", "Embedder to use for reindex strategy")
+  .action(dbMerge);
 
 program.parse();

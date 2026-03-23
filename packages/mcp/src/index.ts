@@ -8,7 +8,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
 import type { EmbedderPlugin, Source } from "@emdzej/ragclaw-core";
@@ -21,6 +21,7 @@ import {
   isUrlAllowed,
   MergeService,
   Store,
+  sanitizeDbName,
 } from "@emdzej/ragclaw-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -623,6 +624,87 @@ async function ragListDatabases(): Promise<string> {
   return JSON.stringify(names);
 }
 
+async function ragDbInit(args: { db?: string }): Promise<string> {
+  const dbName = args.db ?? "default";
+  const dbPath = getDbPath(dbName);
+
+  if (existsSync(dbPath)) {
+    return `Knowledge base "${dbName}" already exists at ${dbPath}`;
+  }
+
+  await mkdir(RAGCLAW_DIR, { recursive: true });
+
+  const store = new Store();
+  await store.open(dbPath);
+  await store.close();
+
+  return `Created knowledge base "${dbName}" at ${dbPath}`;
+}
+
+async function ragDbDelete(args: { db?: string; confirm?: boolean }): Promise<string> {
+  if (!args.confirm) {
+    return `Error: Destructive operation requires confirm=true. Set confirm=true to delete knowledge base "${args.db ?? "default"}".`;
+  }
+
+  const dbName = args.db ?? "default";
+  let safeName: string;
+  try {
+    safeName = sanitizeDbName(dbName);
+  } catch (err: unknown) {
+    return `Error: ${err}`;
+  }
+
+  const dbPath = getDbPath(safeName);
+
+  if (!existsSync(dbPath)) {
+    return `Error: Knowledge base "${safeName}" not found.`;
+  }
+
+  try {
+    await rm(dbPath);
+    return `Deleted knowledge base "${safeName}"`;
+  } catch (err: unknown) {
+    return `Error: Failed to delete "${safeName}": ${err}`;
+  }
+}
+
+async function ragDbRename(args: {
+  oldName: string;
+  newName: string;
+  confirm?: boolean;
+}): Promise<string> {
+  if (!args.confirm) {
+    return `Error: Destructive operation requires confirm=true. Set confirm=true to rename knowledge base "${args.oldName}" to "${args.newName}".`;
+  }
+
+  let safeOld: string;
+  let safeNew: string;
+  try {
+    safeOld = sanitizeDbName(args.oldName);
+    safeNew = sanitizeDbName(args.newName);
+  } catch (err: unknown) {
+    return `Error: ${err}`;
+  }
+
+  const oldPath = getDbPath(safeOld);
+  const newPath = getDbPath(safeNew);
+
+  if (!existsSync(oldPath)) {
+    return `Error: Knowledge base "${safeOld}" not found.`;
+  }
+
+  if (existsSync(newPath)) {
+    return `Error: Knowledge base "${safeNew}" already exists. Choose a different name.`;
+  }
+
+  try {
+    await rename(oldPath, newPath);
+    return `Renamed knowledge base "${safeOld}" to "${safeNew}"`;
+  } catch (err: unknown) {
+    return `Error: Failed to rename "${safeOld}": ${err}`;
+  }
+}
+
 // Main server
 async function main() {
   const server = new McpServer({
@@ -812,7 +894,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_merge",
+    "rag_db_merge",
     {
       description:
         "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
@@ -873,6 +955,76 @@ async function main() {
     async () => {
       try {
         const result = await ragListDatabases();
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_db_init",
+    {
+      description:
+        "Initialize a new knowledge base. Creates an empty SQLite database at the configured data directory. Safe to call if the knowledge base already exists — returns a message without overwriting.",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+      },
+    },
+    async ({ db }) => {
+      try {
+        const result = await ragDbInit({ db });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_db_delete",
+    {
+      description:
+        "Delete a knowledge base and its .sqlite file permanently. This operation is irreversible. You MUST pass confirm=true explicitly to proceed — this prevents accidental deletion.",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name to delete (default: 'default')"),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe(
+            "Must be true to confirm the destructive operation. Omitting or passing false returns an error."
+          ),
+      },
+    },
+    async ({ db, confirm }) => {
+      try {
+        const result = await ragDbDelete({ db, confirm });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_db_rename",
+    {
+      description:
+        "Rename a knowledge base. Errors if the new name already exists. You MUST pass confirm=true explicitly to proceed — this prevents accidental renaming.",
+      inputSchema: {
+        oldName: z.string().describe("Current name of the knowledge base"),
+        newName: z.string().describe("New name for the knowledge base"),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe(
+            "Must be true to confirm the operation. Omitting or passing false returns an error."
+          ),
+      },
+    },
+    async ({ oldName, newName, confirm }) => {
+      try {
+        const result = await ragDbRename({ oldName, newName, confirm });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

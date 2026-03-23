@@ -3,6 +3,10 @@
  *
  * This source code is licensed under the MIT License found in the
  * LICENSE file in the root directory of this repository.
+ *
+ * @deprecated Use `dbInit` from `./db.js` instead. This file is kept as a
+ * compatibility shim so that any external imports of `initCommand` continue
+ * to work until they are updated.
  */
 
 import { existsSync } from "node:fs";
@@ -10,6 +14,7 @@ import { Store } from "@emdzej/ragclaw-core";
 import chalk from "chalk";
 import { ensureDataDir, getDbPath } from "../config.js";
 
+/** @deprecated Use `dbInit` from `./db.js` instead. */
 export async function initCommand(name: string): Promise<void> {
   const dbPath = getDbPath(name);
 

@@ -276,12 +276,11 @@ Default weights:
 
 ## CLI Commands
 
-### `ragclaw init <name>`
-Create a new knowledge base.
+### `ragclaw init <name>` _(deprecated)_
+> **Deprecated.** Use `ragclaw db init` instead. This alias still works but prints a deprecation warning to stderr.
 
 ```bash
-ragclaw init my-docs
-# Creates ~/.openclaw/ragclaw/my-docs.sqlite
+ragclaw init my-docs    # works, but prints deprecation warning
 ```
 
 ### `ragclaw add <source> [options]`
@@ -363,31 +362,90 @@ ragclaw list
 ragclaw list --db my-docs --type code
 ```
 
-### `ragclaw merge <source-db> [options]`
-Merge another knowledge base (a `.sqlite` / `.db` file) into the local one.
+### `ragclaw merge <source-db> [options]` _(deprecated)_
+> **Deprecated.** Use `ragclaw db merge` instead. This alias still works but prints a deprecation warning to stderr.
+
+```bash
+ragclaw merge ~/backup/project-a.sqlite   # works, prints deprecation warning
+```
+
+### `ragclaw db` — Knowledge base management
+
+All database lifecycle operations live under the `db` subcommand group.
+
+#### `ragclaw db list [options]`
+List all available knowledge bases.
+
+```bash
+ragclaw db list
+ragclaw db list --json
+
+Options:
+  --json    Output as a JSON array of names
+```
+
+Output (default):
+```
+Knowledge bases:
+
+  default
+  research
+  work
+```
+
+Output (`--json`): `["default","research","work"]`
+
+#### `ragclaw db init [name]`
+Create a new knowledge base. Safe to run if it already exists.
+
+```bash
+ragclaw db init            # creates "default"
+ragclaw db init my-docs    # creates "my-docs"
+```
+
+#### `ragclaw db delete <name> [options]`
+Delete a knowledge base and its `.sqlite` file permanently. Prompts for confirmation unless `--yes` is passed.
+
+```bash
+ragclaw db delete old-kb        # prompts: "Delete knowledge base 'old-kb'? [y/N]"
+ragclaw db delete old-kb --yes  # skips prompt
+
+Options:
+  -y, --yes    Skip confirmation prompt
+```
+
+#### `ragclaw db rename <old-name> <new-name>`
+Rename a knowledge base. Errors if the new name already exists.
+
+```bash
+ragclaw db rename old-kb new-kb
+```
+
+#### `ragclaw db merge <source-db> [options]`
+Merge another knowledge base (a `.sqlite` file) into the local one.
 The source database is never modified — all writes go to the destination.
 
 ```bash
 # Merge using strict strategy (same embedder required — embeddings copied verbatim)
-ragclaw merge ~/backup/project-a.sqlite
+ragclaw db merge ~/backup/project-a.sqlite
 
 # Preview what would change without writing (dry-run)
-ragclaw merge ~/backup/project-a.sqlite --dry-run
+ragclaw db merge ~/backup/project-a.sqlite --dry-run
 
 # Merge across different embedders (re-embeds text with the local model)
-ragclaw merge ~/backup/other.sqlite --strategy reindex --embedder bge
+ragclaw db merge ~/backup/other.sqlite --strategy reindex --embedder bge
 
 # Only import sources whose path starts with /docs/
-ragclaw merge ~/backup/other.sqlite --include /docs/
+ragclaw db merge ~/backup/other.sqlite --include /docs/
 
 # Skip sources whose path starts with /tmp/
-ragclaw merge ~/backup/other.sqlite --exclude /tmp/
+ragclaw db merge ~/backup/other.sqlite --exclude /tmp/
 
 # Overwrite local conflicting sources with remote versions
-ragclaw merge ~/backup/other.sqlite --on-conflict prefer-remote
+ragclaw db merge ~/backup/other.sqlite --on-conflict prefer-remote
 
 # Merge into a named knowledge base
-ragclaw merge ~/backup/other.sqlite --db my-kb
+ragclaw db merge ~/backup/other.sqlite --db my-kb
 
 Options:
   --db <name>              Destination knowledge base (default: "default")
@@ -413,28 +471,6 @@ Options:
 | `skip` (default) | Keep the local version, ignore the remote one |
 | `prefer-local` | Same as `skip` |
 | `prefer-remote` | Overwrite local chunks with remote chunks |
-
-### `ragclaw db list [options]`
-List all available knowledge bases.
-
-```bash
-ragclaw db list
-ragclaw db list --json
-
-Options:
-  --json    Output as a JSON array of names
-```
-
-Output (default):
-```
-Knowledge bases:
-
-  default
-  research
-  work
-```
-
-Output (`--json`): `["default","research","work"]`
 
 ## OpenClaw Skill Integration
 
@@ -548,7 +584,7 @@ interface EmbedderConfigBlock {
 
 ## Future Enhancements
 
-- [x] **Database merge** — `ragclaw merge <source.db>` copies sources+chunks from one SQLite KB into another; supports `strict` (same embedder, copy embeddings) and `reindex` (re-embed text with local model) strategies; conflict resolution (`skip` / `prefer-local` / `prefer-remote`); `--dry-run` diff preview; `--include`/`--exclude` path filters; `rag_merge` MCP tool
+- [x] **Database merge** — `ragclaw db merge <source.db>` copies sources+chunks from one SQLite KB into another; supports `strict` (same embedder, copy embeddings) and `reindex` (re-embed text with local model) strategies; conflict resolution (`skip` / `prefer-local` / `prefer-remote`); `--dry-run` diff preview; `--include`/`--exclude` path filters; `rag_db_merge` MCP tool; `ragclaw merge` kept as deprecated alias
 - [ ] Incremental re-indexing (watch mode)
 - [ ] Audio transcription
 - [ ] Multi-database queries
@@ -564,5 +600,6 @@ interface EmbedderConfigBlock {
 - [x] **XDG Base Directory** — Proper paths (`~/.local/share/ragclaw/`, `~/.config/ragclaw/`)
 - [x] **MCP server** — Integration with Codex, Claude Code, OpenCode
 - [x] **`ragclaw db list` / `rag_list_databases`** — List all available knowledge bases by scanning `dataDir` for `.sqlite` files
+- [x] **`ragclaw db init/delete/rename/merge`** — Full database lifecycle management under `db` subcommand group; `ragclaw init` and `ragclaw merge` kept as deprecated top-level aliases; MCP tools: `rag_db_init`, `rag_db_delete` (requires `confirm: true`), `rag_db_rename` (requires `confirm: true`), `rag_db_merge`
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command

@@ -3,6 +3,10 @@
  *
  * This source code is licensed under the MIT License found in the
  * LICENSE file in the root directory of this repository.
+ *
+ * @deprecated Use `dbMerge` from `./db.js` instead. This file is kept as a
+ * compatibility shim so that any external imports of `mergeCommand` continue
+ * to work until they are updated.
  */
 
 import { existsSync, statSync } from "node:fs";
@@ -23,6 +27,7 @@ interface MergeOptions {
   embedder?: string;
 }
 
+/** @deprecated Use `dbMerge` from `./db.js` instead. */
 export async function mergeCommand(sourceDb: string, options: MergeOptions): Promise<void> {
   // Resolve source DB path
   const sourcePath = resolve(sourceDb);

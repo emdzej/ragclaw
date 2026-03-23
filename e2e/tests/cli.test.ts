@@ -49,7 +49,17 @@ describe("global flags", () => {
 // ---------------------------------------------------------------------------
 
 describe("subcommand help banners", () => {
-  const subcommands = ["add", "search", "status", "list", "remove", "reindex", "merge", "init"];
+  const subcommands = [
+    "add",
+    "search",
+    "status",
+    "list",
+    "remove",
+    "reindex",
+    "merge",
+    "init",
+    "db",
+  ];
 
   for (const cmd of subcommands) {
     it(`${cmd} --help exits 0`, async () => {
@@ -186,8 +196,8 @@ describe("db list", () => {
   });
 
   it("lists database names after init", async () => {
-    await env.run(["init", "alpha"]);
-    await env.run(["init", "beta"]);
+    await env.run(["db", "init", "alpha"]);
+    await env.run(["db", "init", "beta"]);
 
     const { exitCode, stdout } = await env.run(["db", "list"]);
     expect(exitCode).toBe(0);
@@ -196,8 +206,8 @@ describe("db list", () => {
   });
 
   it("--json returns a sorted JSON array of names", async () => {
-    await env.run(["init", "zebra"]);
-    await env.run(["init", "apple"]);
+    await env.run(["db", "init", "zebra"]);
+    await env.run(["db", "init", "apple"]);
 
     const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
     expect(exitCode).toBe(0);
@@ -212,6 +222,123 @@ describe("db list", () => {
     const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
     expect(exitCode).toBe(0);
     expect(JSON.parse(stdout)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db init
+// ---------------------------------------------------------------------------
+
+describe("db init", () => {
+  it("creates the .sqlite file and exits 0", async () => {
+    const { exitCode, stdout } = await env.run(["db", "init", "newdb"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("newdb");
+
+    const dbFile = join(env.dataDir, "newdb.sqlite");
+    expect(existsSync(dbFile)).toBe(true);
+  });
+
+  it("uses 'default' when no name is provided", async () => {
+    const { exitCode, stdout } = await env.run(["db", "init"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("default");
+
+    const dbFile = join(env.dataDir, "default.sqlite");
+    expect(existsSync(dbFile)).toBe(true);
+  });
+
+  it("reports already-exists message without error when called twice", async () => {
+    await env.run(["db", "init", "dup"]);
+    const { exitCode, stdout } = await env.run(["db", "init", "dup"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/already exists/i);
+  });
+
+  it("rejects invalid KB names", async () => {
+    const { failed } = await env.run(["db", "init", "bad/name"]);
+    expect(failed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db delete
+// ---------------------------------------------------------------------------
+
+describe("db delete", () => {
+  it("deletes the .sqlite file with --yes and exits 0", async () => {
+    await env.run(["db", "init", "to-delete"]);
+    const dbFile = join(env.dataDir, "to-delete.sqlite");
+    expect(existsSync(dbFile)).toBe(true);
+
+    const { exitCode, stdout } = await env.run(["db", "delete", "to-delete", "--yes"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/deleted/i);
+    expect(existsSync(dbFile)).toBe(false);
+  });
+
+  it("exits non-zero when the DB does not exist", async () => {
+    const { failed } = await env.run(["db", "delete", "nonexistent", "--yes"]);
+    expect(failed).toBe(true);
+  });
+
+  it("exits non-zero for an invalid DB name", async () => {
+    const { failed } = await env.run(["db", "delete", "bad/name", "--yes"]);
+    expect(failed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db rename
+// ---------------------------------------------------------------------------
+
+describe("db rename", () => {
+  it("renames the .sqlite file and exits 0", async () => {
+    await env.run(["db", "init", "oldname"]);
+    const oldFile = join(env.dataDir, "oldname.sqlite");
+    const newFile = join(env.dataDir, "newname.sqlite");
+    expect(existsSync(oldFile)).toBe(true);
+
+    const { exitCode, stdout } = await env.run(["db", "rename", "oldname", "newname"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("oldname");
+    expect(stdout).toContain("newname");
+    expect(existsSync(oldFile)).toBe(false);
+    expect(existsSync(newFile)).toBe(true);
+  });
+
+  it("exits non-zero when source does not exist", async () => {
+    const { failed } = await env.run(["db", "rename", "missing", "target"]);
+    expect(failed).toBe(true);
+  });
+
+  it("exits non-zero when target name already exists", async () => {
+    await env.run(["db", "init", "src"]);
+    await env.run(["db", "init", "existing"]);
+
+    const { failed } = await env.run(["db", "rename", "src", "existing"]);
+    expect(failed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deprecated top-level aliases
+// ---------------------------------------------------------------------------
+
+describe("deprecated aliases", () => {
+  it("'ragclaw init' still works and prints deprecation warning to stderr", async () => {
+    const { exitCode, stderr } = await env.run(["init", "legacydb"]);
+    expect(exitCode).toBe(0);
+    expect(stderr).toMatch(/deprecated/i);
+
+    const dbFile = join(env.dataDir, "legacydb.sqlite");
+    expect(existsSync(dbFile)).toBe(true);
+  });
+
+  it("'ragclaw merge --help' still exits 0 and prints deprecation in description", async () => {
+    const { exitCode, stdout } = await env.run(["merge", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout.toLowerCase()).toMatch(/deprecated/i);
   });
 });
 
