@@ -1,6 +1,6 @@
 {
   "name": "ragclaw",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Local-first knowledge base for OpenClaw - index and search documents, code, and web pages",
   "triggers": [
     "/kb",

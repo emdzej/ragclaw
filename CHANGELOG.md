@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.1] — 2026-03-23
+
+### Fixes and maintenance
+
+#### npm publish warnings resolved
+
+Two fields in `package.json` files across all packages were being silently auto-corrected by npm at publish time and emitting warnings:
+
+- **`bin` values** — leading `./` prefix (e.g. `./dist/cli.js`) is not valid in `bin` entries; removed the prefix in `packages/cli` and `packages/mcp`
+- **`repository.url`** — bare `https://` was being normalised to `git+https://` by npm; added the `git+` prefix explicitly in all packages
+
+#### `ragclaw-plugin-ollama` README added
+
+The plugin was shipped in 0.6.0 without a `README.md`. The file has been added covering installation, requirements, configuration YAML, supported models with pre-wired dimensions, usage examples, and development commands.
+
+#### CI publish workflow
+
+Added an explicit publish step for `ragclaw-plugin-ollama` in `.github/workflows/publish.yaml`. The version-bump glob (`ragclaw-plugin-*`) already covered it, but the publish step must be listed explicitly.
+
+#### Agent guidelines updated (`AGENTS.md`)
+
+- Agents are now required to write a `README.md` for every new plugin or package they create
+- Agents are required to verify `.github/workflows/publish.yaml` has an explicit publish step for any new plugin they create
+
+---
+
 ## [0.6.0] — 2026-03-23
 
 ### New features
