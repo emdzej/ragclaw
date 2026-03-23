@@ -52,10 +52,14 @@ vi.mock("node:fs/promises", () => ({
 // @emdzej/ragclaw-core — mock Store and sanitizeDbName
 const mockStoreOpen = vi.fn(async () => {});
 const mockStoreClose = vi.fn(async () => {});
+const mockStoreGetMeta = vi.fn(async (_key: string) => undefined as string | undefined);
+const mockStoreSetMeta = vi.fn(async (_key: string, _value: string) => {});
 vi.mock("@emdzej/ragclaw-core", () => {
   class Store {
     open = mockStoreOpen;
     close = mockStoreClose;
+    getMeta = mockStoreGetMeta;
+    setMeta = mockStoreSetMeta;
   }
   return {
     Store,
@@ -81,7 +85,7 @@ vi.mock("../config.js", () => ({
 }));
 
 // Import subjects under test AFTER all vi.mock calls
-const { dbList, dbInit, dbDelete, dbRename } = await import("./db.js");
+const { dbList, dbInit, dbInfoSet, dbDelete, dbRename } = await import("./db.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -174,8 +178,12 @@ describe("dbList()", () => {
 
       await dbList({ json: true });
 
-      const parsed = JSON.parse(logOutput()) as string[];
-      expect(parsed).toEqual(["default", "research", "work"]);
+      const parsed = JSON.parse(logOutput()) as Array<{
+        name: string;
+        description: string | null;
+        keywords: string[];
+      }>;
+      expect(parsed.map((e) => e.name)).toEqual(["default", "research", "work"]);
     });
 
     it("outputs valid JSON array with --json", async () => {
@@ -193,8 +201,8 @@ describe("dbList()", () => {
 
       await dbList({ json: true });
 
-      const parsed = JSON.parse(logOutput()) as string[];
-      expect(parsed).toEqual(["default"]);
+      const parsed = JSON.parse(logOutput()) as Array<{ name: string }>;
+      expect(parsed.map((e) => e.name)).toEqual(["default"]);
     });
   });
 
@@ -257,6 +265,186 @@ describe("dbInit()", () => {
     const output = logOutput();
     expect(output).toContain("ragclaw add");
     expect(output).toContain("ragclaw search");
+  });
+});
+
+// ── dbInit with description/keywords ──────────────────────────────────────────
+
+describe("dbInit() with metadata options", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("writes description to store when --description is supplied", async () => {
+    await dbInit("meta-db", { description: "API docs" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_description", "API docs");
+    expect(logOutput()).toContain("API docs");
+  });
+
+  it("writes keywords to store when --keywords is supplied", async () => {
+    await dbInit("kw-db", { keywords: "api, auth" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_keywords", "api, auth");
+    expect(logOutput()).toContain("api, auth");
+  });
+
+  it("writes both description and keywords when both are supplied", async () => {
+    await dbInit("both-db", { description: "Project X", keywords: "project, x" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_description", "Project X");
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_keywords", "project, x");
+  });
+
+  it("does not call setMeta when no options are supplied", async () => {
+    await dbInit("plain-db");
+
+    expect(mockStoreSetMeta).not.toHaveBeenCalled();
+  });
+});
+
+// ── dbList metadata display ────────────────────────────────────────────────────
+
+describe("dbList() metadata display", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(true);
+    mockReaddir.mockResolvedValue(["docs.sqlite"]);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows description in plain output when store has one", async () => {
+    mockStoreGetMeta.mockImplementation(async (key: string) => {
+      if (key === "db_description") return "API docs";
+      return undefined;
+    });
+
+    await dbList({});
+
+    expect(logOutput()).toContain("API docs");
+  });
+
+  it("shows keywords in plain output when store has them", async () => {
+    mockStoreGetMeta.mockImplementation(async (key: string) => {
+      if (key === "db_keywords") return "api, auth";
+      return undefined;
+    });
+
+    await dbList({});
+
+    expect(logOutput()).toContain("api");
+    expect(logOutput()).toContain("auth");
+  });
+
+  it("includes description and keywords in --json output", async () => {
+    mockStoreGetMeta.mockImplementation(async (key: string) => {
+      if (key === "db_description") return "My docs";
+      if (key === "db_keywords") return "foo, bar";
+      return undefined;
+    });
+
+    await dbList({ json: true });
+
+    const parsed = JSON.parse(logOutput()) as Array<{
+      name: string;
+      description: string | null;
+      keywords: string[];
+    }>;
+    expect(parsed[0].description).toBe("My docs");
+    expect(parsed[0].keywords).toEqual(["foo", "bar"]);
+  });
+
+  it("sets description to null in --json when store has none", async () => {
+    mockStoreGetMeta.mockResolvedValue(undefined);
+
+    await dbList({ json: true });
+
+    const parsed = JSON.parse(logOutput()) as Array<{
+      name: string;
+      description: string | null;
+      keywords: string[];
+    }>;
+    expect(parsed[0].description).toBeNull();
+    expect(parsed[0].keywords).toEqual([]);
+  });
+});
+
+// ── dbInfoSet ──────────────────────────────────────────────────────────────────
+
+describe("dbInfoSet()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  it("writes description when --description is supplied", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbInfoSet({ db: "mydb", description: "Updated description" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_description", "Updated description");
+    expect(logOutput()).toContain("Updated description");
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("writes keywords when --keywords is supplied", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbInfoSet({ db: "mydb", keywords: "search, api" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_keywords", "search, api");
+    expect(logOutput()).toContain("search, api");
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("writes both description and keywords when both are supplied", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbInfoSet({ db: "mydb", description: "Desc", keywords: "kw1, kw2" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_description", "Desc");
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_keywords", "kw1, kw2");
+  });
+
+  it("sets exitCode=1 when neither --description nor --keywords is supplied", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbInfoSet({ db: "mydb" });
+
+    expect(mockStoreSetMeta).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets exitCode=1 when the database does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await dbInfoSet({ db: "ghost", description: "Desc" });
+
+    expect(mockStoreSetMeta).not.toHaveBeenCalled();
+    expect(errOutput()).toContain("not found");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("shows (cleared) label in output when empty string is passed as description", async () => {
+    mockExistsSync.mockReturnValue(true);
+
+    await dbInfoSet({ db: "mydb", description: "" });
+
+    expect(mockStoreSetMeta).toHaveBeenCalledWith("db_description", "");
+    expect(logOutput()).toContain("(cleared)");
   });
 });
 

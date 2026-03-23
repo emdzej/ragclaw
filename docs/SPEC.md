@@ -281,12 +281,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
   content_rowid=rowid
 );
 
--- Store metadata (embedder tracking, schema versioning)
+-- Store metadata (embedder tracking, schema versioning, user-set info)
 CREATE TABLE IF NOT EXISTS store_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
--- Keys: embedder_name, embedder_model, embedder_dimensions
+-- Keys: embedder_name, embedder_model, embedder_dimensions, db_description, db_keywords
 
 -- Merge history
 CREATE TABLE IF NOT EXISTS merge_history (
@@ -524,33 +524,60 @@ ragclaw merge ~/backup/project-a.sqlite   # works, prints deprecation warning
 All database lifecycle operations live under the `db` subcommand group.
 
 #### `ragclaw db list [options]`
-List all available knowledge bases.
+List all available knowledge bases. Opens each `.sqlite` briefly to read metadata.
 
 ```bash
 ragclaw db list
 ragclaw db list --json
 
 Options:
-  --json    Output as a JSON array of names
+  --json    Output as a JSON array of objects
 ```
 
 Output (default):
 ```
 Knowledge bases:
 
-  default
+  default — Project X API docs  [api, auth, endpoints]
   research
-  work
+  work — Internal tooling notes  [cli, build]
 ```
 
-Output (`--json`): `["default","research","work"]`
+Output (`--json`):
+```json
+[
+  { "name": "default", "description": "Project X API docs", "keywords": ["api", "auth", "endpoints"] },
+  { "name": "research", "description": null, "keywords": [] },
+  { "name": "work", "description": "Internal tooling notes", "keywords": ["cli", "build"] }
+]
+```
 
-#### `ragclaw db init [name]`
+#### `ragclaw db init [name] [options]`
 Create a new knowledge base. Safe to run if it already exists.
 
 ```bash
-ragclaw db init            # creates "default"
-ragclaw db init my-docs    # creates "my-docs"
+ragclaw db init                                          # creates "default"
+ragclaw db init my-docs                                  # creates "my-docs"
+ragclaw db init my-docs --description "Project X docs"  # with description
+ragclaw db init my-docs --keywords "api, auth"          # with keywords
+
+Options:
+  --description <text>   Human-readable description of this knowledge base
+  --keywords <list>      Comma-separated keywords (e.g. 'api, auth, endpoints')
+```
+
+#### `ragclaw db info set [options]`
+Set or update the description and keywords for an existing knowledge base.
+
+```bash
+ragclaw db info set --description "Project X API docs" --keywords "api, auth"
+ragclaw db info set --db my-docs --description "Redesigned docs"
+ragclaw db info set --keywords ""                        # clear keywords
+
+Options:
+  -d, --db <name>        Knowledge base name (default: 'default')
+  --description <text>   Human-readable description of this knowledge base
+  --keywords <list>      Comma-separated keywords (e.g. 'api, auth, endpoints')
 ```
 
 #### `ragclaw db delete <name> [options]`
@@ -768,8 +795,9 @@ interface EmbedderConfigBlock {
 - [x] **Obsidian plugin** — Index vaults and notes via `obsidian://` scheme
 - [x] **XDG Base Directory** — Proper paths (`~/.local/share/ragclaw/`, `~/.config/ragclaw/`)
 - [x] **MCP server** — Integration with Codex, Claude Code, OpenCode
-- [x] **`ragclaw db list` / `rag_list_databases`** — List all available knowledge bases by scanning `dataDir` for `.sqlite` files
+- [x] **`ragclaw db list` / `rag_list_databases`** — List all available knowledge bases; opens each `.sqlite` to read `db_description` and `db_keywords` metadata; default output shows description + keywords inline; `--json` returns object array `[{ name, description, keywords }]`; `rag_list_databases` MCP tool returns the same object array
 - [x] **`ragclaw db init/delete/rename/merge`** — Full database lifecycle management under `db` subcommand group; `ragclaw init` and `ragclaw merge` kept as deprecated top-level aliases; MCP tools: `rag_db_init`, `rag_db_delete` (requires `confirm: true`), `rag_db_rename` (requires `confirm: true`), `rag_db_merge`
+- [x] **`ragclaw db info set` / `rag_db_info`** — Set `db_description` and `db_keywords` metadata on an existing knowledge base; metadata stored as `store_meta` keys; surfaces in `db list`, `db list --json`, `status`, and MCP `rag_list_databases`; `ragclaw db init` also accepts `--description`/`--keywords` at creation time
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command
 - [x] **Pluggable chunker system** — Four built-in chunkers (`semantic`, `code`, `sentence`, `fixed`); `Chunker` interface now exposes `name`/`description`/`handles`; priority-based `resolveChunker()` (CLI flag → config overrides → plugin chunkers → built-in auto); `--chunker`/`--chunk-size`/`--overlap` flags on `ragclaw add` and `ragclaw reindex`; `ragclaw chunkers list [--json]`; `chunking:` config block with `strategy`/`defaults`/`overrides[]`; MCP: `chunker`/`chunkSize`/`overlap` params on `rag_add`/`rag_reindex`, `rag_list_chunkers` tool; unknown chunker name → hard fail with typo suggestion

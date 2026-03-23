@@ -12,7 +12,7 @@ import { Command } from "commander";
 import { addCommand } from "./commands/add.js";
 import { chunkersList } from "./commands/chunkers.js";
 import { configGet, configList, configSet } from "./commands/config.js";
-import { dbDelete, dbInit, dbList, dbMerge, dbRename } from "./commands/db.js";
+import { dbDelete, dbInfoSet, dbInit, dbList, dbMerge, dbRename } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { embedderDownload, embedderList } from "./commands/embedder.js";
 import { listCommand } from "./commands/list.js";
@@ -274,7 +274,20 @@ dbCmd
   .command("init")
   .description("Initialize a new knowledge base")
   .argument("[name]", "Name of the knowledge base", "default")
+  .option("--description <text>", "Human-readable description of this knowledge base")
+  .option("--keywords <list>", "Comma-separated keywords (e.g. 'api, auth, endpoints')")
   .action(dbInit);
+
+// db info subcommand group
+const dbInfoCmd = dbCmd.command("info").description("Manage knowledge base metadata");
+
+dbInfoCmd
+  .command("set")
+  .description("Set or update the description and keywords for a knowledge base")
+  .option("-d, --db <name>", "Knowledge base name", "default")
+  .option("--description <text>", "Human-readable description of this knowledge base")
+  .option("--keywords <list>", "Comma-separated keywords (e.g. 'api, auth, endpoints')")
+  .action(dbInfoSet);
 
 dbCmd
   .command("delete")

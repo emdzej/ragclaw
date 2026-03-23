@@ -634,10 +634,38 @@ async function ragListDatabases(): Promise<string> {
     .map((f) => f.slice(0, -".sqlite".length))
     .sort();
 
-  return JSON.stringify(names);
+  // Open each store briefly to read description + keywords
+  const results = await Promise.all(
+    names.map(async (name) => {
+      const dbPath = getDbPath(name);
+      const store = new Store();
+      try {
+        await store.open(dbPath);
+        const description = (await store.getMeta("db_description")) ?? null;
+        const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
+        const keywords = keywordsRaw
+          ? keywordsRaw
+              .split(",")
+              .map((k: string) => k.trim())
+              .filter(Boolean)
+          : [];
+        return { name, description, keywords };
+      } catch {
+        return { name, description: null, keywords: [] };
+      } finally {
+        await store.close();
+      }
+    })
+  );
+
+  return JSON.stringify(results);
 }
 
-async function ragDbInit(args: { db?: string }): Promise<string> {
+async function ragDbInit(args: {
+  db?: string;
+  description?: string;
+  keywords?: string;
+}): Promise<string> {
   const dbName = args.db ?? "default";
   const dbPath = getDbPath(dbName);
 
@@ -649,9 +677,52 @@ async function ragDbInit(args: { db?: string }): Promise<string> {
 
   const store = new Store();
   await store.open(dbPath);
-  await store.close();
+
+  try {
+    if (args.description) {
+      await store.setMeta("db_description", args.description);
+    }
+    if (args.keywords) {
+      await store.setMeta("db_keywords", args.keywords);
+    }
+  } finally {
+    await store.close();
+  }
 
   return `Created knowledge base "${dbName}" at ${dbPath}`;
+}
+
+async function ragDbInfo(args: {
+  db?: string;
+  description?: string;
+  keywords?: string;
+}): Promise<string> {
+  const dbName = args.db ?? "default";
+  const dbPath = getDbPath(dbName);
+
+  if (!existsSync(dbPath)) {
+    return `Error: Knowledge base "${dbName}" not found.`;
+  }
+
+  if (args.description === undefined && args.keywords === undefined) {
+    return "Error: Provide at least one of description or keywords.";
+  }
+
+  const store = new Store();
+  await store.open(dbPath);
+
+  try {
+    if (args.description !== undefined) {
+      await store.setMeta("db_description", args.description);
+    }
+    if (args.keywords !== undefined) {
+      await store.setMeta("db_keywords", args.keywords);
+    }
+  } finally {
+    await store.close();
+  }
+
+  return `Updated info for knowledge base "${dbName}"`;
 }
 
 async function ragDbDelete(args: { db?: string; confirm?: boolean }): Promise<string> {
@@ -1040,7 +1111,7 @@ async function main() {
     "rag_list_databases",
     {
       description:
-        "List all available knowledge bases (databases). Returns a JSON array of knowledge base names.",
+        "List all available knowledge bases (databases). Returns a JSON array of objects with name, description, and keywords fields — use this to decide which database to search.",
       inputSchema: {},
     },
     async () => {
@@ -1060,11 +1131,50 @@ async function main() {
         "Initialize a new knowledge base. Creates an empty SQLite database at the configured data directory. Safe to call if the knowledge base already exists — returns a message without overwriting.",
       inputSchema: {
         db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+        description: z
+          .string()
+          .optional()
+          .describe("Human-readable description of this knowledge base"),
+        keywords: z
+          .string()
+          .optional()
+          .describe(
+            "Comma-separated keywords that describe the content (e.g. 'api, auth, endpoints')"
+          ),
       },
     },
-    async ({ db }) => {
+    async ({ db, description, keywords }) => {
       try {
-        const result = await ragDbInit({ db });
+        const result = await ragDbInit({ db, description, keywords });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_db_info",
+    {
+      description:
+        "Set or update the description and keywords for an existing knowledge base. Use this so that rag_list_databases can return enriched metadata that helps an agent decide which database to search.",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+        description: z
+          .string()
+          .optional()
+          .describe("Human-readable description of this knowledge base"),
+        keywords: z
+          .string()
+          .optional()
+          .describe(
+            "Comma-separated keywords that describe the content (e.g. 'api, auth, endpoints')"
+          ),
+      },
+    },
+    async ({ db, description, keywords }) => {
+      try {
+        const result = await ragDbInfo({ db, description, keywords });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

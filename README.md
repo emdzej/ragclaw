@@ -99,7 +99,7 @@ ragclaw add <source>           # Index file, directory, or URL
 ragclaw search <query>         # Search knowledge base
 ragclaw reindex                # Re-process changed files
 ragclaw merge <source.db>      # Merge another knowledge base into this one
-ragclaw status                 # Show KB statistics (incl. embedder info)
+ragclaw status                 # Show KB statistics (incl. embedder info, description, keywords)
 ragclaw list                   # List indexed sources
 ragclaw remove <source>        # Remove from index
 ragclaw doctor                 # Check system & embedder compatibility
@@ -111,6 +111,15 @@ ragclaw plugin disable <n>     # Disable a plugin
 ragclaw config list            # Show all config values and sources
 ragclaw config get <key>       # Show a single config value
 ragclaw config set <key> <value>  # Persist a config value
+
+# Knowledge base management
+ragclaw db list                         # List all KBs with description and keywords
+ragclaw db list --json                  # JSON array: [{name, description, keywords}]
+ragclaw db init <name>                  # Create a KB
+ragclaw db init <name> --description "…" --keywords "tag1, tag2"  # Create with metadata
+ragclaw db info set --db <name> --description "…" --keywords "…"  # Update metadata
+ragclaw db delete <name> --yes          # Delete a KB
+ragclaw db rename <old> <new>           # Rename a KB
 ```
 
 ### Options
@@ -393,6 +402,9 @@ Once configured, these tools are available to AI agents:
 | `rag_status` | Get KB statistics (includes embedder info) |
 | `rag_list` | List indexed sources |
 | `rag_remove` | Remove source from index |
+| `rag_list_databases` | List all KBs with name, description, and keywords — used for automatic KB routing |
+| `rag_db_init` | Create a new KB (supports `description` and `keywords` params) |
+| `rag_db_info` | Set or update description and keywords on an existing KB |
 
 **Example prompts:**
 ```

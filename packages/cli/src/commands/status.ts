@@ -40,6 +40,27 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
     console.log(chalk.bold(`Knowledge Base: ${options.db}`));
     console.log(chalk.dim(`Path: ${dbPath}`));
     console.log();
+
+    // Description + keywords (optional user-set metadata)
+    const description = meta.db_description ?? null;
+    const keywordsRaw = meta.db_keywords ?? "";
+    const keywords = keywordsRaw
+      ? keywordsRaw
+          .split(",")
+          .map((k: string) => k.trim())
+          .filter(Boolean)
+      : [];
+
+    if (description) {
+      console.log(`  Description: ${chalk.cyan(description)}`);
+    }
+    if (keywords.length > 0) {
+      console.log(`  Keywords:    ${chalk.cyan(keywords.join(", "))}`);
+    }
+    if (description || keywords.length > 0) {
+      console.log();
+    }
+
     console.log(
       `  Embedder: ${chalk.cyan(embedderName)} (${embedderModel}, ${embedderDimsDisplay} dims)`
     );

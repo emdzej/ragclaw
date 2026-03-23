@@ -21,12 +21,40 @@ import ora from "ora";
 import { ensureDataDir, getConfig, getDataDir } from "../config.js";
 
 // ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/** Parse a comma-separated keywords string into a trimmed, filtered array. */
+function parseKeywords(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+/** Read description + keywords from an already-open store. */
+async function readDbInfo(
+  store: Store
+): Promise<{ description: string | null; keywords: string[] }> {
+  const description = (await store.getMeta("db_description")) ?? null;
+  const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
+  const keywords = keywordsRaw ? parseKeywords(keywordsRaw) : [];
+  return { description, keywords };
+}
+
+// ---------------------------------------------------------------------------
 // db list
 // ---------------------------------------------------------------------------
 
 interface DbListOptions {
   json?: boolean;
 }
+
+type DbListEntry = {
+  name: string;
+  description: string | null;
+  keywords: string[];
+};
 
 export async function dbList(options: DbListOptions): Promise<void> {
   const dataDir = getDataDir();
@@ -57,20 +85,43 @@ export async function dbList(options: DbListOptions): Promise<void> {
     .map((f) => basename(f, ".sqlite"))
     .sort();
 
-  if (options.json) {
-    console.log(JSON.stringify(names));
+  if (names.length === 0) {
+    if (options.json) {
+      console.log(JSON.stringify([]));
+    } else {
+      console.log(chalk.dim("No knowledge bases found."));
+    }
     return;
   }
 
-  if (names.length === 0) {
-    console.log(chalk.dim("No knowledge bases found."));
+  // Open each store briefly to read metadata
+  const dbEntries: DbListEntry[] = await Promise.all(
+    names.map(async (name) => {
+      const dbPath = getDbPath(name);
+      const store = new Store();
+      try {
+        await store.open(dbPath);
+        const info = await readDbInfo(store);
+        return { name, ...info };
+      } catch {
+        return { name, description: null, keywords: [] };
+      } finally {
+        await store.close();
+      }
+    })
+  );
+
+  if (options.json) {
+    console.log(JSON.stringify(dbEntries));
     return;
   }
 
   console.log(chalk.bold("Knowledge bases:"));
   console.log();
-  for (const name of names) {
-    console.log(`  ${chalk.cyan(name)}`);
+  for (const entry of dbEntries) {
+    const desc = entry.description ? chalk.dim(` — ${entry.description}`) : "";
+    const kw = entry.keywords.length > 0 ? chalk.dim(`  [${entry.keywords.join(", ")}]`) : "";
+    console.log(`  ${chalk.cyan(entry.name)}${desc}${kw}`);
   }
   console.log();
 }
@@ -79,7 +130,12 @@ export async function dbList(options: DbListOptions): Promise<void> {
 // db init
 // ---------------------------------------------------------------------------
 
-export async function dbInit(name: string): Promise<void> {
+interface DbInitOptions {
+  description?: string;
+  keywords?: string;
+}
+
+export async function dbInit(name: string, options: DbInitOptions = {}): Promise<void> {
   const dbPath = getDbPath(name);
 
   if (existsSync(dbPath)) {
@@ -93,15 +149,79 @@ export async function dbInit(name: string): Promise<void> {
   // Initialize empty database
   const store = new Store();
   await store.open(dbPath);
-  await store.close();
+
+  try {
+    if (options.description) {
+      await store.setMeta("db_description", options.description);
+    }
+    if (options.keywords) {
+      await store.setMeta("db_keywords", options.keywords);
+    }
+  } finally {
+    await store.close();
+  }
 
   console.log(chalk.green(`✓ Created knowledge base "${name}"`));
   console.log(chalk.dim(`  Path: ${dbPath}`));
+  if (options.description) {
+    console.log(chalk.dim(`  Description: ${options.description}`));
+  }
+  if (options.keywords) {
+    console.log(chalk.dim(`  Keywords: ${options.keywords}`));
+  }
   console.log();
   console.log("Next steps:");
   console.log(chalk.cyan(`  ragclaw add ./docs/          # Add a directory`));
   console.log(chalk.cyan(`  ragclaw add https://...      # Add a web page`));
   console.log(chalk.cyan(`  ragclaw search "your query"  # Search`));
+}
+
+// ---------------------------------------------------------------------------
+// db info set
+// ---------------------------------------------------------------------------
+
+interface DbInfoSetOptions {
+  db: string;
+  description?: string;
+  keywords?: string;
+}
+
+export async function dbInfoSet(options: DbInfoSetOptions): Promise<void> {
+  const dbPath = getDbPath(options.db);
+
+  if (!existsSync(dbPath)) {
+    console.error(chalk.red(`Knowledge base "${options.db}" not found.`));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (options.description === undefined && options.keywords === undefined) {
+    console.error(chalk.red("Provide at least one of --description or --keywords."));
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = new Store();
+  await store.open(dbPath);
+
+  try {
+    if (options.description !== undefined) {
+      await store.setMeta("db_description", options.description);
+    }
+    if (options.keywords !== undefined) {
+      await store.setMeta("db_keywords", options.keywords);
+    }
+  } finally {
+    await store.close();
+  }
+
+  console.log(chalk.green(`✓ Updated info for knowledge base "${options.db}"`));
+  if (options.description !== undefined) {
+    console.log(chalk.dim(`  Description: ${options.description || "(cleared)"}`));
+  }
+  if (options.keywords !== undefined) {
+    console.log(chalk.dim(`  Keywords: ${options.keywords || "(cleared)"}`));
+  }
 }
 
 // ---------------------------------------------------------------------------

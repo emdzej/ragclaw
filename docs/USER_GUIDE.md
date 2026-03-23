@@ -105,10 +105,36 @@ RagClaw stores KBs as SQLite files under the data directory. By default the data
 Create an empty KB:
 
 ```bash
-ragclaw init knowledge-base-name
+ragclaw db init knowledge-base-name
 ```
 
-Check KB health and stats (chunks, sources, vector backend):
+Create a KB with a description and keywords (used by AI agents to choose the right KB):
+
+```bash
+ragclaw db init api-docs --description "Project X REST API documentation" --keywords "api, rest, auth, endpoints"
+```
+
+List all knowledge bases (shows name, description, and keywords):
+
+```bash
+ragclaw db list
+```
+
+Machine-readable output (returns a JSON array of objects with `name`, `description`, and `keywords` fields):
+
+```bash
+ragclaw db list --json
+```
+
+Set or update description and keywords on an existing KB:
+
+```bash
+ragclaw db info set --db knowledge-base-name --description "Project X API docs"
+ragclaw db info set --db knowledge-base-name --keywords "api, auth, endpoints"
+ragclaw db info set --db knowledge-base-name --description "Updated desc" --keywords "new, tags"
+```
+
+Check KB health and stats (chunks, sources, vector backend, description, keywords):
 
 ```bash
 ragclaw status -d knowledge-base-name
@@ -128,11 +154,53 @@ Remove a source from the KB (skips the confirmation with `-y`):
 ragclaw remove path/to/file.md -d knowledge-base-name -y
 ```
 
+Delete a KB entirely:
+
+```bash
+ragclaw db delete knowledge-base-name --yes
+```
+
+Rename a KB:
+
+```bash
+ragclaw db rename old-name new-name
+```
+
 Storage paths and backwards compatibility:
 
 - Default data dir: ~/.local/share/ragclaw/
 - Config: ~/.config/ragclaw/config.yaml
 - Backwards compat: if ~/.openclaw/ragclaw/ exists it will be used automatically.
+
+### Agent routing with description and keywords
+
+When using the MCP server, AI agents can call `rag_list_databases` to see all available KBs along with their descriptions and keywords. This allows agents to automatically choose the most relevant KB for a given query — without the user having to specify `--db` every time.
+
+Example workflow:
+
+1. Create KBs with meaningful metadata:
+```bash
+ragclaw db init api-docs  --description "REST API and auth endpoints" --keywords "api, rest, oauth, jwt"
+ragclaw db init infra     --description "Infrastructure and DevOps runbooks" --keywords "k8s, terraform, ci"
+ragclaw db init research  --description "Academic papers on ML and RAG" --keywords "ml, rag, embeddings"
+```
+
+2. The MCP agent calls `rag_list_databases` and receives:
+```json
+[
+  { "name": "api-docs",  "description": "REST API and auth endpoints",         "keywords": ["api","rest","oauth","jwt"] },
+  { "name": "infra",     "description": "Infrastructure and DevOps runbooks",  "keywords": ["k8s","terraform","ci"] },
+  { "name": "research",  "description": "Academic papers on ML and RAG",       "keywords": ["ml","rag","embeddings"] }
+]
+```
+
+3. For a query like "how does the OAuth flow work?", the agent selects `api-docs` and calls `rag_search` with `db: "api-docs"`.
+
+You can update metadata at any time without re-indexing:
+
+```bash
+ragclaw db info set --db api-docs --description "REST API, auth, and webhook docs" --keywords "api, rest, oauth, jwt, webhooks"
+```
 
 ## 5. Indexing content
 
@@ -592,6 +660,9 @@ mcpServers:
 | `rag_list` | List indexed sources |
 | `rag_remove` | Remove source from index |
 | `rag_list_chunkers` | List all available chunkers (built-in + plugin) |
+| `rag_list_databases` | List all KBs with name, description, and keywords — used by agents for KB routing |
+| `rag_db_init` | Create a new KB (optional `description` and `keywords`) |
+| `rag_db_info` | Set or update description and keywords on an existing KB |
 
 ### Example prompts
 

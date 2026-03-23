@@ -212,10 +212,15 @@ describe("db list", () => {
     const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
     expect(exitCode).toBe(0);
 
-    const parsed = JSON.parse(stdout) as string[];
-    expect(parsed).toContain("zebra");
-    expect(parsed).toContain("apple");
-    expect(parsed.indexOf("apple")).toBeLessThan(parsed.indexOf("zebra"));
+    const parsed = JSON.parse(stdout) as Array<{
+      name: string;
+      description: string | null;
+      keywords: string[];
+    }>;
+    const names = parsed.map((e) => e.name);
+    expect(names).toContain("zebra");
+    expect(names).toContain("apple");
+    expect(names.indexOf("apple")).toBeLessThan(names.indexOf("zebra"));
   });
 
   it("--json returns empty array when no databases exist", async () => {
@@ -318,6 +323,166 @@ describe("db rename", () => {
 
     const { failed } = await env.run(["db", "rename", "src", "existing"]);
     expect(failed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db init with description / keywords
+// ---------------------------------------------------------------------------
+
+describe("db init with metadata", () => {
+  it("accepts --description and shows it in output", async () => {
+    const { exitCode, stdout } = await env.run([
+      "db",
+      "init",
+      "described-db",
+      "--description",
+      "Project X API docs",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("described-db");
+    expect(stdout).toContain("Project X API docs");
+  });
+
+  it("accepts --keywords and shows them in output", async () => {
+    const { exitCode, stdout } = await env.run(["db", "init", "kw-db", "--keywords", "api, auth"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("api, auth");
+  });
+
+  it("persists description so it appears in db list output", async () => {
+    await env.run(["db", "init", "meta-db", "--description", "Important docs"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Important docs");
+  });
+
+  it("persists keywords so they appear in db list --json", async () => {
+    await env.run(["db", "init", "kw-list-db", "--keywords", "search, rag"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout) as Array<{
+      name: string;
+      description: string | null;
+      keywords: string[];
+    }>;
+    const entry = parsed.find((e) => e.name === "kw-list-db");
+    expect(entry).toBeDefined();
+    expect(entry!.keywords).toContain("search");
+    expect(entry!.keywords).toContain("rag");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db info set
+// ---------------------------------------------------------------------------
+
+describe("db info set", () => {
+  it("sets description on an existing DB and exits 0", async () => {
+    await env.run(["db", "init", "info-db"]);
+
+    const { exitCode, stdout } = await env.run([
+      "db",
+      "info",
+      "set",
+      "--db",
+      "info-db",
+      "--description",
+      "Updated desc",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Updated desc");
+  });
+
+  it("sets keywords on an existing DB and exits 0", async () => {
+    await env.run(["db", "init", "kw-set-db"]);
+
+    const { exitCode, stdout } = await env.run([
+      "db",
+      "info",
+      "set",
+      "--db",
+      "kw-set-db",
+      "--keywords",
+      "tag1, tag2",
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("tag1, tag2");
+  });
+
+  it("persisted description appears in subsequent db list output", async () => {
+    await env.run(["db", "init", "persist-db"]);
+    await env.run(["db", "info", "set", "--db", "persist-db", "--description", "Persisted desc"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Persisted desc");
+  });
+
+  it("persisted description appears in db list --json", async () => {
+    await env.run(["db", "init", "json-meta-db"]);
+    await env.run(["db", "info", "set", "--db", "json-meta-db", "--description", "JSON desc"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout) as Array<{
+      name: string;
+      description: string | null;
+      keywords: string[];
+    }>;
+    const entry = parsed.find((e) => e.name === "json-meta-db");
+    expect(entry).toBeDefined();
+    expect(entry!.description).toBe("JSON desc");
+  });
+
+  it("exits non-zero when DB does not exist", async () => {
+    const { failed } = await env.run([
+      "db",
+      "info",
+      "set",
+      "--db",
+      "nonexistent",
+      "--description",
+      "Desc",
+    ]);
+    expect(failed).toBe(true);
+  });
+
+  it("exits non-zero when neither --description nor --keywords is given", async () => {
+    await env.run(["db", "init", "empty-info-db"]);
+
+    const { failed } = await env.run(["db", "info", "set", "--db", "empty-info-db"]);
+    expect(failed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db list — metadata display
+// ---------------------------------------------------------------------------
+
+describe("db list metadata display", () => {
+  it("db list --json entries have name, description, keywords shape", async () => {
+    await env.run(["db", "init", "shape-db"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout) as Array<{
+      name: string;
+      description: string | null;
+      keywords: string[];
+    }>;
+    const entry = parsed.find((e) => e.name === "shape-db");
+    expect(entry).toBeDefined();
+    expect(Object.keys(entry!)).toEqual(
+      expect.arrayContaining(["name", "description", "keywords"])
+    );
+    expect(entry!.description).toBeNull();
+    expect(Array.isArray(entry!.keywords)).toBe(true);
   });
 });
 
