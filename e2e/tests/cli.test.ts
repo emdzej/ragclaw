@@ -175,6 +175,47 @@ describe("search", () => {
 });
 
 // ---------------------------------------------------------------------------
+// db list
+// ---------------------------------------------------------------------------
+
+describe("db list", () => {
+  it("exits 0 and shows soft message when no databases exist", async () => {
+    const { exitCode, stdout } = await env.run(["db", "list"]);
+    expect(exitCode).toBe(0);
+    expect(stdout.length).toBeGreaterThan(0);
+  });
+
+  it("lists database names after init", async () => {
+    await env.run(["init", "alpha"]);
+    await env.run(["init", "beta"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("alpha");
+    expect(stdout).toContain("beta");
+  });
+
+  it("--json returns a sorted JSON array of names", async () => {
+    await env.run(["init", "zebra"]);
+    await env.run(["init", "apple"]);
+
+    const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout) as string[];
+    expect(parsed).toContain("zebra");
+    expect(parsed).toContain("apple");
+    expect(parsed.indexOf("apple")).toBeLessThan(parsed.indexOf("zebra"));
+  });
+
+  it("--json returns empty array when no databases exist", async () => {
+    const { exitCode, stdout } = await env.run(["db", "list", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // error paths — bad arguments
 // ---------------------------------------------------------------------------
 
