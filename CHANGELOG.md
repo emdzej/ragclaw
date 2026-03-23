@@ -4,34 +4,123 @@
 
 ### New features
 
-#### `ragclaw db info get` — read KB metadata from the CLI
+#### `ragclaw-plugin-ollama` — local embeddings via Ollama
 
-A new read-side companion to `db info set`. Displays the description and keywords stored on a knowledge base:
+A new official plugin that delegates embedding to a locally-running [Ollama](https://ollama.com) server instead of bundling an ONNX model. Any model served by Ollama can be used as the embedder for a knowledge base.
+
+Key characteristics:
+- `OllamaEmbedder` implements the `EmbedderPlugin` interface — zero changes needed in core or CLI
+- Dimensions are pre-wired for popular models (`nomic-embed-text` → 768, `mxbai-embed-large` → 1024, `all-minilm` → 384, `snowflake-arctic-embed` → 1024, BGE variants); unknown models auto-detect on first call
+- `embedBatch()` falls back to sequential calls (Ollama has no batch API)
+- `init()` performs a live health-check embed to verify the server and model are reachable before indexing starts
+- Configurable via `model` and `baseUrl` plugin config keys (default base URL: `http://localhost:11434`)
+
+```yaml
+# ~/.config/ragclaw/config.yaml
+embedder:
+  plugin: ragclaw-plugin-ollama
+  model: nomic-embed-text
+  baseUrl: http://localhost:11434
+```
+
+#### Pluggable chunker system
+
+Four built-in chunkers are now available and selectable per-source:
+
+| Chunker | Best for |
+|---------|----------|
+| `semantic` | Markdown/prose — splits on headings and blank lines |
+| `sentence` | Natural language — uses `Intl.Segmenter`, zero extra deps |
+| `fixed` | Universal word-count fallback — `canHandle` is always true |
+| `code` | Source code — AST-aware via tree-sitter |
+
+**Chunker resolution priority** (highest → lowest):
+1. CLI `--chunker` flag
+2. `chunking.overrides[]` in config (first-match glob or MIME prefix)
+3. Plugin-provided chunkers
+4. Built-in auto-selection (code files → `code`, everything else → `semantic`)
+5. Hard fail with typo suggestion if an explicit name is unknown
+
+New CLI flags on `ragclaw add` and `ragclaw reindex`:
+```bash
+--chunker <name>      # select chunker by name
+--chunk-size <n>      # override token target (default: 512)
+--overlap <n>         # override overlap tokens (default: 50)
+```
+
+New command:
+```bash
+ragclaw chunkers list          # show all available chunkers
+ragclaw chunkers list --json   # machine-readable
+```
+
+New MCP tools: `rag_list_chunkers`; `rag_add` and `rag_reindex` now accept `chunker`, `chunkSize`, and `overlap` params.
+
+Config overrides also support a `mimeType` field (prefix-matched) that can be used alone or combined with a glob `pattern` (AND logic):
+
+```yaml
+chunking:
+  overrides:
+    - pattern: "src/**"
+      chunker: code
+    - mimeType: "text/html"
+      chunker: sentence
+```
+
+#### `ragclaw db` subcommand group — full KB lifecycle management
+
+All database management commands are now grouped under `ragclaw db`. The old top-level `ragclaw init` and `ragclaw merge` are kept as deprecated aliases that print a warning to stderr.
 
 ```bash
-ragclaw db info get                       # reads the "default" KB
-ragclaw db info get --db my-docs          # named KB
-ragclaw db info get --db my-docs --json   # machine-readable output
+ragclaw db init <name>                   # create a KB (idempotent)
+ragclaw db delete <name> [--yes]         # delete a KB (prompts unless --yes)
+ragclaw db rename <old> <new>            # rename a KB
+ragclaw db merge <source.db> [options]   # merge another KB (replaces top-level ragclaw merge)
 ```
 
-Plain output shows `(not set)` for absent fields. `--json` returns:
+Corresponding MCP tools: `rag_db_init`, `rag_db_delete` (requires `confirm: true`), `rag_db_rename` (requires `confirm: true`), `rag_db_merge`.
 
-```json
-{ "name": "my-docs", "description": "Project X API docs", "keywords": ["api", "auth"] }
+#### `ragclaw db list` / `rag_list_databases` — enumerate knowledge bases
+
+List all knowledge bases in the data directory:
+
+```bash
+ragclaw db list           # names with description and keywords inline
+ragclaw db list --json    # [{ name, description, keywords }]
 ```
 
-#### `rag_db_info_get` MCP tool
+`rag_list_databases` MCP tool returns the same object array, enabling agents to enumerate and pick the right KB automatically.
 
-AI agents can now read a knowledge base's description and keywords directly via the MCP server — useful for confirming metadata after a `rag_db_info` write, or for agents that need KB context before routing a query:
+#### KB description and keywords metadata
 
+Knowledge bases can carry a human-readable description and a keyword list. These fields are stored as `store_meta` entries (`db_description`, `db_keywords`) — no schema migration required.
+
+```bash
+# Set at creation time
+ragclaw db init api-docs --description "REST API documentation" --keywords "api, auth, rest"
+
+# Update on an existing KB
+ragclaw db info set --db api-docs --description "Updated description" --keywords "api, v2"
 ```
-rag_db_info_get({ db: "my-docs" })
-→ { "name": "my-docs", "description": "Project X API docs", "keywords": ["api", "auth"] }
+
+Metadata surfaces in `db list`, `db list --json`, `ragclaw status`, and `rag_list_databases`. AI agents use it to route queries to the most relevant KB without user intervention.
+
+MCP tool: `rag_db_info` (set/update metadata).
+
+#### `ragclaw db info get` / `rag_db_info_get` — read KB metadata
+
+Read-side companion to `db info set`:
+
+```bash
+ragclaw db info get --db my-docs          # plain output
+ragclaw db info get --db my-docs --json   # { name, description, keywords }
 ```
+
+Plain output shows `(not set)` for absent fields. The `rag_db_info_get` MCP tool returns the same JSON object.
 
 #### `rag_list` — KB metadata header
 
-The `rag_list` MCP tool (which lists indexed sources) now prepends a description/keywords header to its output. Agents calling `rag_list` receive KB context alongside the source paths, removing the need for a separate `rag_db_info_get` call before listing.
+The `rag_list` MCP tool now prepends a description/keywords header before the sources list, so agents receive KB context alongside the indexed paths in a single call.
 
 ---
 
