@@ -6,10 +6,14 @@
  */
 
 export { CodeChunker } from "./chunkers/code.js";
+export { FixedChunker, type FixedChunkerOptions } from "./chunkers/fixed.js";
 // Chunkers
 export { SemanticChunker } from "./chunkers/semantic.js";
+export { SentenceChunker, type SentenceChunkerOptions } from "./chunkers/sentence.js";
 // Config
 export {
+  type ChunkingConfig,
+  type ChunkingOverride,
   type ConfigKeyMeta,
   DEFAULT_EXTRACTOR_LIMITS,
   type EmbedderConfigBlock,
@@ -59,6 +63,7 @@ export { type CrawlOptions, WebExtractor } from "./extractors/web.js";
 export { isPathAllowed, isUrlAllowed } from "./guards.js";
 // Indexing service
 export {
+  type ChunkerInfo,
   type IndexCrawlOptions,
   type IndexCrawlPageResult,
   type IndexCrawlSummary,

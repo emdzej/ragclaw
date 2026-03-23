@@ -31,6 +31,12 @@ interface AddOptions {
   exclude?: string;
   /** Embedder preset alias or HuggingFace model ID (e.g. "bge", "nomic"). */
   embedder?: string;
+  /** Chunker override for this invocation (e.g. "sentence", "fixed"). */
+  chunker?: string;
+  /** Override chunkSize for the selected chunker. */
+  chunkSize?: string;
+  /** Override overlap for the selected chunker. */
+  overlap?: string;
   // Security guard overrides (from CLI flags)
   allowedPaths?: string;
   maxDepth?: string;
@@ -158,8 +164,21 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
   // Create the indexing service — owns extractors, chunkers, embedder
   const indexingService = new IndexingService({
     extraExtractors: pluginExtractors,
+    extraChunkers: pluginLoader.getChunkers(),
     extractorLimits: config.extractorLimits,
     embedder,
+    chunkerStrategy: options.chunker ?? "auto",
+    chunkerOverrides: config.chunking?.overrides,
+    chunkerDefaults: {
+      chunkSize:
+        options.chunkSize !== undefined
+          ? parseInt(options.chunkSize, 10)
+          : config.chunking?.defaults?.chunkSize,
+      overlap:
+        options.overlap !== undefined
+          ? parseInt(options.overlap, 10)
+          : config.chunking?.defaults?.overlap,
+    },
   });
 
   try {

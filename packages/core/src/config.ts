@@ -80,6 +80,46 @@ export interface EmbedderConfigBlock {
   baseUrl?: string;
 }
 
+/**
+ * A single pattern-based chunker override.
+ *
+ * The `pattern` is a glob matched against the source path (file path or URL).
+ * The first matching override in the array wins.
+ */
+export interface ChunkingOverride {
+  /** Glob pattern matched against the source path. */
+  pattern: string;
+  /** Chunker name to use (e.g. "semantic", "sentence", "fixed", or a plugin name). */
+  chunker: string;
+  /**
+   * Optional chunker-specific options forwarded to the chunker constructor.
+   * e.g. `{ chunkSize: 256, overlap: 0 }`
+   */
+  options?: Record<string, unknown>;
+}
+
+/**
+ * Top-level chunking configuration block from config.yaml.
+ */
+export interface ChunkingConfig {
+  /**
+   * Default selection strategy.
+   *  - "auto" (default) — first `canHandle()` match wins across the full chain
+   *  - a chunker name string — forces that chunker for all content
+   */
+  strategy?: "auto" | string;
+  /** Global default options passed to every chunker (unless overridden). */
+  defaults?: {
+    chunkSize?: number;
+    overlap?: number;
+  };
+  /**
+   * Pattern-based overrides — evaluated before auto-selection.
+   * First matching pattern wins.
+   */
+  overrides?: ChunkingOverride[];
+}
+
 export interface RagclawConfig {
   configDir: string;
   dataDir: string;
@@ -135,6 +175,29 @@ export interface RagclawConfig {
    * ```
    */
   embedder?: string | EmbedderConfigBlock;
+
+  /**
+   * Chunking configuration — strategy, global defaults, and pattern overrides.
+   * Omit to use built-in auto-selection.
+   *
+   * Config file example:
+   * ```yaml
+   * chunking:
+   *   strategy: auto
+   *   defaults:
+   *     chunkSize: 512
+   *     overlap: 50
+   *   overrides:
+   *     - pattern: "docs/**"
+   *       chunker: sentence
+   *     - pattern: "data/raw/**"
+   *       chunker: fixed
+   *       options:
+   *         chunkSize: 256
+   *         overlap: 0
+   * ```
+   */
+  chunking?: ChunkingConfig;
 }
 
 let cachedConfig: RagclawConfig | null = null;
@@ -168,6 +231,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   const extractorLimits: ExtractorLimits = { ...DEFAULT_EXTRACTOR_LIMITS };
   const pluginConfig: Record<string, Record<string, unknown>> = {};
   let embedder: string | EmbedderConfigBlock | undefined;
+  let chunking: ChunkingConfig | undefined;
 
   // Check for legacy path (backwards compatibility)
   if (existsSync(LEGACY_DIR)) {
@@ -327,6 +391,46 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
           baseUrl: typeof eb.baseUrl === "string" ? eb.baseUrl : undefined,
         };
       }
+
+      // Parse chunking block
+      if (
+        parsed.chunking &&
+        typeof parsed.chunking === "object" &&
+        !Array.isArray(parsed.chunking)
+      ) {
+        const cb = parsed.chunking as Record<string, unknown>;
+        const parsedChunking: ChunkingConfig = {};
+
+        if (typeof cb.strategy === "string") {
+          parsedChunking.strategy = cb.strategy;
+        }
+
+        if (cb.defaults && typeof cb.defaults === "object" && !Array.isArray(cb.defaults)) {
+          const d = cb.defaults as Record<string, unknown>;
+          parsedChunking.defaults = {
+            chunkSize: typeof d.chunkSize === "number" ? d.chunkSize : undefined,
+            overlap: typeof d.overlap === "number" ? d.overlap : undefined,
+          };
+        }
+
+        if (Array.isArray(cb.overrides)) {
+          parsedChunking.overrides = (cb.overrides as unknown[]).flatMap((o) => {
+            if (!o || typeof o !== "object" || Array.isArray(o)) return [];
+            const ov = o as Record<string, unknown>;
+            if (typeof ov.pattern !== "string" || typeof ov.chunker !== "string") return [];
+            const override: ChunkingOverride = {
+              pattern: ov.pattern,
+              chunker: ov.chunker,
+            };
+            if (ov.options && typeof ov.options === "object" && !Array.isArray(ov.options)) {
+              override.options = ov.options as Record<string, unknown>;
+            }
+            return [override];
+          });
+        }
+
+        chunking = parsedChunking;
+      }
     } catch {
       // Ignore config parse errors
     }
@@ -399,6 +503,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
     extractorLimits,
     pluginConfig,
     embedder,
+    chunking,
   };
 
   // CLI-flag overrides (highest priority)

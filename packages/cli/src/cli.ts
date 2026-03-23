@@ -10,6 +10,7 @@
 import { createRequire } from "node:module";
 import { Command } from "commander";
 import { addCommand } from "./commands/add.js";
+import { chunkersList } from "./commands/chunkers.js";
 import { configGet, configList, configSet } from "./commands/config.js";
 import { dbDelete, dbInit, dbList, dbMerge, dbRename } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -57,6 +58,9 @@ program
   .option("--include <pattern>", "Include glob pattern")
   .option("--exclude <pattern>", "Exclude glob pattern")
   .option("-e, --embedder <name>", "Embedder preset or model (e.g. bge, nomic, BAAI/bge-m3)")
+  .option("--chunker <name>", "Chunker to use (e.g. sentence, fixed, semantic, code)")
+  .option("--chunk-size <n>", "Override chunk size (tokens)")
+  .option("--overlap <n>", "Override overlap size (tokens)")
   .option("--allowed-paths <paths>", "Restrict indexing to these paths (comma-separated)")
   .option("--max-depth <n>", "Max directory recursion depth")
   .option("--max-files <n>", "Max files per directory source")
@@ -123,6 +127,9 @@ program
   .option("-f, --force", "Reindex all sources regardless of hash")
   .option("-p, --prune", "Remove sources that no longer exist")
   .option("-e, --embedder <name>", "Re-embed with a different model (rebuilds all vectors)")
+  .option("--chunker <name>", "Chunker to use (e.g. sentence, fixed, semantic, code)")
+  .option("--chunk-size <n>", "Override chunk size (tokens)")
+  .option("--overlap <n>", "Override overlap size (tokens)")
   .option("--allowed-paths <paths>", "Restrict indexing to these paths (comma-separated)")
   .option("--allow-urls", "Allow URL sources")
   .option("--no-allow-urls", "Disallow URL sources")
@@ -229,6 +236,15 @@ program
   .command("doctor")
   .description("Check system compatibility and embedder requirements")
   .action(doctorCommand);
+
+// Chunker commands
+const chunkerCmd = program.command("chunkers").description("Inspect available chunkers");
+
+chunkerCmd
+  .command("list")
+  .description("List all available chunkers (built-in and plugin-provided)")
+  .option("--json", "Output as JSON")
+  .action(chunkersList);
 
 // Embedder commands
 const embedderCmd = program.command("embedder").description("Manage and inspect embedders");

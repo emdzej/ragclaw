@@ -8,9 +8,12 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
+import picomatch from "picomatch";
 import { CodeChunker } from "./chunkers/code.js";
+import { FixedChunker } from "./chunkers/fixed.js";
 import { SemanticChunker } from "./chunkers/semantic.js";
-import type { ExtractorLimits } from "./config.js";
+import { SentenceChunker } from "./chunkers/sentence.js";
+import type { ChunkingOverride, ExtractorLimits } from "./config.js";
 import type { EmbedderResolvedConfig } from "./embedder/factory.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { CodeExtractor } from "./extractors/code.js";
@@ -26,6 +29,7 @@ import type {
   Chunker,
   ChunkRecord,
   EmbedderPlugin,
+  ExtractedContent,
   Extractor,
   Source,
   SourceRecord,
@@ -47,6 +51,12 @@ export type IndexOutcome =
 export interface IndexSourceOptions {
   /** When true, re-index even if the content hash hasn't changed. */
   force?: boolean;
+  /**
+   * Override the chunker for this call.
+   * Accepts a chunker name (e.g. "sentence", "fixed") or "auto".
+   * Takes highest priority over config overrides and auto-selection.
+   */
+  chunker?: string;
 }
 
 /** Outcome of a single `reindexSource()` call. */
@@ -64,6 +74,12 @@ export interface ReindexSourceOptions {
   force?: boolean;
   /** Remove the source record if the file no longer exists. */
   prune?: boolean;
+  /**
+   * Override the chunker for this call.
+   * Accepts a chunker name (e.g. "sentence", "fixed") or "auto".
+   * Takes highest priority over config overrides and auto-selection.
+   */
+  chunker?: string;
 }
 
 /** Per-page result emitted by `indexCrawl()`. */
@@ -90,6 +106,32 @@ export interface IndexCrawlOptions extends CrawlOptions {
 export interface IndexingServiceConfig {
   /** Extra extractors (e.g. from plugins) prepended before built-ins. */
   extraExtractors?: Extractor[];
+  /**
+   * Extra chunkers (e.g. from plugins) tried before the built-in ones.
+   *
+   * Chunkers are tried in order via `canHandle()`.  The first match wins.
+   * Built-in chunkers act as the final fallbacks via auto-selection.
+   */
+  extraChunkers?: Chunker[];
+  /**
+   * Default chunker selection strategy for this service instance.
+   *  - `"auto"` (default) — first `canHandle()` match across the full chain
+   *  - a chunker name string — forces that specific chunker for all content
+   *
+   * Can be overridden per-call via `IndexSourceOptions.chunker`.
+   * Config-level pattern overrides are applied by callers before passing here.
+   */
+  chunkerStrategy?: "auto" | string;
+  /**
+   * Pattern-based chunker overrides from config.
+   * Passed through from `RagclawConfig.chunking.overrides`.
+   */
+  chunkerOverrides?: ChunkingOverride[];
+  /**
+   * Global chunker option defaults (chunkSize, overlap) from config.
+   * Applied when constructing built-in chunkers.
+   */
+  chunkerDefaults?: { chunkSize?: number; overlap?: number };
   /** Extractor limits (timeouts, size caps, etc.). */
   extractorLimits?: Partial<ExtractorLimits>;
   /** Callback fired on embedding model download progress (0–1). */
@@ -101,6 +143,18 @@ export interface IndexingServiceConfig {
    *  - Omit for the default nomic embedder
    */
   embedder?: EmbedderPlugin | EmbedderResolvedConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Built-in chunker registry (ordered: code → semantic → sentence → fixed)
+// ---------------------------------------------------------------------------
+
+/** Descriptor returned by `listBuiltinChunkers()`. */
+export interface ChunkerInfo {
+  name: string;
+  description: string;
+  handles: string[];
+  source: "built-in" | "plugin";
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +176,10 @@ export interface IndexingServiceConfig {
  */
 export class IndexingService {
   private extractors: Extractor[];
-  private semanticChunker: SemanticChunker;
-  private codeChunker: CodeChunker;
+  private builtinChunkers: Chunker[];
+  private extraChunkers: Chunker[];
+  private chunkerStrategy: string;
+  private chunkerOverrides: ChunkingOverride[];
   private embedder: EmbedderPlugin;
   private ready = false;
 
@@ -138,21 +194,28 @@ export class IndexingService {
       new ImageExtractor({ limits: cfg.extractorLimits }),
       new TextExtractor(), // fallback — keep last
     ];
-    this.semanticChunker = new SemanticChunker();
-    this.codeChunker = new CodeChunker();
+
+    const defaults = cfg.chunkerDefaults ?? {};
+    this.builtinChunkers = [
+      new CodeChunker(),
+      new SemanticChunker({ chunkSize: defaults.chunkSize, overlap: defaults.overlap }),
+      new SentenceChunker({ chunkSize: defaults.chunkSize, overlap: defaults.overlap }),
+      new FixedChunker({ chunkSize: defaults.chunkSize, overlap: defaults.overlap }),
+    ];
+
+    this.extraChunkers = cfg.extraChunkers ?? [];
+    this.chunkerStrategy = cfg.chunkerStrategy ?? "auto";
+    this.chunkerOverrides = cfg.chunkerOverrides ?? [];
 
     // Resolve embedder: plugin instance > resolved config > default nomic
     if (cfg.embedder && "embed" in cfg.embedder) {
-      // Already an EmbedderPlugin instance
       this.embedder = cfg.embedder as EmbedderPlugin;
     } else if (cfg.embedder) {
-      // EmbedderResolvedConfig object
       this.embedder = createEmbedder({
         ...(cfg.embedder as EmbedderResolvedConfig),
         onProgress: cfg.onModelProgress,
       });
     } else {
-      // Default: nomic via factory (respects onProgress)
       this.embedder = createEmbedder({ onProgress: cfg.onModelProgress });
     }
   }
@@ -161,7 +224,6 @@ export class IndexingService {
   async init(): Promise<void> {
     if (this.ready) return;
     await this.embedder.init?.();
-    // Ensure dimensions are detected (init may trigger auto-detect)
     if (this.embedder.dimensions === 0) {
       await this.embedder.embed("warmup");
     }
@@ -169,17 +231,113 @@ export class IndexingService {
   }
 
   /**
+   * Return info about all chunkers available to this service instance —
+   * plugin chunkers first, then built-ins.  Used by `ragclaw chunkers list`
+   * and `rag_list_chunkers`.
+   */
+  listChunkers(): ChunkerInfo[] {
+    return [
+      ...this.extraChunkers.map((c) => ({
+        name: c.name,
+        description: c.description,
+        handles: c.handles,
+        source: "plugin" as const,
+      })),
+      ...this.builtinChunkers.map((c) => ({
+        name: c.name,
+        description: c.description,
+        handles: c.handles,
+        source: "built-in" as const,
+      })),
+    ];
+  }
+
+  /**
+   * Resolve which chunker to use for a given piece of extracted content
+   * and source path, following the priority stack:
+   *
+   *   1. Forced strategy (set at service level or per-call override)
+   *   2. Config pattern overrides (first glob match against sourcePath)
+   *   3. Plugin chunkers  (extraChunkers — canHandle, first match)
+   *   4. Built-in auto    (builtinChunkers — canHandle, first match)
+   *
+   * @throws {Error} if a named chunker is requested but not found
+   */
+  resolveChunker(extracted: ExtractedContent, sourcePath: string, forceChunker?: string): Chunker {
+    const all = [...this.extraChunkers, ...this.builtinChunkers];
+
+    // Priority 1: explicit per-call override
+    const strategyName =
+      forceChunker ?? (this.chunkerStrategy !== "auto" ? this.chunkerStrategy : undefined);
+    if (strategyName && strategyName !== "auto") {
+      return this.requireChunkerByName(strategyName, all);
+    }
+
+    // Priority 2: config pattern overrides
+    for (const override of this.chunkerOverrides) {
+      const isMatch = picomatch(override.pattern, { dot: true });
+      if (isMatch(sourcePath)) {
+        return this.requireChunkerByName(override.chunker, all);
+      }
+    }
+
+    // Priority 3 + 4: auto — first canHandle() match (plugins first, then built-ins)
+    const match = all.find((c) => c.canHandle(extracted));
+    if (match) return match;
+
+    // Should never reach here since FixedChunker catches everything
+    throw new Error(`No chunker available for content type "${extracted.sourceType}"`);
+  }
+
+  private requireChunkerByName(name: string, all: Chunker[]): Chunker {
+    const found = all.find((c) => c.name === name);
+    if (!found) {
+      const available = all.map((c) => c.name).join(", ");
+      const suggestion = this.findSimilarName(
+        name,
+        all.map((c) => c.name)
+      );
+      throw new Error(
+        `Unknown chunker "${name}".${suggestion ? ` Did you mean "${suggestion}"?` : ""}` +
+          ` Available chunkers: ${available}`
+      );
+    }
+    return found;
+  }
+
+  private findSimilarName(input: string, candidates: string[]): string | undefined {
+    // Simple Levenshtein-based suggestion (1–2 char difference)
+    for (const candidate of candidates) {
+      if (Math.abs(candidate.length - input.length) <= 2) {
+        if (this.editDistance(input, candidate) <= 2) return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  private editDistance(a: string, b: string): number {
+    const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+      Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        dp[i][j] =
+          a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1]
+            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[a.length][b.length];
+  }
+
+  /**
    * Check that the embedder's dimensions match what's stored in the database.
    * Throws a descriptive error if there's a mismatch.
-   *
-   * Also writes embedder metadata to the store on first use (when store_meta
-   * doesn't have a non-nomic embedder yet after the legacy migration).
    */
   private async checkAndRecordEmbedderMeta(store: Store): Promise<void> {
     const storedDim = await store.getMeta("embedder_dimensions");
     const currentDim = this.embedder.dimensions;
 
-    // If dimensions are unknown yet (auto-detect hasn't run), skip the check
     if (currentDim === 0) return;
 
     if (storedDim !== null && parseInt(storedDim, 10) !== currentDim) {
@@ -193,18 +351,12 @@ export class IndexingService {
       );
     }
 
-    // Record/update embedder metadata in store
     await store.setMeta("embedder_name", this.embedder.name);
     await store.setMeta("embedder_dimensions", String(currentDim));
   }
 
   /**
    * Index a single source (file or URL).
-   *
-   * - Finds a matching extractor
-   * - Computes a content hash and skips unchanged files (unless `force`)
-   * - Extracts text, chunks, embeds, and stores
-   * - Creates or updates the source record
    */
   async indexSource(
     store: Store,
@@ -224,12 +376,10 @@ export class IndexingService {
             ? source.path
             : (source.name ?? "inline-text");
 
-      // Check dimension compatibility before any I/O (fast-fail)
       await this.checkAndRecordEmbedderMeta(store);
 
       const existing = await store.getSource(sourcePath);
 
-      // Content hash for change detection
       let contentHash: string;
       if (source.type === "file") {
         contentHash = await hashFile(source.path);
@@ -237,32 +387,25 @@ export class IndexingService {
           return { status: "unchanged", sourceId: existing.id };
         }
       } else {
-        // URLs and text always get a fresh hash (force re-index)
         contentHash = createHash("sha256")
           .update(sourcePath + Date.now())
           .digest("hex");
       }
 
-      // Remove old chunks when re-indexing
       if (existing) {
         await store.removeChunksBySource(existing.id);
       }
 
-      // Extract → chunk → embed
       const extracted = await extractor.extract(source);
-      const chunker: Chunker =
-        extracted.sourceType === "code" ? this.codeChunker : this.semanticChunker;
+      const chunker = this.resolveChunker(extracted, sourcePath, options.chunker);
       const chunks = await chunker.chunk(extracted, existing?.id ?? "", sourcePath);
       const embeddings = await this.embedder.embedBatch(chunks.map((c) => c.text));
 
-      // For auto-detect embedders (dim was 0 at pre-check), write meta now
-      // that dimensions are known after the first real embed.
       if (this.embedder.dimensions > 0) {
         await store.setMeta("embedder_name", this.embedder.name);
         await store.setMeta("embedder_dimensions", String(this.embedder.dimensions));
       }
 
-      // Source metadata
       const now = Date.now();
       let mtime: number | undefined;
       if (source.type === "file") {
@@ -311,11 +454,6 @@ export class IndexingService {
 
   /**
    * Re-index an existing source record.
-   *
-   * - Checks if the source file still exists
-   * - Optionally prunes missing sources
-   * - Hash-checks for changes (skippable with `force`)
-   * - Re-extracts, re-chunks, re-embeds, and updates the store
    */
   async reindexSource(
     store: Store,
@@ -325,10 +463,8 @@ export class IndexingService {
     try {
       const isUrl = source.type === "url";
 
-      // Check dimension compatibility before any I/O (fast-fail)
       await this.checkAndRecordEmbedderMeta(store);
 
-      // Check existence
       if (!isUrl && !existsSync(source.path)) {
         if (options.prune) {
           await store.removeSource(source.id);
@@ -337,7 +473,6 @@ export class IndexingService {
         return { status: "missing" };
       }
 
-      // Hash-based change detection
       let currentHash: string | undefined;
       let currentMtime: number | undefined;
 
@@ -351,7 +486,6 @@ export class IndexingService {
         return { status: "unchanged", sourceId: source.id };
       }
 
-      // Build a Source object for extractors
       const src: Source = isUrl
         ? { type: "url", url: source.path }
         : { type: "file", path: source.path };
@@ -362,12 +496,10 @@ export class IndexingService {
       }
 
       const extracted = await extractor.extract(src);
-      const chunker: Chunker =
-        extracted.sourceType === "code" ? this.codeChunker : this.semanticChunker;
+      const chunker = this.resolveChunker(extracted, source.path, options.chunker);
       const chunks = await chunker.chunk(extracted, source.id, source.path);
       const embeddings = await this.embedder.embedBatch(chunks.map((c) => c.text));
 
-      // Swap chunks atomically
       await store.removeChunksBySource(source.id);
 
       const now = Date.now();
@@ -399,19 +531,12 @@ export class IndexingService {
 
   /**
    * Crawl a website starting from `startUrl` and index every discovered page.
-   *
-   * Uses the built-in `WebExtractor.crawl()` generator under the hood.
-   * Each fetched page is run through the normal index pipeline (chunk → embed
-   * → store).  Progress can be tracked via the `onPage` callback.
-   *
-   * Returns a summary of the crawl after all pages have been processed.
    */
   async indexCrawl(
     store: Store,
     startUrl: string,
     options: IndexCrawlOptions = {}
   ): Promise<IndexCrawlSummary> {
-    // Find the WebExtractor instance (always present in the built-in list)
     const webExtractor = this.extractors.find((e): e is WebExtractor => e instanceof WebExtractor);
 
     if (!webExtractor) {

@@ -85,6 +85,9 @@ importers:
       pdfjs-dist:
         specifier: ^5.5.207
         version: 5.5.207
+      picomatch:
+        specifier: ^4.0.3
+        version: 4.0.3
       tesseract.js:
         specifier: ^7.0.0
         version: 7.0.0
@@ -116,6 +119,9 @@ importers:
       '@types/node':
         specifier: ^22.13.0
         version: 22.19.15
+      '@types/picomatch':
+        specifier: ^4.0.2
+        version: 4.0.2
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -869,6 +875,9 @@ packages:
 
   '@types/node@22.19.15':
     resolution: {integrity: sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg==}
+
+  '@types/picomatch@4.0.2':
+    resolution: {integrity: sha512-qHHxQ+P9PysNEGbALT8f8YOSHW0KJu6l2xU8DYY0fu/EmGxXdVnuTLvFUvBgPJMSqXq29SYHveejeAha+4AYgA==}
 
   '@vitest/expect@4.1.0':
     resolution: {integrity: sha512-EIxG7k4wlWweuCLG9Y5InKFwpMEOyrMb6ZJ1ihYu02LVj/bzUwn2VMU+13PinsjRW75XnITeFrQBMH5+dLvCDA==}
@@ -2544,6 +2553,8 @@ snapshots:
   '@types/node@22.19.15':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/picomatch@4.0.2': {}
 
   '@vitest/expect@4.1.0':
     dependencies:

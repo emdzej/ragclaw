@@ -40,6 +40,7 @@
     "cheerio": "^1.2.0",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^5.5.207",
+    "picomatch": "^4.0.3",
     "tesseract.js": "^7.0.0",
     "tree-sitter": "^0.25.0",
     "tree-sitter-go": "^0.25.0",
@@ -52,6 +53,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.0",
+    "@types/picomatch": "^4.0.2",
     "typescript": "^5.8.0",
     "vitest": "^4.0.0"
   },

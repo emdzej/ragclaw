@@ -18,6 +18,11 @@ interface SemanticChunkerOptions {
 }
 
 export class SemanticChunker implements Chunker {
+  readonly name = "semantic";
+  readonly description =
+    "Heading-aware paragraph splitting with configurable token window and overlap";
+  readonly handles = ["markdown", "text"];
+
   private chunkSize: number;
   private overlap: number;
 

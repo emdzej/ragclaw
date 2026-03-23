@@ -13,12 +13,13 @@ Table of contents
 - [7. Keeping the index fresh](#7-keeping-the-index-fresh)
 - [8. Merging databases](#8-merging-databases)
 - [9. Choosing an embedder](#9-choosing-an-embedder)
-- [10. Configuration](#10-configuration)
-- [11. Portability and backups](#11-portability-and-backups)
-- [12. MCP server and tools](#12-mcp-server-and-tools)
-- [13. OpenClaw skill setup](#13-openclaw-skill-setup)
-- [14. Plugins](#14-plugins)
-- [15. Troubleshooting](#15-troubleshooting)
+- [10. Choosing a chunker](#10-choosing-a-chunker)
+- [11. Configuration](#11-configuration)
+- [12. Portability and backups](#12-portability-and-backups)
+- [13. MCP server and tools](#13-mcp-server-and-tools)
+- [14. OpenClaw skill setup](#14-openclaw-skill-setup)
+- [15. Plugins](#15-plugins)
+- [16. Troubleshooting](#16-troubleshooting)
 - [Appendix A — Supported formats](#appendix-a---supported-formats)
 - [Appendix B — Environment variables](#appendix-b---environment-variables)
 
@@ -157,6 +158,16 @@ Add a directory recursively (skips hidden files, node_modules, and unsupported e
 ragclaw add ~/projects/website --recursive -d website-kb
 ```
 
+Force a specific chunker for this indexing run:
+
+```bash
+# Use sentence chunker instead of the default auto-selection
+ragclaw add ~/projects/docs --chunker sentence -d docs-kb
+
+# Use fixed chunker with custom size and overlap
+ragclaw add ./data.txt --chunker fixed --chunk-size 256 --overlap 30 -d data-kb
+```
+
 Filtering by filename (regex applied to filenames, not path prefixes):
 
 ```bash
@@ -289,6 +300,16 @@ Remove sources from the DB that no longer exist on disk:
 ragclaw reindex -d my-kb -p   # --prune
 ```
 
+Force a specific chunker during reindex:
+
+```bash
+# Re-chunk all sources using the sentence chunker
+ragclaw reindex -d my-kb --chunker sentence --force
+
+# Re-chunk with custom chunk size
+ragclaw reindex -d my-kb --chunker fixed --chunk-size 300 --overlap 40 --force
+```
+
 Switching embedders mid-project: rebuild all vectors using a different preset with `--embedder`.
 
 ```bash
@@ -397,7 +418,54 @@ If any model fails to download the command exits with code 1 and lists the failu
 
 **Tip:** Run `ragclaw embedder download --all` in your Dockerfile or CI setup step so that all workers have models available before any indexing job starts.
 
-## 10. Configuration
+## 10. Choosing a chunker
+
+RagClaw ships four built-in chunkers and supports plugin-provided ones. The right chunker determines how well search results map back to meaningful units of your content.
+
+List all available chunkers:
+
+```bash
+ragclaw chunkers list
+ragclaw chunkers list --json   # machine-readable
+```
+
+### Built-in chunkers
+
+| Name | Good for | How it splits |
+|------|----------|--------------|
+| `semantic` | Markdown, prose | Paragraph/heading boundaries, ~512 tokens |
+| `code` | Source files | AST nodes (functions, classes, methods) via tree-sitter |
+| `sentence` | Markdown, prose | `Intl.Segmenter` sentences grouped into ~512-token batches |
+| `fixed` | Anything | Fixed word count — the universal fallback |
+
+### How RagClaw picks a chunker (priority order)
+
+1. **CLI flag** `--chunker <name>` — highest priority, applies to this run only
+2. **Config `chunking.overrides[]`** — glob rules in `config.yaml`, matched against source path
+3. **Plugin chunkers** — `canHandle()` is checked in registration order
+4. **Built-in auto** — `code → semantic → sentence → fixed`
+
+### Forcing a chunker via config
+
+Add to `~/.config/ragclaw/config.yaml`:
+
+```yaml
+chunking:
+  strategy: sentence          # global default (overridden by overrides below)
+  defaults:
+    chunkSize: 512
+    overlap: 50
+  overrides:
+    - pattern: "**/*.ts"
+      chunker: code
+    - pattern: "docs/**"
+      chunker: semantic
+      chunkSize: 400
+```
+
+**Tip:** Use `sentence` when you want paragraph-level chunks that respect sentence boundaries rather than character positions. Use `fixed` for structured data files where semantic splitting doesn't apply.
+
+## 11. Configuration
 
 Primary config location: `~/.config/ragclaw/config.yaml`. RagClaw adheres to XDG: use XDG_DATA_HOME and XDG_CONFIG_HOME for custom locations. If you prefer env vars, RagClaw respects them (see Appendix B).
 
@@ -429,7 +497,7 @@ Config precedence: CLI flag > environment variable > config.yaml > built-in defa
 
 Settable keys are restricted to a small allowlist (`SETTABLE_KEYS`) — use `config list` to see what can be changed at runtime. Some values such as internal runtime paths are read-only.
 
-## 11. Portability and backups
+## 12. Portability and backups
 
 KB files are ordinary SQLite files. Recommended workflows:
 
@@ -439,7 +507,7 @@ KB files are ordinary SQLite files. Recommended workflows:
 
 When syncing between machines with different embedders or resources, prefer `merge --strategy reindex` on import so vectors are rebuilt locally.
 
-## 12. MCP server and tools
+## 13. MCP server and tools
 
 RagClaw ships a standalone MCP server package (`@emdzej/ragclaw-mcp`) that exposes RagClaw tools to AI clients. The MCP server **always enforces guards**, regardless of the CLI `enforceGuards` setting.
 
@@ -517,12 +585,13 @@ mcpServers:
 | Tool | Description |
 |------|-------------|
 | `rag_search` | Search a knowledge base (query, mode, limit) |
-| `rag_add` | Index a file/directory/URL (supports `crawl: true`) |
-| `rag_reindex` | Re-process changed sources |
+| `rag_add` | Index a file/directory/URL (`chunker`, `chunkSize`, `overlap` params supported) |
+| `rag_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
 | `rag_merge` | Merge another `.db` file |
 | `rag_status` | Get KB statistics |
 | `rag_list` | List indexed sources |
 | `rag_remove` | Remove source from index |
+| `rag_list_chunkers` | List all available chunkers (built-in + plugin) |
 
 ### Example prompts
 
@@ -535,7 +604,7 @@ Crawl https://docs.example.com and index it into ragclaw
 
 **Security note:** the MCP server always enforces guards. Configure `allowedPaths` and other guard settings in `~/.config/ragclaw/config.yaml` before exposing RagClaw to external clients.
 
-## 13. OpenClaw skill setup
+## 14. OpenClaw skill setup
 
 The `skill/` directory in the RagClaw repository bundles a ready-to-use OpenClaw skill. It exposes all RagClaw commands as `/rag` slash commands directly inside the OpenClaw chat interface — no MCP server required.
 
@@ -595,7 +664,7 @@ Knowledge bases created via the skill are stored in the same location as the CLI
 - Default: `~/.local/share/ragclaw/<name>.sqlite`
 - Backwards compat: `~/.openclaw/ragclaw/` (used automatically if it exists)
 
-## 14. Plugins
+## 15. Plugins
 
 Plugin discovery and locations:
 
@@ -633,7 +702,7 @@ ragclaw plugin enable ragclaw-plugin-github
 ragclaw add github://myorg/myrepo -d code-kb
 ```
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 Problem: sqlite-vec native extension missing → fallback to JS vectors is slow above ~5k chunks
 

@@ -49,9 +49,48 @@ Why chunk? Because:
 - AI models have input limits
 - You want to find the *relevant part*, not the whole book
 
+### Chunker Resolution
+
+RagClaw picks the right chunker for each source using a priority stack (highest → lowest):
+
+```
+1. CLI flag:  ragclaw add ./docs/ --chunker sentence
+              ↓ (overrides everything)
+
+2. Config overrides (first glob match wins):
+   chunking:
+     overrides:
+       - pattern: "**/*.ts"
+         chunker: code
+       - pattern: "docs/**"
+         chunker: semantic
+              ↓ (if source path matches a pattern)
+
+3. Plugin chunkers (canHandle() checked in registration order)
+              ↓ (if a plugin chunker accepts the content type)
+
+4. Built-in auto-selection:
+   CodeChunker → SemanticChunker → SentenceChunker → FixedChunker
+   (tried in order; first canHandle() match wins)
+```
+
+If you supply an unknown chunker name, RagClaw fails immediately with a suggestion:
+```
+Unknown chunker "sentense". Did you mean "sentence"? Available: semantic, code, sentence, fixed
+```
+
+### Built-in Chunkers
+
+| Chunker | handles | How it works |
+|---------|---------|-------------|
+| `code` | `code` | Parses the AST with tree-sitter; each function/class/method becomes one chunk |
+| `semantic` | `markdown`, `text` | Splits by paragraphs and headings, ~512 tokens, 50-token overlap |
+| `sentence` | `markdown`, `text` | Groups sentences using `Intl.Segmenter`, ~512 tokens, 50-token overlap |
+| `fixed` | `*` (any) | Pure word-count split; always available as a fallback |
+
 ### How We Chunk Documents
 
-For regular text (markdown, docs, web pages), we use **semantic chunking**:
+For regular text (markdown, docs, web pages), the default is **semantic chunking**:
 
 1. Split by paragraphs and headings
 2. Keep chunks around 512 tokens (~400 words)

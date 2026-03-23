@@ -84,6 +84,16 @@ export interface ChunkRecord extends Chunk {
 }
 
 export interface Chunker {
+  /** Unique name used in config overrides and --chunker CLI flag. */
+  readonly name: string;
+  /** Human-readable description shown by `ragclaw chunkers list`. */
+  readonly description: string;
+  /**
+   * Content types or MIME types this chunker handles.
+   * Use `["*"]` to indicate a universal fallback (handles any content).
+   */
+  readonly handles: string[];
+
   canHandle(content: ExtractedContent): boolean;
   chunk(content: ExtractedContent, sourceId: string, sourcePath: string): Promise<Chunk[]>;
 }

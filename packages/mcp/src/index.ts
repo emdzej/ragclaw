@@ -141,6 +141,9 @@ async function ragAdd(args: {
   crawlConcurrency?: number;
   crawlDelay?: number;
   ignoreRobots?: boolean;
+  chunker?: string;
+  chunkSize?: number;
+  overlap?: number;
 }): Promise<string> {
   const dbName = args.db || "default";
   const dbPath = getDbPath(dbName);
@@ -152,7 +155,11 @@ async function ragAdd(args: {
   await store.open(dbPath);
 
   try {
-    const indexingService = await getIndexingService();
+    // Use per-call chunker options if provided, else fall back to shared service
+    const indexingService =
+      args.chunker !== undefined || args.chunkSize !== undefined || args.overlap !== undefined
+        ? await buildIndexingService(args.chunker, args.chunkSize, args.overlap)
+        : await getIndexingService();
 
     // -------------------------------------------------------------------------
     // Crawl mode
@@ -335,6 +342,9 @@ async function ragReindex(args: {
   db?: string;
   force?: boolean;
   prune?: boolean;
+  chunker?: string;
+  chunkSize?: number;
+  overlap?: number;
 }): Promise<string> {
   const dbName = args.db || "default";
   const dbPath = getDbPath(dbName);
@@ -353,7 +363,10 @@ async function ragReindex(args: {
       return "No sources to reindex.";
     }
 
-    const indexingService = await getIndexingService();
+    const indexingService =
+      args.chunker !== undefined || args.chunkSize !== undefined || args.overlap !== undefined
+        ? await buildIndexingService(args.chunker, args.chunkSize, args.overlap)
+        : await getIndexingService();
 
     let updated = 0;
     let unchanged = 0;
@@ -705,6 +718,29 @@ async function ragDbRename(args: {
   }
 }
 
+/** Create a one-off IndexingService with specific chunker options (not cached). */
+async function buildIndexingService(
+  chunker?: string,
+  chunkSize?: number,
+  overlap?: number
+): Promise<IndexingService> {
+  const embedder = createEmbedder();
+  const svc = new IndexingService({
+    extractorLimits: config.extractorLimits,
+    embedder,
+    chunkerStrategy: chunker ?? "auto",
+    chunkerDefaults: { chunkSize, overlap },
+  });
+  await svc.init();
+  return svc;
+}
+
+async function ragListChunkers(): Promise<string> {
+  const indexingService = await getIndexingService();
+  const chunkers = indexingService.listChunkers();
+  return JSON.stringify(chunkers, null, 2);
+}
+
 // Main server
 async function main() {
   const server = new McpServer({
@@ -773,6 +809,22 @@ async function main() {
           .boolean()
           .optional()
           .describe("Ignore robots.txt restrictions — use responsibly (default: false)"),
+        chunker: z
+          .string()
+          .optional()
+          .describe(
+            "Chunker to use for this indexing call (e.g. 'sentence', 'fixed', 'semantic', 'code'). Overrides config and auto-selection."
+          ),
+        chunkSize: z
+          .number()
+          .int()
+          .optional()
+          .describe("Override chunk size in tokens for the selected chunker."),
+        overlap: z
+          .number()
+          .int()
+          .optional()
+          .describe("Override overlap size in tokens for the selected chunker."),
       },
     },
     async ({
@@ -788,6 +840,9 @@ async function main() {
       crawlConcurrency,
       crawlDelay,
       ignoreRobots,
+      chunker,
+      chunkSize,
+      overlap,
     }) => {
       try {
         const result = await ragAdd({
@@ -803,6 +858,9 @@ async function main() {
           crawlConcurrency,
           crawlDelay,
           ignoreRobots,
+          chunker,
+          chunkSize,
+          overlap,
         });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
@@ -881,11 +939,44 @@ async function main() {
           .boolean()
           .optional()
           .describe("Remove sources that no longer exist (default: false)"),
+        chunker: z
+          .string()
+          .optional()
+          .describe(
+            "Chunker to use for this reindex call (e.g. 'sentence', 'fixed', 'semantic', 'code'). Overrides config and auto-selection."
+          ),
+        chunkSize: z
+          .number()
+          .int()
+          .optional()
+          .describe("Override chunk size in tokens for the selected chunker."),
+        overlap: z
+          .number()
+          .int()
+          .optional()
+          .describe("Override overlap size in tokens for the selected chunker."),
       },
     },
-    async ({ db, force, prune }) => {
+    async ({ db, force, prune, chunker, chunkSize, overlap }) => {
       try {
-        const result = await ragReindex({ db, force, prune });
+        const result = await ragReindex({ db, force, prune, chunker, chunkSize, overlap });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_list_chunkers",
+    {
+      description:
+        "List all available chunkers (built-in and plugin-provided). Returns a JSON array with name, description, handles, and source fields.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = await ragListChunkers();
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

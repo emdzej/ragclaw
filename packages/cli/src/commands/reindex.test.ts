@@ -105,6 +105,7 @@ vi.mock("@emdzej/ragclaw-core", () => ({
 const pluginLoaderMock = {
   loadAll: vi.fn(async () => {}),
   getEmbedder: vi.fn((): unknown => undefined),
+  getChunkers: vi.fn(() => []),
 };
 vi.mock("../plugins/loader.js", () => ({
   PluginLoader: vi.fn(function () {
@@ -156,6 +157,7 @@ describe("reindex() — embedder resolution from DB metadata (Bug 2)", () => {
     storeMock.listSources.mockResolvedValue([makeSource()]);
     pluginLoaderMock.loadAll.mockResolvedValue(undefined);
     pluginLoaderMock.getEmbedder.mockReturnValue(undefined);
+    pluginLoaderMock.getChunkers.mockReturnValue([]);
     indexingServiceMock.init.mockResolvedValue(undefined);
     indexingServiceMock.reindexSource.mockResolvedValue({ status: "unchanged", sourceId: "s1" });
     (mockCreateEmbedder as Mock).mockReturnValue(makeEmbedder());

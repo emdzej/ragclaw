@@ -28,6 +28,12 @@ interface ReindexOptions {
   prune?: boolean;
   /** Embedder preset alias or HuggingFace model ID (e.g. "bge", "nomic"). */
   embedder?: string;
+  /** Chunker override for this invocation (e.g. "sentence", "fixed"). */
+  chunker?: string;
+  /** Override chunkSize for the selected chunker. */
+  chunkSize?: string;
+  /** Override overlap for the selected chunker. */
+  overlap?: string;
   // Security guard overrides (from CLI flags)
   allowedPaths?: string;
   allowUrls?: boolean;
@@ -164,9 +170,23 @@ export async function reindex(options: ReindexOptions): Promise<void> {
       }
     }
 
+    const pluginChunkers = pluginLoader.getChunkers();
     const indexingService = new IndexingService({
+      extraChunkers: pluginChunkers,
       extractorLimits: config.extractorLimits,
       embedder,
+      chunkerStrategy: options.chunker ?? "auto",
+      chunkerOverrides: config.chunking?.overrides,
+      chunkerDefaults: {
+        chunkSize:
+          options.chunkSize !== undefined
+            ? parseInt(options.chunkSize, 10)
+            : config.chunking?.defaults?.chunkSize,
+        overlap:
+          options.overlap !== undefined
+            ? parseInt(options.overlap, 10)
+            : config.chunking?.defaults?.overlap,
+      },
     });
     await indexingService.init();
     spinner.succeed("Model loaded");

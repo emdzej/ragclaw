@@ -55,6 +55,11 @@ interface TreeSitterParser {
 }
 
 export class CodeChunker implements Chunker {
+  readonly name = "code";
+  readonly description =
+    "Tree-sitter AST-based splitting by functions and classes (TS, JS, Python, Go, Java)";
+  readonly handles = ["code"];
+
   private parsers: Map<Language, TreeSitterParser> = new Map();
   private initPromise: Promise<void> | null = null;
 

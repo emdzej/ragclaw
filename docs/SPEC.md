@@ -59,9 +59,17 @@ type Source =
 
 Split extracted content into indexable chunks.
 
+#### Built-in Chunkers
+
+| Name | `handles` | Description |
+|------|-----------|-------------|
+| `semantic` | `markdown`, `text` | Paragraph/heading-aware semantic splitting |
+| `code` | `code` | AST-based splitting via tree-sitter |
+| `sentence` | `markdown`, `text` | `Intl.Segmenter`-based sentence splitting, zero extra deps |
+| `fixed` | `["*"]` (universal) | Fixed-size word-count splitting, always applicable fallback |
+
 **Semantic Chunker** (for documents):
-- Split by paragraphs/sections
-- Respect heading boundaries
+- Split by paragraphs and headings
 - Target size: 512 tokens with 50 token overlap
 - Preserve context (include parent heading)
 
@@ -71,11 +79,22 @@ Split extracted content into indexable chunks.
 - Include: signature, docstring, body
 - Languages: TypeScript/JavaScript, Java, Go, Python
 
+**Sentence Chunker** (for documents):
+- Uses `Intl.Segmenter` — no extra dependencies
+- Groups sentences into target-size batches (~512 tokens, ~50 token overlap)
+
+**Fixed Chunker** (universal fallback):
+- Splits by word count, configurable `chunkSize` and `overlap`
+- `canHandle()` always returns `true`
+
 **Chunker Interface:**
 ```typescript
 interface Chunker {
+  readonly name: string;          // e.g. "semantic", "code", "sentence", "fixed"
+  readonly description: string;   // Human-readable description
+  readonly handles: string[];     // ContentType keys this chunker targets, or ["*"] for any
   canHandle(content: ExtractedContent): boolean;
-  chunk(content: ExtractedContent): Promise<Chunk[]>;
+  chunk(content: ExtractedContent, sourceId: string, sourcePath: string): Promise<Chunk[]>;
 }
 
 interface Chunk {
@@ -86,12 +105,72 @@ interface Chunk {
   startLine?: number;            // For files
   endLine?: number;
   metadata: {
-    type: 'paragraph' | 'section' | 'function' | 'class' | 'method';
+    type: 'paragraph' | 'section' | 'function' | 'class' | 'method' | 'block';
     heading?: string;            // Parent heading for docs
     name?: string;               // Function/class name for code
     language?: string;           // Programming language
     [key: string]: unknown;
   };
+}
+```
+
+#### Chunker Resolution Priority
+
+When indexing a source, RagClaw resolves the chunker in this order (highest → lowest):
+
+1. **CLI `--chunker <name>` flag** (or `IndexSourceOptions.chunker`)
+2. **Config `chunking.overrides[]`** — first glob pattern match against the source path
+3. **Plugin chunkers** (`extraChunkers`) — `canHandle()` checked in registration order
+4. **Built-in auto**: `CodeChunker → SemanticChunker → SentenceChunker → FixedChunker`
+
+If an unknown chunker name is supplied, RagClaw **fails hard** with a suggestion:
+```
+Unknown chunker "sentense". Did you mean "sentence"? Available: semantic, code, sentence, fixed
+```
+
+#### `IndexingServiceConfig` additions
+
+```typescript
+interface IndexingServiceConfig {
+  extraChunkers?: Chunker[];           // plugin-provided chunkers
+  chunkerStrategy?: string;            // override name for all sources
+  chunkerDefaults?: { chunkSize?: number; overlap?: number };
+  chunkerOverrides?: ChunkingOverride[];
+}
+
+interface ChunkingOverride {
+  pattern: string;   // picomatch glob against source path
+  chunker: string;   // chunker name to use when pattern matches
+  chunkSize?: number;
+  overlap?: number;
+}
+```
+
+#### `RagclawConfig` — `chunking` field
+
+```yaml
+# config.yaml
+chunking:
+  strategy: sentence          # optional: set a global default chunker
+  defaults:
+    chunkSize: 512
+    overlap: 50
+  overrides:
+    - pattern: "**/*.ts"
+      chunker: code
+    - pattern: "docs/**"
+      chunker: semantic
+      chunkSize: 400
+```
+
+#### `ChunkerInfo` (returned by `IndexingService.listChunkers()`)
+
+```typescript
+interface ChunkerInfo {
+  name: string;
+  description: string;
+  handles: string[];
+  source: "built-in" | "plugin";
 }
 ```
 
@@ -304,6 +383,11 @@ Options:
   --include <glob>         Include pattern (e.g., "*.md")
   --exclude <glob>         Exclude pattern (e.g., "node_modules")
 
+  # Chunker options
+  --chunker <name>         Force a specific chunker: semantic|code|sentence|fixed (or plugin name)
+  --chunk-size <n>         Target chunk size in tokens (default: 512)
+  --overlap <n>            Chunk overlap in tokens (default: 50)
+
   # Crawl options (require a URL source + --crawl)
   --crawl                  Enable crawling — follow links from the seed URL
   --crawl-max-depth <n>    Max link depth from start URL (default: 3)
@@ -315,6 +399,46 @@ Options:
   --crawl-concurrency <n>  Concurrent fetch requests (default: 1)
   --crawl-delay <ms>       Delay between requests in ms (default: 1000)
   --ignore-robots          Ignore robots.txt (use responsibly)
+```
+
+### `ragclaw chunkers list [options]`
+List all available chunkers (built-in and plugin-provided).
+
+```bash
+ragclaw chunkers list
+ragclaw chunkers list --json
+
+Options:
+  --json    Output as JSON array
+```
+
+Default output:
+```
+Available chunkers (4):
+
+  semantic [built-in]
+    Paragraph and heading-aware semantic splitting
+    handles: markdown, text
+
+  code [built-in]
+    AST-based splitting via tree-sitter
+    handles: code
+
+  sentence [built-in]
+    Sentence-level splitting using Intl.Segmenter (zero deps)
+    handles: markdown, text
+
+  fixed [built-in]
+    Fixed word-count splitting, universal fallback
+    handles: all content types
+```
+
+`--json` output:
+```json
+[
+  { "name": "semantic", "description": "...", "handles": ["markdown", "text"], "source": "built-in" },
+  ...
+]
 ```
 
 ### `ragclaw search <query> [options]`
@@ -360,6 +484,24 @@ List indexed sources.
 ```bash
 ragclaw list
 ragclaw list --db my-docs --type code
+```
+
+### `ragclaw reindex [options]`
+Re-process changed sources and keep vectors up to date.
+
+```bash
+ragclaw reindex                        # incremental: only re-embeds changed sources
+ragclaw reindex --force                # full rebuild, ignores content hash
+ragclaw reindex --prune                # remove sources that no longer exist on disk
+
+Options:
+  --db <name>              Knowledge base name (default: "default")
+  -f, --force              Reindex all sources regardless of content hash
+  -p, --prune              Remove sources that no longer exist on disk
+  --embedder <name>        Switch embedder preset (rebuilds all vectors)
+  --chunker <name>         Force a specific chunker: semantic|code|sentence|fixed
+  --chunk-size <n>         Target chunk size in tokens
+  --overlap <n>            Chunk overlap in tokens
 ```
 
 ### `ragclaw merge <source-db> [options]` _(deprecated)_
@@ -558,6 +700,9 @@ interface RagClawConfig {
   chunkSize: number;            // Default: 512 tokens
   chunkOverlap: number;         // Default: 50 tokens
 
+  // Pluggable chunker config (new)
+  chunking?: ChunkingConfig;
+
   // Search
   defaultLimit: number;         // Default: 10
   defaultMode: 'vector' | 'keyword' | 'hybrid';  // Default: 'hybrid'
@@ -565,6 +710,22 @@ interface RagClawConfig {
     vector: number;             // Default: 0.7
     keyword: number;            // Default: 0.3
   };
+}
+
+interface ChunkingConfig {
+  strategy?: string;             // Global default chunker name (e.g. "sentence")
+  defaults?: {
+    chunkSize?: number;
+    overlap?: number;
+  };
+  overrides?: ChunkingOverride[]; // First-match glob rules
+}
+
+interface ChunkingOverride {
+  pattern: string;               // picomatch glob against source path
+  chunker: string;               // chunker name to use when pattern matches
+  chunkSize?: number;
+  overlap?: number;
 }
 
 interface EmbedderConfigBlock {
@@ -603,3 +764,4 @@ interface EmbedderConfigBlock {
 - [x] **`ragclaw db init/delete/rename/merge`** — Full database lifecycle management under `db` subcommand group; `ragclaw init` and `ragclaw merge` kept as deprecated top-level aliases; MCP tools: `rag_db_init`, `rag_db_delete` (requires `confirm: true`), `rag_db_rename` (requires `confirm: true`), `rag_db_merge`
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command
+- [x] **Pluggable chunker system** — Four built-in chunkers (`semantic`, `code`, `sentence`, `fixed`); `Chunker` interface now exposes `name`/`description`/`handles`; priority-based `resolveChunker()` (CLI flag → config overrides → plugin chunkers → built-in auto); `--chunker`/`--chunk-size`/`--overlap` flags on `ragclaw add` and `ragclaw reindex`; `ragclaw chunkers list [--json]`; `chunking:` config block with `strategy`/`defaults`/`overrides[]`; MCP: `chunker`/`chunkSize`/`overlap` params on `rag_add`/`rag_reindex`, `rag_list_chunkers` tool; unknown chunker name → hard fail with typo suggestion
