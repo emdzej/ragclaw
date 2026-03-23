@@ -603,6 +603,26 @@ async function collectFilesRecursive(
   }
 }
 
+async function ragListDatabases(): Promise<string> {
+  if (!existsSync(RAGCLAW_DIR)) {
+    return "[]";
+  }
+
+  let entries: string[];
+  try {
+    entries = await readdir(RAGCLAW_DIR);
+  } catch {
+    return "[]";
+  }
+
+  const names = entries
+    .filter((f) => f.endsWith(".sqlite"))
+    .map((f) => f.slice(0, -".sqlite".length))
+    .sort();
+
+  return JSON.stringify(names);
+}
+
 // Main server
 async function main() {
   const server = new McpServer({
@@ -836,6 +856,23 @@ async function main() {
           include,
           exclude,
         });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_list_databases",
+    {
+      description:
+        "List all available knowledge bases (databases). Returns a JSON array of knowledge base names.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = await ragListDatabases();
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

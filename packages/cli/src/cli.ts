@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 import { Command } from "commander";
 import { addCommand } from "./commands/add.js";
 import { configGet, configList, configSet } from "./commands/config.js";
+import { dbList } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { embedderDownload, embedderList } from "./commands/embedder.js";
 import { initCommand } from "./commands/init.js";
@@ -226,5 +227,14 @@ embedderCmd
   .argument("[name]", "Preset alias, HuggingFace model ID, or plugin embedder name")
   .option("-a, --all", "Download all built-in presets and plugin embedders")
   .action(embedderDownload);
+
+// DB commands
+const dbCmd = program.command("db").description("Manage knowledge bases");
+
+dbCmd
+  .command("list")
+  .description("List all available knowledge bases")
+  .option("--json", "Output as JSON")
+  .action(dbList);
 
 program.parse();

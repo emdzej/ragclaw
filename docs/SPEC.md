@@ -414,6 +414,28 @@ Options:
 | `prefer-local` | Same as `skip` |
 | `prefer-remote` | Overwrite local chunks with remote chunks |
 
+### `ragclaw db list [options]`
+List all available knowledge bases.
+
+```bash
+ragclaw db list
+ragclaw db list --json
+
+Options:
+  --json    Output as a JSON array of names
+```
+
+Output (default):
+```
+Knowledge bases:
+
+  default
+  research
+  work
+```
+
+Output (`--json`): `["default","research","work"]`
+
 ## OpenClaw Skill Integration
 
 ### Commands
@@ -541,5 +563,6 @@ interface EmbedderConfigBlock {
 - [x] **Obsidian plugin** — Index vaults and notes via `obsidian://` scheme
 - [x] **XDG Base Directory** — Proper paths (`~/.local/share/ragclaw/`, `~/.config/ragclaw/`)
 - [x] **MCP server** — Integration with Codex, Claude Code, OpenCode
+- [x] **`ragclaw db list` / `rag_list_databases`** — List all available knowledge bases by scanning `dataDir` for `.sqlite` files
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command
