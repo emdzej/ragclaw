@@ -298,8 +298,23 @@ async function ragList(args: { db?: string }): Promise<string> {
   try {
     const sources = await store.listSources();
 
+    // Build metadata header
+    const description = (await store.getMeta("db_description")) ?? null;
+    const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
+    const keywords = keywordsRaw
+      ? keywordsRaw
+          .split(",")
+          .map((k: string) => k.trim())
+          .filter(Boolean)
+      : [];
+
+    const metaLines: string[] = [];
+    if (description) metaLines.push(`Description: ${description}`);
+    if (keywords.length > 0) metaLines.push(`Keywords: ${keywords.join(", ")}`);
+    const metaHeader = metaLines.length > 0 ? `${metaLines.join("\n")}\n\n` : "";
+
     if (sources.length === 0) {
-      return "No sources indexed.";
+      return `${metaHeader}No sources indexed.`;
     }
 
     const lines = sources.map((s) => {
@@ -308,7 +323,7 @@ async function ragList(args: { db?: string }): Promise<string> {
       return `${icon} ${s.path} (${date})`;
     });
 
-    return `Indexed sources (${sources.length}):\n${lines.join("\n")}`;
+    return `${metaHeader}Indexed sources (${sources.length}):\n${lines.join("\n")}`;
   } finally {
     await store.close();
   }
@@ -723,6 +738,32 @@ async function ragDbInfo(args: {
   }
 
   return `Updated info for knowledge base "${dbName}"`;
+}
+
+async function ragDbInfoGet(args: { db?: string }): Promise<string> {
+  const dbName = args.db ?? "default";
+  const dbPath = getDbPath(dbName);
+
+  if (!existsSync(dbPath)) {
+    return `Error: Knowledge base "${dbName}" not found.`;
+  }
+
+  const store = new Store();
+  await store.open(dbPath);
+
+  try {
+    const description = (await store.getMeta("db_description")) ?? null;
+    const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
+    const keywords = keywordsRaw
+      ? keywordsRaw
+          .split(",")
+          .map((k: string) => k.trim())
+          .filter(Boolean)
+      : [];
+    return JSON.stringify({ name: dbName, description, keywords });
+  } finally {
+    await store.close();
+  }
 }
 
 async function ragDbDelete(args: { db?: string; confirm?: boolean }): Promise<string> {
@@ -1175,6 +1216,25 @@ async function main() {
     async ({ db, description, keywords }) => {
       try {
         const result = await ragDbInfo({ db, description, keywords });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "rag_db_info_get",
+    {
+      description:
+        "Get the description and keywords stored for a knowledge base. Returns a JSON object with name, description, and keywords fields. Use this to inspect metadata before updating it.",
+      inputSchema: {
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+      },
+    },
+    async ({ db }) => {
+      try {
+        const result = await ragDbInfoGet({ db });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

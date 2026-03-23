@@ -85,7 +85,7 @@ vi.mock("../config.js", () => ({
 }));
 
 // Import subjects under test AFTER all vi.mock calls
-const { dbList, dbInit, dbInfoSet, dbDelete, dbRename } = await import("./db.js");
+const { dbList, dbInit, dbInfoGet, dbInfoSet, dbDelete, dbRename } = await import("./db.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -265,6 +265,105 @@ describe("dbInit()", () => {
     const output = logOutput();
     expect(output).toContain("ragclaw add");
     expect(output).toContain("ragclaw search");
+  });
+});
+
+// ── dbInfoGet ──────────────────────────────────────────────────────────────────
+
+describe("dbInfoGet()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    process.exitCode = undefined;
+  });
+
+  it("prints description and keywords in plain output when both are set", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStoreGetMeta.mockImplementation(async (key: string) => {
+      if (key === "db_description") return "Project X docs";
+      if (key === "db_keywords") return "api, auth";
+      return undefined;
+    });
+
+    await dbInfoGet({ db: "mydb" });
+
+    const output = logOutput();
+    expect(output).toContain("Project X docs");
+    expect(output).toContain("api");
+    expect(output).toContain("auth");
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("shows '(not set)' for description when none is stored", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStoreGetMeta.mockResolvedValue(undefined);
+
+    await dbInfoGet({ db: "mydb" });
+
+    expect(logOutput()).toContain("(not set)");
+  });
+
+  it("shows '(not set)' for keywords when none are stored", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStoreGetMeta.mockImplementation(async (key: string) => {
+      if (key === "db_description") return "Has description";
+      return undefined;
+    });
+
+    await dbInfoGet({ db: "mydb" });
+
+    const output = logOutput();
+    expect(output).toContain("Has description");
+    expect(output).toContain("(not set)");
+  });
+
+  it("outputs valid JSON with --json flag", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStoreGetMeta.mockImplementation(async (key: string) => {
+      if (key === "db_description") return "My desc";
+      if (key === "db_keywords") return "foo, bar";
+      return undefined;
+    });
+
+    await dbInfoGet({ db: "mydb", json: true });
+
+    const parsed = JSON.parse(logOutput()) as {
+      name: string;
+      description: string | null;
+      keywords: string[];
+    };
+    expect(parsed.name).toBe("mydb");
+    expect(parsed.description).toBe("My desc");
+    expect(parsed.keywords).toEqual(["foo", "bar"]);
+  });
+
+  it("JSON output has null description and empty keywords when none are set", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStoreGetMeta.mockResolvedValue(undefined);
+
+    await dbInfoGet({ db: "empty-db", json: true });
+
+    const parsed = JSON.parse(logOutput()) as {
+      name: string;
+      description: string | null;
+      keywords: string[];
+    };
+    expect(parsed.name).toBe("empty-db");
+    expect(parsed.description).toBeNull();
+    expect(parsed.keywords).toEqual([]);
+  });
+
+  it("sets exitCode=1 when the database does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await dbInfoGet({ db: "ghost" });
+
+    expect(errOutput()).toContain("not found");
+    expect(process.exitCode).toBe(1);
   });
 });
 

@@ -580,6 +580,38 @@ Options:
   --keywords <list>      Comma-separated keywords (e.g. 'api, auth, endpoints')
 ```
 
+#### `ragclaw db info get [options]`
+Read the description and keywords stored on a knowledge base.
+
+```bash
+ragclaw db info get
+ragclaw db info get --db my-docs
+ragclaw db info get --db my-docs --json
+
+Options:
+  -d, --db <name>   Knowledge base name (default: 'default')
+  --json            Output as JSON
+```
+
+Output (default):
+```
+Knowledge base: my-docs
+Description:    Project X API docs
+Keywords:       api, auth, endpoints
+```
+
+Output when no metadata is set:
+```
+Knowledge base: my-docs
+Description:    (not set)
+Keywords:       (not set)
+```
+
+Output (`--json`):
+```json
+{ "name": "my-docs", "description": "Project X API docs", "keywords": ["api", "auth", "endpoints"] }
+```
+
 #### `ragclaw db delete <name> [options]`
 Delete a knowledge base and its `.sqlite` file permanently. Prompts for confirmation unless `--yes` is passed.
 
@@ -798,6 +830,8 @@ interface EmbedderConfigBlock {
 - [x] **`ragclaw db list` / `rag_list_databases`** — List all available knowledge bases; opens each `.sqlite` to read `db_description` and `db_keywords` metadata; default output shows description + keywords inline; `--json` returns object array `[{ name, description, keywords }]`; `rag_list_databases` MCP tool returns the same object array
 - [x] **`ragclaw db init/delete/rename/merge`** — Full database lifecycle management under `db` subcommand group; `ragclaw init` and `ragclaw merge` kept as deprecated top-level aliases; MCP tools: `rag_db_init`, `rag_db_delete` (requires `confirm: true`), `rag_db_rename` (requires `confirm: true`), `rag_db_merge`
 - [x] **`ragclaw db info set` / `rag_db_info`** — Set `db_description` and `db_keywords` metadata on an existing knowledge base; metadata stored as `store_meta` keys; surfaces in `db list`, `db list --json`, `status`, and MCP `rag_list_databases`; `ragclaw db init` also accepts `--description`/`--keywords` at creation time
+- [x] **`ragclaw db info get` / `rag_db_info_get`** — Read `db_description` and `db_keywords` from a knowledge base; plain output shows `(not set)` for absent fields; `--json` returns `{ name, description, keywords }`; MCP `rag_db_info_get` tool returns the same JSON object
+- [x] **`rag_list` metadata header** — MCP `rag_list` tool now prepends a description/keywords header before the sources list so agents get KB context alongside indexed source paths
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command
 - [x] **Pluggable chunker system** — Four built-in chunkers (`semantic`, `code`, `sentence`, `fixed`); `Chunker` interface now exposes `name`/`description`/`handles`; priority-based `resolveChunker()` (CLI flag → config overrides → plugin chunkers → built-in auto); `--chunker`/`--chunk-size`/`--overlap` flags on `ragclaw add` and `ragclaw reindex`; `ragclaw chunkers list [--json]`; `chunking:` config block with `strategy`/`defaults`/`overrides[]`; MCP: `chunker`/`chunkSize`/`overlap` params on `rag_add`/`rag_reindex`, `rag_list_chunkers` tool; unknown chunker name → hard fail with typo suggestion

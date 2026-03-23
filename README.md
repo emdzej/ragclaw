@@ -118,6 +118,8 @@ ragclaw db list --json                  # JSON array: [{name, description, keywo
 ragclaw db init <name>                  # Create a KB
 ragclaw db init <name> --description "…" --keywords "tag1, tag2"  # Create with metadata
 ragclaw db info set --db <name> --description "…" --keywords "…"  # Update metadata
+ragclaw db info get --db <name>         # Read description and keywords
+ragclaw db info get --db <name> --json  # Read metadata as JSON
 ragclaw db delete <name> --yes          # Delete a KB
 ragclaw db rename <old> <new>           # Rename a KB
 ```
@@ -400,11 +402,12 @@ Once configured, these tools are available to AI agents:
 | `rag_reindex` | Re-process changed sources |
 | `rag_merge` | Merge another `.db` file into a local knowledge base |
 | `rag_status` | Get KB statistics (includes embedder info) |
-| `rag_list` | List indexed sources |
+| `rag_list` | List indexed sources — prefixed with description/keywords header for agent context |
 | `rag_remove` | Remove source from index |
 | `rag_list_databases` | List all KBs with name, description, and keywords — used for automatic KB routing |
 | `rag_db_init` | Create a new KB (supports `description` and `keywords` params) |
 | `rag_db_info` | Set or update description and keywords on an existing KB |
+| `rag_db_info_get` | Read description and keywords from an existing KB |
 
 **Example prompts:**
 ```

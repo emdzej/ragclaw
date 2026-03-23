@@ -12,7 +12,15 @@ import { Command } from "commander";
 import { addCommand } from "./commands/add.js";
 import { chunkersList } from "./commands/chunkers.js";
 import { configGet, configList, configSet } from "./commands/config.js";
-import { dbDelete, dbInfoSet, dbInit, dbList, dbMerge, dbRename } from "./commands/db.js";
+import {
+  dbDelete,
+  dbInfoGet,
+  dbInfoSet,
+  dbInit,
+  dbList,
+  dbMerge,
+  dbRename,
+} from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { embedderDownload, embedderList } from "./commands/embedder.js";
 import { listCommand } from "./commands/list.js";
@@ -280,6 +288,13 @@ dbCmd
 
 // db info subcommand group
 const dbInfoCmd = dbCmd.command("info").description("Manage knowledge base metadata");
+
+dbInfoCmd
+  .command("get")
+  .description("Show the description and keywords for a knowledge base")
+  .option("-d, --db <name>", "Knowledge base name", "default")
+  .option("--json", "Output as JSON")
+  .action(dbInfoGet);
 
 dbInfoCmd
   .command("set")

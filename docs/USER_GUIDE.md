@@ -134,6 +134,13 @@ ragclaw db info set --db knowledge-base-name --keywords "api, auth, endpoints"
 ragclaw db info set --db knowledge-base-name --description "Updated desc" --keywords "new, tags"
 ```
 
+Read the description and keywords currently stored on a KB:
+
+```bash
+ragclaw db info get --db knowledge-base-name
+ragclaw db info get --db knowledge-base-name --json
+```
+
 Check KB health and stats (chunks, sources, vector backend, description, keywords):
 
 ```bash
@@ -657,12 +664,13 @@ mcpServers:
 | `rag_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
 | `rag_merge` | Merge another `.db` file |
 | `rag_status` | Get KB statistics |
-| `rag_list` | List indexed sources |
+| `rag_list` | List indexed sources — output is prefixed with a description/keywords header so agents get KB context |
 | `rag_remove` | Remove source from index |
 | `rag_list_chunkers` | List all available chunkers (built-in + plugin) |
 | `rag_list_databases` | List all KBs with name, description, and keywords — used by agents for KB routing |
 | `rag_db_init` | Create a new KB (optional `description` and `keywords`) |
 | `rag_db_info` | Set or update description and keywords on an existing KB |
+| `rag_db_info_get` | Read description and keywords from an existing KB |
 
 ### Example prompts
 

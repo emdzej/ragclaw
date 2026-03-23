@@ -327,6 +327,94 @@ describe("db rename", () => {
 });
 
 // ---------------------------------------------------------------------------
+// db info get
+// ---------------------------------------------------------------------------
+
+describe("db info get", () => {
+  it("shows (not set) for a fresh KB with no metadata", async () => {
+    await env.run(["db", "init", "fresh-get"]);
+
+    const { exitCode, stdout } = await env.run(["db", "info", "get", "--db", "fresh-get"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("(not set)");
+  });
+
+  it("shows the description after it has been set", async () => {
+    await env.run(["db", "init", "with-desc"]);
+    await env.run(["db", "info", "set", "--db", "with-desc", "--description", "My description"]);
+
+    const { exitCode, stdout } = await env.run(["db", "info", "get", "--db", "with-desc"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("My description");
+  });
+
+  it("shows keywords after they have been set", async () => {
+    await env.run(["db", "init", "with-kw"]);
+    await env.run(["db", "info", "set", "--db", "with-kw", "--keywords", "tag1, tag2"]);
+
+    const { exitCode, stdout } = await env.run(["db", "info", "get", "--db", "with-kw"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("tag1");
+    expect(stdout).toContain("tag2");
+  });
+
+  it("--json returns a valid {name, description, keywords} object", async () => {
+    await env.run(["db", "init", "get-json"]);
+    await env.run([
+      "db",
+      "info",
+      "set",
+      "--db",
+      "get-json",
+      "--description",
+      "JSON desc",
+      "--keywords",
+      "foo, bar",
+    ]);
+
+    const { exitCode, stdout } = await env.run(["db", "info", "get", "--db", "get-json", "--json"]);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout) as {
+      name: string;
+      description: string | null;
+      keywords: string[];
+    };
+    expect(parsed.name).toBe("get-json");
+    expect(parsed.description).toBe("JSON desc");
+    expect(parsed.keywords).toContain("foo");
+    expect(parsed.keywords).toContain("bar");
+  });
+
+  it("--json returns null description and empty keywords for fresh KB", async () => {
+    await env.run(["db", "init", "get-json-empty"]);
+
+    const { exitCode, stdout } = await env.run([
+      "db",
+      "info",
+      "get",
+      "--db",
+      "get-json-empty",
+      "--json",
+    ]);
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout) as {
+      name: string;
+      description: string | null;
+      keywords: string[];
+    };
+    expect(parsed.description).toBeNull();
+    expect(parsed.keywords).toEqual([]);
+  });
+
+  it("exits non-zero when the DB does not exist", async () => {
+    const { failed } = await env.run(["db", "info", "get", "--db", "nonexistent"]);
+    expect(failed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // db init with description / keywords
 // ---------------------------------------------------------------------------
 
@@ -371,8 +459,8 @@ describe("db init with metadata", () => {
     }>;
     const entry = parsed.find((e) => e.name === "kw-list-db");
     expect(entry).toBeDefined();
-    expect(entry!.keywords).toContain("search");
-    expect(entry!.keywords).toContain("rag");
+    expect(entry?.keywords).toContain("search");
+    expect(entry?.keywords).toContain("rag");
   });
 });
 
@@ -436,7 +524,7 @@ describe("db info set", () => {
     }>;
     const entry = parsed.find((e) => e.name === "json-meta-db");
     expect(entry).toBeDefined();
-    expect(entry!.description).toBe("JSON desc");
+    expect(entry?.description).toBe("JSON desc");
   });
 
   it("exits non-zero when DB does not exist", async () => {
@@ -478,11 +566,11 @@ describe("db list metadata display", () => {
     }>;
     const entry = parsed.find((e) => e.name === "shape-db");
     expect(entry).toBeDefined();
-    expect(Object.keys(entry!)).toEqual(
-      expect.arrayContaining(["name", "description", "keywords"])
-    );
-    expect(entry!.description).toBeNull();
-    expect(Array.isArray(entry!.keywords)).toBe(true);
+    // entry is defined per the assertion above; cast to avoid non-null assertion lint
+    const e = entry as NonNullable<typeof entry>;
+    expect(Object.keys(e)).toEqual(expect.arrayContaining(["name", "description", "keywords"]));
+    expect(e.description).toBeNull();
+    expect(Array.isArray(e.keywords)).toBe(true);
   });
 });
 

@@ -177,6 +177,50 @@ export async function dbInit(name: string, options: DbInitOptions = {}): Promise
 }
 
 // ---------------------------------------------------------------------------
+// db info get
+// ---------------------------------------------------------------------------
+
+interface DbInfoGetOptions {
+  db: string;
+  json?: boolean;
+}
+
+export async function dbInfoGet(options: DbInfoGetOptions): Promise<void> {
+  const dbPath = getDbPath(options.db);
+
+  if (!existsSync(dbPath)) {
+    console.error(chalk.red(`Knowledge base "${options.db}" not found.`));
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = new Store();
+  await store.open(dbPath);
+
+  let info: { description: string | null; keywords: string[] };
+  try {
+    info = await readDbInfo(store);
+  } finally {
+    await store.close();
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify({ name: options.db, ...info }));
+    return;
+  }
+
+  console.log(chalk.bold(`Knowledge base: ${chalk.cyan(options.db)}`));
+  console.log();
+  console.log(
+    `  Description: ${info.description ? chalk.dim(info.description) : chalk.dim("(not set)")}`
+  );
+  console.log(
+    `  Keywords:    ${info.keywords.length > 0 ? chalk.dim(info.keywords.join(", ")) : chalk.dim("(not set)")}`
+  );
+  console.log();
+}
+
+// ---------------------------------------------------------------------------
 // db info set
 // ---------------------------------------------------------------------------
 
