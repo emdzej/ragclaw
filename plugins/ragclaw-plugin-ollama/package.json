@@ -1,0 +1,42 @@
+{
+  "name": "ragclaw-plugin-ollama",
+  "version": "0.5.0",
+  "description": "RagClaw plugin for local embeddings via Ollama",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "biome check --error-on-warnings ./src",
+    "lint:fix": "biome check --write ./src",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emdzej/ragclaw.git",
+    "directory": "plugins/ragclaw-plugin-ollama"
+  },
+  "homepage": "https://github.com/emdzej/ragclaw#readme",
+  "bugs": {
+    "url": "https://github.com/emdzej/ragclaw/issues"
+  },
+  "author": "Michał Jaskólski",
+  "keywords": ["ragclaw", "ragclaw-plugin", "ollama", "embeddings", "local", "llm"],
+  "peerDependencies": {
+    "@emdzej/ragclaw-core": ">=0.5.0"
+  },
+  "devDependencies": {
+    "@emdzej/ragclaw-core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.0.0"
+  },
+  "ragclaw": {
+    "embedder": "ollama"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

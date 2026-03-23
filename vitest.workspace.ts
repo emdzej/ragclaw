@@ -13,6 +13,7 @@ export default defineWorkspace([
   "packages/mcp",
   "plugins/ragclaw-plugin-github",
   "plugins/ragclaw-plugin-obsidian",
+  "plugins/ragclaw-plugin-ollama",
   "plugins/ragclaw-plugin-youtube",
   "e2e",
 ]);

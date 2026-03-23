@@ -179,6 +179,21 @@ importers:
         specifier: ^4.0.0
         version: 4.1.0(@types/node@22.19.15)(vite@7.3.1(@types/node@22.19.15)(yaml@2.8.2))
 
+  plugins/ragclaw-plugin-ollama:
+    devDependencies:
+      '@emdzej/ragclaw-core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.0
+        version: 4.1.0(@types/node@22.19.15)(vite@7.3.1(@types/node@22.19.15)(yaml@2.8.2))
+
   plugins/ragclaw-plugin-youtube:
     devDependencies:
       '@emdzej/ragclaw-core':
