@@ -180,7 +180,7 @@ new plugin scheme, altered search scoring, etc.), you **must** update the releva
 | Architecture / data flow | `docs/HOW_IT_WORKS.md` |
 | User-facing features | `docs/USER_GUIDE.md` |
 | Both spec + narrative | Update both SPEC.md and HOW_IT_WORKS.md |
-| New plugin / new package | Verify `.github/workflows/publish.yaml` has an explicit publish step for it |
+| New plugin / new package | Add `README.md` in the package root; verify `.github/workflows/publish.yaml` has an explicit publish step |
 
 > **`docs/ideas/`** is a read-only reference. Check it before implementing a new feature
 > to understand prior design thinking. Do not create or modify files there unless asked.
@@ -351,7 +351,15 @@ export default plugin;
 ```
 
 5. Add the plugin to `vitest.workspace.ts` and `pnpm-workspace.yaml`.
-6. **Verify GitHub Actions workflows** — open `.github/workflows/publish.yaml` and confirm a publish step exists for the new plugin. If it is missing, add it immediately after the last existing plugin step, following the same pattern:
+6. **Write a `README.md`** in the plugin root. Follow the structure of existing plugin READMEs (`plugins/ragclaw-plugin-github/README.md` is a good template):
+   - One-line description
+   - Installation (`npm install -g <name>`)
+   - Requirements (external tools / accounts needed)
+   - Configuration (YAML snippet showing how to wire it in `~/.config/ragclaw/config.yaml`)
+   - Usage examples
+   - Development (`pnpm install && pnpm build && pnpm test`)
+   - License
+7. **Verify GitHub Actions workflows** — open `.github/workflows/publish.yaml` and confirm a publish step exists for the new plugin. If it is missing, add it immediately after the last existing plugin step, following the same pattern:
 
 ```yaml
       - name: Publish ragclaw-plugin-<name>
@@ -561,4 +569,4 @@ The guards in `packages/core/src/guards.ts` are the **single source of truth** f
 
 ---
 
-_Last updated: 2026-03-23 — added GitHub Actions publish verification rule_
+_Last updated: 2026-03-23 — added README and GitHub Actions publish verification rules for new plugins/packages_
