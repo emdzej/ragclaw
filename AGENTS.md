@@ -180,6 +180,7 @@ new plugin scheme, altered search scoring, etc.), you **must** update the releva
 | Architecture / data flow | `docs/HOW_IT_WORKS.md` |
 | User-facing features | `docs/USER_GUIDE.md` |
 | Both spec + narrative | Update both SPEC.md and HOW_IT_WORKS.md |
+| New plugin / new package | Verify `.github/workflows/publish.yaml` has an explicit publish step for it |
 
 > **`docs/ideas/`** is a read-only reference. Check it before implementing a new feature
 > to understand prior design thinking. Do not create or modify files there unless asked.
@@ -350,6 +351,17 @@ export default plugin;
 ```
 
 5. Add the plugin to `vitest.workspace.ts` and `pnpm-workspace.yaml`.
+6. **Verify GitHub Actions workflows** — open `.github/workflows/publish.yaml` and confirm a publish step exists for the new plugin. If it is missing, add it immediately after the last existing plugin step, following the same pattern:
+
+```yaml
+      - name: Publish ragclaw-plugin-<name>
+        working-directory: plugins/ragclaw-plugin-<name>
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+> The version-bump `pnpm --filter "ragclaw-plugin-*"` glob in the workflow already covers new plugins automatically, but the **publish step must be added explicitly** — the glob does not publish.
 
 ---
 
@@ -549,4 +561,4 @@ The guards in `packages/core/src/guards.ts` are the **single source of truth** f
 
 ---
 
-_Last updated: 2026-03-23_
+_Last updated: 2026-03-23 — added GitHub Actions publish verification rule_
