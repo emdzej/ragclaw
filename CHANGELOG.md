@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.6.0] — 2026-03-23
+
+### New features
+
+#### `ragclaw db info get` — read KB metadata from the CLI
+
+A new read-side companion to `db info set`. Displays the description and keywords stored on a knowledge base:
+
+```bash
+ragclaw db info get                       # reads the "default" KB
+ragclaw db info get --db my-docs          # named KB
+ragclaw db info get --db my-docs --json   # machine-readable output
+```
+
+Plain output shows `(not set)` for absent fields. `--json` returns:
+
+```json
+{ "name": "my-docs", "description": "Project X API docs", "keywords": ["api", "auth"] }
+```
+
+#### `rag_db_info_get` MCP tool
+
+AI agents can now read a knowledge base's description and keywords directly via the MCP server — useful for confirming metadata after a `rag_db_info` write, or for agents that need KB context before routing a query:
+
+```
+rag_db_info_get({ db: "my-docs" })
+→ { "name": "my-docs", "description": "Project X API docs", "keywords": ["api", "auth"] }
+```
+
+#### `rag_list` — KB metadata header
+
+The `rag_list` MCP tool (which lists indexed sources) now prepends a description/keywords header to its output. Agents calling `rag_list` receive KB context alongside the source paths, removing the need for a separate `rag_db_info_get` call before listing.
+
+---
+
 ## [0.5.0] — 2026-03-21
 
 ### New features
