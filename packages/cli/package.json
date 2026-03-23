@@ -4,7 +4,7 @@
   "description": "CLI for RagClaw - local-first RAG engine",
   "type": "module",
   "bin": {
-    "ragclaw": "./dist/cli.js"
+    "ragclaw": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -21,7 +21,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emdzej/ragclaw.git",
+    "url": "git+https://github.com/emdzej/ragclaw.git",
     "directory": "packages/cli"
   },
   "homepage": "https://github.com/emdzej/ragclaw#readme",

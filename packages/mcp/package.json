@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "ragclaw-mcp": "./dist/index.js"
+    "ragclaw-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -19,7 +19,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emdzej/ragclaw.git",
+    "url": "git+https://github.com/emdzej/ragclaw.git",
     "directory": "packages/mcp"
   },
   "homepage": "https://github.com/emdzej/ragclaw#readme",

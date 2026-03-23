@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emdzej/ragclaw.git",
+    "url": "git+https://github.com/emdzej/ragclaw.git",
     "directory": "plugins/ragclaw-plugin-github"
   },
   "homepage": "https://github.com/emdzej/ragclaw#readme",
