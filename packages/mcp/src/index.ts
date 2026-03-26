@@ -147,11 +147,12 @@ async function ragAdd(args: {
   await store.open(dbPath);
 
   try {
-    // Use per-call chunker options if provided, else fall back to shared service
+    // Use per-call chunker options if provided, else fall back to shared service.
+    // Pass the store so the indexing service honours the DB's stored embedder.
     const indexingService =
       args.chunker !== undefined || args.chunkSize !== undefined || args.overlap !== undefined
-        ? await buildIndexingService(args.chunker, args.chunkSize, args.overlap)
-        : await getIndexingService();
+        ? await buildIndexingService(args.chunker, args.chunkSize, args.overlap, store)
+        : await buildIndexingService(undefined, undefined, undefined, store);
 
     // -------------------------------------------------------------------------
     // Crawl mode
@@ -325,10 +326,11 @@ async function ragReindex(args: {
       return "No sources to reindex.";
     }
 
+    // Always pass the store so the indexing service uses the DB's stored embedder
     const indexingService =
       args.chunker !== undefined || args.chunkSize !== undefined || args.overlap !== undefined
-        ? await buildIndexingService(args.chunker, args.chunkSize, args.overlap)
-        : await getIndexingService();
+        ? await buildIndexingService(args.chunker, args.chunkSize, args.overlap, store)
+        : await buildIndexingService(undefined, undefined, undefined, store);
 
     let updated = 0;
     let unchanged = 0;
@@ -765,9 +767,24 @@ async function ragDbRename(args: {
 async function buildIndexingService(
   chunker?: string,
   chunkSize?: number,
-  overlap?: number
+  overlap?: number,
+  store?: Store
 ): Promise<IndexingService> {
-  const embedder = createEmbedder();
+  // When a store is provided, honour the embedder it was originally indexed with
+  // so that re-chunked embeddings match the existing dimensionality.
+  let embedder: EmbedderPlugin;
+  if (store) {
+    const storedModel = await store.getMeta("embedder_model");
+    const storedName = await store.getMeta("embedder_name");
+    embedder = storedModel
+      ? createEmbedder({ model: storedModel })
+      : storedName
+        ? createEmbedder({ alias: storedName })
+        : createEmbedder();
+  } else {
+    embedder = createEmbedder();
+  }
+
   const svc = new IndexingService({
     extractorLimits: config.extractorLimits,
     embedder,
