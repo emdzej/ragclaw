@@ -291,6 +291,20 @@ describe("Store", () => {
       expect(results.length).toBeGreaterThanOrEqual(1);
       expect(results[0].chunk.sourcePath).toBe("/search-test.md");
     });
+
+    it("matches via trigram index when query is a substring of a word", async () => {
+      // "algorith" is a substring of "algorithms" — trigram index finds it
+      const results = await store.search({ text: "algorith", mode: "keyword" });
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0].chunk.text).toContain("algorithms");
+    });
+
+    it("matches via prefix token when query is a partial word", async () => {
+      // "optim" is a prefix of "optimization" and "optimized" etc.
+      const results = await store.search({ text: "optim", mode: "keyword" });
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0].chunk.text).toContain("optimization");
+    });
   });
 
   // ─── Vector Search (JS fallback) ─────────────────────────────────────────
@@ -437,11 +451,12 @@ describe("Store", () => {
     });
 
     describe("getAllMeta", () => {
-      it("returns an empty object for a brand-new database", async () => {
+      it("returns an empty object for a brand-new database (excluding internal migration keys)", async () => {
         const meta = await store.getAllMeta();
-        // Empty DB: migration does not pre-seed any keys
+        // migrateTrigramIndex() writes fts_trigram_built on open — filter it out
+        const userKeys = Object.keys(meta).filter((k) => !k.startsWith("fts_"));
         expect(typeof meta).toBe("object");
-        expect(Object.keys(meta).length).toBe(0);
+        expect(userKeys.length).toBe(0);
       });
 
       it("returns all set keys", async () => {

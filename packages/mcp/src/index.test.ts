@@ -181,34 +181,6 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
     vi.clearAllMocks();
   });
 
-  // ── Bug 3: keyword mode must NOT call getEmbedder / createEmbedder ─────────
-
-  describe("keyword mode skips embedder entirely (Bug 3)", () => {
-    it("does not call createEmbedder in keyword mode", async () => {
-      await callRagSearch({ query: "hello", mode: "keyword", db: freshDb() });
-
-      expect(mockCreateEmbedder).not.toHaveBeenCalled();
-    });
-
-    it("calls store.search with undefined embedding in keyword mode", async () => {
-      await callRagSearch({ query: "hello", mode: "keyword", db: freshDb() });
-
-      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "keyword" }));
-      // Vitest matcher: verify no embedding key, or embedding is undefined
-      expect(storeMock.search).not.toHaveBeenCalledWith(
-        expect.objectContaining({ embedding: expect.anything() })
-      );
-    });
-
-    it("does not throw in keyword mode even when no embedder metadata is stored", async () => {
-      storeMock.getMeta.mockResolvedValue(null);
-
-      await expect(
-        callRagSearch({ query: "hello", mode: "keyword", db: freshDb() })
-      ).resolves.not.toThrow();
-    });
-  });
-
   // ── Bug 1: getEmbedder uses embedder_model (full HF ID), not display name ──
 
   describe("getEmbedder uses embedder_model first (Bug 1)", () => {
@@ -219,7 +191,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
         return null;
       });
 
-      await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
+      await callRagSearch({ query: "hello", db: freshDb() });
 
       expect(mockCreateEmbedder).toHaveBeenCalledWith(
         expect.objectContaining({ model: "nomic-ai/nomic-embed-text-v1.5" })
@@ -235,7 +207,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
         return null;
       });
 
-      await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
+      await callRagSearch({ query: "hello", db: freshDb() });
 
       expect(mockCreateEmbedder).not.toHaveBeenCalledWith(
         expect.objectContaining({ alias: "nomic-embed-text-v1.5" })
@@ -249,7 +221,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
         return null;
       });
 
-      await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
+      await callRagSearch({ query: "hello", db: freshDb() });
 
       expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "bge" }));
     });
@@ -257,7 +229,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
     it("uses alias 'nomic' as fallback when no metadata is stored", async () => {
       storeMock.getMeta.mockResolvedValue(null);
 
-      await callRagSearch({ query: "hello", mode: "vector", db: freshDb() });
+      await callRagSearch({ query: "hello", db: freshDb() });
 
       expect(mockCreateEmbedder).toHaveBeenCalledWith(expect.objectContaining({ alias: "nomic" }));
     });
@@ -269,33 +241,30 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
         return null;
       });
 
-      await expect(
-        callRagSearch({ query: "hello", mode: "vector", db: freshDb() })
-      ).resolves.not.toThrow();
+      await expect(callRagSearch({ query: "hello", db: freshDb() })).resolves.not.toThrow();
     });
   });
 
-  // ── hybrid mode also calls getEmbedder ────────────────────────────────────
+  // ── always uses hybrid mode + calls getEmbedder ───────────────────────────
 
-  describe("hybrid mode calls getEmbedder", () => {
-    it("calls createEmbedder in hybrid mode", async () => {
+  describe("always hybrid mode calls getEmbedder", () => {
+    it("always calls createEmbedder regardless of query", async () => {
       storeMock.getMeta.mockImplementation(async (key: string) =>
         key === "embedder_model" ? "nomic-ai/nomic-embed-text-v1.5" : null
       );
 
-      await callRagSearch({ query: "hello", mode: "hybrid", db: freshDb() });
+      await callRagSearch({ query: "hello", db: freshDb() });
 
       expect(mockCreateEmbedder).toHaveBeenCalled();
     });
 
-    it("passes an embedding vector to store.search in hybrid mode", async () => {
+    it("passes an embedding vector and mode: hybrid to store.search", async () => {
       storeMock.getMeta.mockResolvedValue(null);
       const embedder = makeEmbedder();
       (mockCreateEmbedder as Mock).mockReturnValue(embedder);
 
-      await callRagSearch({ query: "hello", mode: "hybrid", db: freshDb() });
+      await callRagSearch({ query: "hello", db: freshDb() });
 
-      // In hybrid mode, embedQuery is called and the result passed to store.search
       expect(embedder.embedQuery).toHaveBeenCalledWith("hello");
       expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "hybrid" }));
     });
@@ -319,7 +288,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
     it("returns 'No results found' when store.search returns empty array", async () => {
       storeMock.search.mockResolvedValue([]);
 
-      const result = await callRagSearch({ query: "hello", mode: "keyword" });
+      const result = await callRagSearch({ query: "hello" });
 
       expect(result).toContain("No results found");
     });
@@ -331,7 +300,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
     it("includes source path and score in formatted output", async () => {
       storeMock.search.mockResolvedValue([makeResult("/docs/auth.md", "JWT guide")]);
 
-      const result = await callRagSearch({ query: "jwt", mode: "keyword" });
+      const result = await callRagSearch({ query: "jwt" });
 
       expect(result).toContain("/docs/auth.md");
       expect(result).toContain("Score:");
@@ -340,7 +309,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
     it("includes the chunk text in the output", async () => {
       storeMock.search.mockResolvedValue([makeResult("/docs/auth.md", "JWT authentication guide")]);
 
-      const result = await callRagSearch({ query: "jwt", mode: "keyword" });
+      const result = await callRagSearch({ query: "jwt" });
 
       expect(result).toContain("JWT authentication guide");
     });
@@ -350,7 +319,7 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
 
   describe("store lifecycle", () => {
     it("always closes the store after search", async () => {
-      await callRagSearch({ query: "hello", mode: "keyword" });
+      await callRagSearch({ query: "hello" });
 
       expect(storeMock.close).toHaveBeenCalledTimes(1);
     });

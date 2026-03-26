@@ -103,7 +103,6 @@ program
   .argument("<query>", "Search query")
   .option("-d, --db <name>", "Knowledge base name", "default")
   .option("-l, --limit <number>", "Max results", "10")
-  .option("-m, --mode <mode>", "Search mode: vector|keyword|hybrid", "hybrid")
   .option("--json", "Output as JSON")
   .action(searchCommand);
 

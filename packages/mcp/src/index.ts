@@ -80,12 +80,7 @@ async function getIndexingService(): Promise<IndexingService> {
 // Tool implementations
 // ---------------------------------------------------------------------------
 
-async function ragSearch(args: {
-  query: string;
-  db?: string;
-  limit?: number;
-  mode?: "vector" | "keyword" | "hybrid";
-}): Promise<string> {
+async function ragSearch(args: { query: string; db?: string; limit?: number }): Promise<string> {
   const dbName = args.db || "default";
   const dbPath = getDbPath(dbName);
 
@@ -97,16 +92,13 @@ async function ragSearch(args: {
   await store.open(dbPath);
 
   try {
-    const embedding =
-      args.mode !== "keyword"
-        ? await getEmbedder(dbName, store).then((e) => e.embedQuery(args.query))
-        : undefined;
+    const embedding = await getEmbedder(dbName, store).then((e) => e.embedQuery(args.query));
 
     const results = await store.search({
       text: args.query,
       embedding,
       limit: args.limit || 5,
-      mode: args.mode || "hybrid",
+      mode: "hybrid",
     });
 
     if (results.length === 0) {
@@ -810,15 +802,11 @@ async function main() {
         query: z.string().describe("Search query text"),
         db: z.string().optional().describe("Knowledge base name (default: 'default')"),
         limit: z.number().optional().describe("Maximum number of results (default: 5)"),
-        mode: z
-          .enum(["vector", "keyword", "hybrid"])
-          .optional()
-          .describe("Search mode (default: 'hybrid')"),
       },
     },
-    async ({ query, db, limit, mode }) => {
+    async ({ query, db, limit }) => {
       try {
-        const result = await ragSearch({ query, db, limit, mode });
+        const result = await ragSearch({ query, db, limit });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

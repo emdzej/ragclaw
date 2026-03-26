@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_sources_path ON sources(path);
 -- Speeds up listSources() ORDER BY indexed_at DESC and getStats() MAX(indexed_at)
 CREATE INDEX IF NOT EXISTS idx_sources_indexed_at ON sources(indexed_at);
 
--- Full-text search (FTS5)
+-- Full-text search — unicode61 tokenizer (exact word matches, fast)
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
   id,
   text,
@@ -72,18 +72,31 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
   content_rowid=rowid
 );
 
--- FTS triggers for auto-sync
+-- Full-text search — trigram tokenizer (fuzzy / substring / typo-tolerant)
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts_trigram USING fts5(
+  id,
+  text,
+  content=chunks,
+  content_rowid=rowid,
+  tokenize="trigram"
+);
+
+-- FTS auto-sync triggers (both tables kept in sync with chunks)
 CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
   INSERT INTO chunks_fts(rowid, id, text) VALUES (NEW.rowid, NEW.id, NEW.text);
+  INSERT INTO chunks_fts_trigram(rowid, id, text) VALUES (NEW.rowid, NEW.id, NEW.text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
   INSERT INTO chunks_fts(chunks_fts, rowid, id, text) VALUES('delete', OLD.rowid, OLD.id, OLD.text);
+  INSERT INTO chunks_fts_trigram(chunks_fts_trigram, rowid, id, text) VALUES('delete', OLD.rowid, OLD.id, OLD.text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
   INSERT INTO chunks_fts(chunks_fts, rowid, id, text) VALUES('delete', OLD.rowid, OLD.id, OLD.text);
   INSERT INTO chunks_fts(rowid, id, text) VALUES (NEW.rowid, NEW.id, NEW.text);
+  INSERT INTO chunks_fts_trigram(chunks_fts_trigram, rowid, id, text) VALUES('delete', OLD.rowid, OLD.id, OLD.text);
+  INSERT INTO chunks_fts_trigram(rowid, id, text) VALUES (NEW.rowid, NEW.id, NEW.text);
 END;
 `;
 
@@ -112,6 +125,9 @@ export class Store {
 
     // Migrate legacy databases: write nomic defaults if no embedder meta exists
     this.migrateLegacyMeta();
+
+    // Backfill the trigram FTS index for databases created before it was added
+    this.migrateTrigramIndex();
 
     // Try to load sqlite-vec extension
     await this.tryLoadVec();
@@ -162,6 +178,39 @@ export class Store {
       });
       migrate();
     }
+  }
+
+  /**
+   * Backfill the trigram FTS index for databases that were created before the
+   * `chunks_fts_trigram` table was introduced.
+   *
+   * Detection: if `fts_trigram_built` is already in `store_meta` the table has
+   * been populated — skip.  Otherwise, run a content-table rebuild which
+   * re-reads every row from `chunks` without touching the data itself.
+   */
+  private migrateTrigramIndex(): void {
+    if (!this.db) return;
+
+    const alreadyBuilt = this.db
+      .prepare("SELECT 1 FROM store_meta WHERE key = 'fts_trigram_built'")
+      .get();
+    if (alreadyBuilt) return;
+
+    // Only rebuild when there are actually chunks to populate the index with.
+    const hasChunks = this.db.prepare("SELECT 1 FROM chunks LIMIT 1").get();
+    if (!hasChunks) {
+      // Mark as done so we don't attempt the rebuild on every open of a new DB.
+      this.db
+        .prepare("INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)")
+        .run("fts_trigram_built", "1");
+      return;
+    }
+
+    // Rebuild re-reads from the content table (chunks) — no data is modified.
+    this.db.exec("INSERT INTO chunks_fts_trigram(chunks_fts_trigram) VALUES('rebuild')");
+    this.db
+      .prepare("INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)")
+      .run("fts_trigram_built", "1");
   }
 
   private async tryLoadVec(): Promise<void> {
@@ -555,22 +604,80 @@ export class Store {
   private async keywordSearch(text: string, limit: number): Promise<SearchResult[]> {
     if (!this.db) throw new Error("Store not opened");
 
-    // Escape special FTS5 characters
-    const escapedText = text.replace(/['"]/g, '""');
+    // Build a prefix-token query for the unicode61 (exact) index.
+    // Each whitespace-separated word becomes a prefix token (word*), so
+    // partial input and slight suffix variations still match.  The old
+    // phrase wrapper ("…") required exact adjacency and broke on any typo.
+    const prefixQuery = text
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => `${w.replace(/['"*]/g, "")}*`)
+      .join(" ");
 
-    const rows = this.db
-      .prepare(`
-      SELECT c.*, s.path AS source_path, bm25(chunks_fts) AS rank
-      FROM chunks_fts fts
-      JOIN chunks c ON c.id = fts.id
-      JOIN sources s ON s.id = c.source_id
-      WHERE chunks_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-    `)
-      .all(`"${escapedText}"`, limit) as Record<string, unknown>[];
+    // Build a trigram query for the fuzzy index.
+    // Trigrams do not support the * operator — pass the raw text, but strip
+    // FTS5 special chars to avoid syntax errors.
+    const trigramQuery = text.trim().replace(/['"]/g, "");
 
-    // Normalize BM25 scores (they're negative, lower is better)
+    // ── Exact / prefix leg (unicode61 BM25) ─────────────────────────────────
+    let exactRows: Record<string, unknown>[] = [];
+    if (prefixQuery.length > 0) {
+      try {
+        exactRows = this.db
+          .prepare(`
+            SELECT c.*, s.path AS source_path, bm25(chunks_fts) AS rank
+            FROM chunks_fts fts
+            JOIN chunks c ON c.id = fts.id
+            JOIN sources s ON s.id = c.source_id
+            WHERE chunks_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+          `)
+          .all(prefixQuery, limit) as Record<string, unknown>[];
+      } catch {
+        // Malformed query (e.g. query too short for some edge cases) — skip.
+      }
+    }
+
+    // ── Trigram leg (fuzzy / typo-tolerant) ─────────────────────────────────
+    // Trigram tokenizer requires at least 3 characters; skip for very short input.
+    let trigramRows: Record<string, unknown>[] = [];
+    if (trigramQuery.length >= 3) {
+      try {
+        trigramRows = this.db
+          .prepare(`
+            SELECT c.*, s.path AS source_path, bm25(chunks_fts_trigram) AS rank
+            FROM chunks_fts_trigram fts
+            JOIN chunks c ON c.id = fts.id
+            JOIN sources s ON s.id = c.source_id
+            WHERE chunks_fts_trigram MATCH ?
+            ORDER BY rank
+            LIMIT ?
+          `)
+          .all(trigramQuery, limit) as Record<string, unknown>[];
+      } catch {
+        // Trigram table may not be populated yet on the first open — skip.
+      }
+    }
+
+    // ── Merge: deduplicate by chunk id, keep higher BM25 rank ───────────────
+    // BM25 is negative (more negative = better match); lower abs = better.
+    const best = new Map<string, Record<string, unknown>>();
+    for (const row of [...exactRows, ...trigramRows]) {
+      const id = row.id as string;
+      const existing = best.get(id);
+      if (!existing || Math.abs(row.rank as number) < Math.abs(existing.rank as number)) {
+        best.set(id, row);
+      }
+    }
+
+    const merged = Array.from(best.values());
+    // Re-sort by rank (ascending — more negative is better) and trim to limit.
+    merged.sort((a, b) => (a.rank as number) - (b.rank as number));
+    const rows = merged.slice(0, limit);
+
+    // Normalize BM25 scores to [0, 1]: best result → 1.0, worst → 0.0.
     const maxRank = Math.max(...rows.map((r) => Math.abs(r.rank as number)), 1);
 
     return rows.map((row) => ({

@@ -6,7 +6,6 @@
  */
 
 import { existsSync } from "node:fs";
-import type { SearchMode } from "@emdzej/ragclaw-core";
 import { createEmbedder, Store } from "@emdzej/ragclaw-core";
 import chalk from "chalk";
 import ora from "ora";
@@ -15,7 +14,6 @@ import { getDbPath } from "../config.js";
 interface SearchOptions {
   db: string;
   limit: string;
-  mode: string;
   json?: boolean;
 }
 
@@ -34,26 +32,19 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
   const spinner = ora("Searching...").start();
 
   try {
-    // Load embedder for vector/hybrid search.
-    // Always inferred from store metadata — no --embedder flag on search.
-    let embedding: Float32Array | undefined;
-    if (options.mode !== "keyword") {
-      // Read embedder info from store metadata (set during indexing).
-      // Prefer embedder_model (full HF model ID) over embedder_name (which may
-      // be a short display name like "nomic-embed-text-v1.5", not a valid alias).
-      const storedModel = await store.getMeta("embedder_model");
-      const storedName = (await store.getMeta("embedder_name")) ?? "nomic";
-      const embedder = storedModel
-        ? createEmbedder({ model: storedModel })
-        : createEmbedder({ alias: storedName });
-      embedding = await embedder.embedQuery(query);
-    }
+    // Always use hybrid search — load the embedder from store metadata.
+    const storedModel = await store.getMeta("embedder_model");
+    const storedName = (await store.getMeta("embedder_name")) ?? "nomic";
+    const embedder = storedModel
+      ? createEmbedder({ model: storedModel })
+      : createEmbedder({ alias: storedName });
+    const embedding = await embedder.embedQuery(query);
 
     const results = await store.search({
       text: query,
       embedding,
       limit: parseInt(options.limit, 10),
-      mode: options.mode as SearchMode,
+      mode: "hybrid",
     });
 
     spinner.stop();

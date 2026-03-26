@@ -102,7 +102,7 @@ function makeResult(sourcePath: string, text: string): SearchResult {
   return { chunk, score: 0.85, scoreVector: 0.9, scoreKeyword: 0.7 };
 }
 
-const defaultOptions = { db: "default", limit: "10", mode: "hybrid" };
+const defaultOptions = { db: "default", limit: "10" };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -190,29 +190,11 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     });
   });
 
-  // ── Keyword mode skips the embedder entirely ──────────────────────────────
-
-  describe("keyword mode", () => {
-    it("does not call createEmbedder in keyword mode", async () => {
-      await searchCommand("hello", { ...defaultOptions, mode: "keyword" });
-
-      expect(mockCreateEmbedder).not.toHaveBeenCalled();
-    });
-
-    it("passes undefined embedding to store.search in keyword mode", async () => {
-      await searchCommand("hello", { ...defaultOptions, mode: "keyword" });
-
-      expect(storeMock.search).toHaveBeenCalledWith(
-        expect.objectContaining({ embedding: undefined, mode: "keyword" })
-      );
-    });
-  });
-
   // ── store.search receives correct parameters ──────────────────────────────
 
   describe("search parameter forwarding", () => {
     it("passes the query text to store.search", async () => {
-      await searchCommand("jwt expiry", { ...defaultOptions, mode: "keyword" });
+      await searchCommand("jwt expiry", defaultOptions);
 
       expect(storeMock.search).toHaveBeenCalledWith(
         expect.objectContaining({ text: "jwt expiry" })
@@ -220,15 +202,15 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     });
 
     it("parses the limit string and passes it as a number", async () => {
-      await searchCommand("hello", { ...defaultOptions, mode: "keyword", limit: "3" });
+      await searchCommand("hello", { ...defaultOptions, limit: "3" });
 
       expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ limit: 3 }));
     });
 
-    it("passes the mode to store.search", async () => {
-      await searchCommand("hello", { ...defaultOptions, mode: "vector" });
+    it("always passes mode: hybrid to store.search", async () => {
+      await searchCommand("hello", defaultOptions);
 
-      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "vector" }));
+      expect(storeMock.search).toHaveBeenCalledWith(expect.objectContaining({ mode: "hybrid" }));
     });
   });
 
@@ -238,7 +220,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     it("prints 'No results found' when store returns an empty array", async () => {
       storeMock.search.mockResolvedValue([]);
 
-      await searchCommand("hello", { ...defaultOptions, mode: "keyword" });
+      await searchCommand("hello", defaultOptions);
 
       const output = consoleSpy.log.mock.calls.flat().join("\n");
       expect(output).toContain("No results found");
@@ -247,7 +229,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     it("prints result count and source path when results are returned", async () => {
       storeMock.search.mockResolvedValue([makeResult("/docs/auth.md", "JWT authentication guide")]);
 
-      await searchCommand("jwt", { ...defaultOptions, mode: "keyword" });
+      await searchCommand("jwt", defaultOptions);
 
       const output = consoleSpy.log.mock.calls.flat().join("\n");
       expect(output).toContain("Found 1 result");
@@ -257,7 +239,7 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
     it("outputs valid JSON when --json flag is set", async () => {
       storeMock.search.mockResolvedValue([makeResult("/docs/auth.md", "JWT authentication guide")]);
 
-      await searchCommand("jwt", { ...defaultOptions, mode: "keyword", json: true });
+      await searchCommand("jwt", { ...defaultOptions, json: true });
 
       const rawOutput = consoleSpy.log.mock.calls.flat().join("\n");
       expect(() => JSON.parse(rawOutput)).not.toThrow();
