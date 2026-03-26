@@ -14,5 +14,9 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     testTimeout: 10_000,
     passWithNoTests: true,
+    benchmark: {
+      include: ["src/**/*.bench.ts"],
+      outputJson: "benchmarks/results/latest.json",
+    },
   },
 });

@@ -17,6 +17,12 @@ import type {
 } from "../types.js";
 import { cosineSimilarity } from "../utils/math.js";
 
+/**
+ * Explicit column list for search result hydration — excludes `embedding`
+ * to avoid transferring large BLOBs that are never needed in results.
+ */
+const CHUNK_COLS = "c.id, c.source_id, c.text, c.start_line, c.end_line, c.metadata, c.created_at";
+
 const SCHEMA = `
 -- Source files/URLs tracking
 CREATE TABLE IF NOT EXISTS sources (
@@ -484,15 +490,250 @@ export class Store {
       return this.vectorSearch(query.embedding, limit);
     }
 
-    // Hybrid search
+    // Hybrid search — use deferred hydration for efficiency:
+    // 1. Score each leg independently (lightweight — no full row hydration)
+    // 2. Merge IDs via RRF
+    // 3. Hydrate only the final winners in a single query
     if (!query.embedding) {
       throw new Error("Hybrid search requires embedding");
     }
 
-    const vectorResults = await this.vectorSearch(query.embedding, limit * 2);
-    const keywordResults = await this.keywordSearch(query.text, limit * 2);
+    const vectorScored = await this.vectorScoreOnly(query.embedding, limit * 2);
+    const keywordScored = await this.keywordScoreOnly(query.text, limit * 2);
 
-    return this.mergeResults(vectorResults, keywordResults, limit);
+    const mergedIds = this.mergeScored(vectorScored, keywordScored, limit);
+
+    if (mergedIds.length === 0) return [];
+    return this.hydrateResults(mergedIds);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Deferred-hydration helpers (hybrid mode only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Return lightweight `{id, score}` pairs from vector search without
+   * hydrating full chunk rows.  Uses native sqlite-vec when available,
+   * falling back to the JS cosine scan.
+   */
+  private async vectorScoreOnly(
+    embedding: Float32Array,
+    limit: number
+  ): Promise<{ id: string; score: number }[]> {
+    if (!this.db) throw new Error("Store not opened");
+
+    if (this.hasVec) {
+      try {
+        const embeddingBlob = Buffer.from(embedding.buffer);
+        const rows = this.db
+          .prepare(`
+            SELECT v.id, vec_distance_cosine(v.embedding, ?) AS dist
+            FROM chunks_vec v
+            ORDER BY dist ASC
+            LIMIT ?
+          `)
+          .all(embeddingBlob, limit) as { id: string; dist: number }[];
+
+        return rows.map((r) => ({ id: r.id, score: 1 - r.dist }));
+      } catch {
+        // Fall through to JS fallback
+      }
+    }
+
+    // JS fallback — score every embedding, keep top-K
+    const rows = this.db
+      .prepare("SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL")
+      .all() as { id: string; embedding: Buffer }[];
+
+    if (rows.length === 0) return [];
+
+    const scored: { id: string; score: number }[] = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const buf = rows[i].embedding;
+      const chunkEmbedding = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+      scored[i] = { id: rows[i].id, score: cosineSimilarity(embedding, chunkEmbedding) };
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit);
+  }
+
+  /**
+   * Return lightweight `{id, score}` pairs from keyword (FTS5) search
+   * without hydrating full chunk rows.  Merges exact and trigram legs,
+   * normalises BM25 to [0, 1].
+   */
+  private keywordScoreOnly(text: string, limit: number): { id: string; score: number }[] {
+    if (!this.db) throw new Error("Store not opened");
+
+    // Build prefix-token query for unicode61 index (OR join)
+    const words = text
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.replace(/['"*]/g, ""))
+      .filter((w) => w.length > 0);
+    const prefixQuery = words.map((w) => `${w}*`).join(" OR ");
+
+    // Build trigram query
+    const trigramQuery = text.trim().replace(/['"]/g, "");
+
+    // ── Exact / prefix leg ──────────────────────────────────────────────
+    let exactRows: { id: string; rank: number }[] = [];
+    if (prefixQuery.length > 0) {
+      try {
+        exactRows = this.db
+          .prepare(`
+            SELECT fts.id, bm25(chunks_fts) AS rank
+            FROM chunks_fts fts
+            WHERE chunks_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+          `)
+          .all(prefixQuery, limit) as { id: string; rank: number }[];
+      } catch {
+        // Malformed query — skip
+      }
+    }
+
+    // ── Trigram leg ─────────────────────────────────────────────────────
+    let trigramRows: { id: string; rank: number }[] = [];
+    if (trigramQuery.length >= 3) {
+      try {
+        trigramRows = this.db
+          .prepare(`
+            SELECT fts.id, bm25(chunks_fts_trigram) AS rank
+            FROM chunks_fts_trigram fts
+            WHERE chunks_fts_trigram MATCH ?
+            ORDER BY rank
+            LIMIT ?
+          `)
+          .all(trigramQuery, limit) as { id: string; rank: number }[];
+      } catch {
+        // Trigram table may not be populated — skip
+      }
+    }
+
+    // ── Merge: deduplicate by id, keep better BM25 rank ────────────────
+    const best = new Map<string, number>();
+    for (const row of [...exactRows, ...trigramRows]) {
+      const existing = best.get(row.id);
+      if (existing === undefined || Math.abs(row.rank) < Math.abs(existing)) {
+        best.set(row.id, row.rank);
+      }
+    }
+
+    // Sort by rank ascending (more negative = better match), trim to limit
+    const merged = Array.from(best.entries())
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, limit);
+
+    if (merged.length === 0) return [];
+
+    // Normalise BM25 scores to [0, 1]
+    const maxRank = Math.max(...merged.map(([, r]) => Math.abs(r)), 1);
+    return merged.map(([id, rank]) => ({
+      id,
+      score: 1 - Math.abs(rank) / maxRank,
+    }));
+  }
+
+  /**
+   * Merge lightweight scored arrays via Reciprocal Rank Fusion (RRF).
+   *
+   * Returns `{id, score, scoreVector?, scoreKeyword?}` tuples sorted by
+   * descending RRF score, trimmed to `limit`.
+   */
+  private mergeScored(
+    vectorScored: { id: string; score: number }[],
+    keywordScored: { id: string; score: number }[],
+    limit: number,
+    k = 60
+  ): { id: string; score: number; scoreVector?: number; scoreKeyword?: number }[] {
+    const scores = new Map<
+      string,
+      { rrfScore: number; scoreVector?: number; scoreKeyword?: number }
+    >();
+
+    // Vector leg
+    for (let rank = 0; rank < vectorScored.length; rank++) {
+      const r = vectorScored[rank];
+      const contribution = this.config.vectorWeight / (k + rank + 1);
+      scores.set(r.id, {
+        rrfScore: contribution,
+        scoreVector: r.score,
+      });
+    }
+
+    // Keyword leg
+    for (let rank = 0; rank < keywordScored.length; rank++) {
+      const r = keywordScored[rank];
+      const contribution = this.config.keywordWeight / (k + rank + 1);
+      const existing = scores.get(r.id);
+      if (existing) {
+        existing.rrfScore += contribution;
+        existing.scoreKeyword = r.score;
+      } else {
+        scores.set(r.id, {
+          rrfScore: contribution,
+          scoreKeyword: r.score,
+        });
+      }
+    }
+
+    return Array.from(scores.entries())
+      .map(([id, s]) => ({
+        id,
+        score: s.rrfScore,
+        scoreVector: s.scoreVector,
+        scoreKeyword: s.scoreKeyword,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
+
+  /**
+   * Hydrate the final winner IDs into full `SearchResult[]` with a single
+   * bulk query.  Preserves the incoming order and scores.
+   */
+  private hydrateResults(
+    mergedIds: { id: string; score: number; scoreVector?: number; scoreKeyword?: number }[]
+  ): SearchResult[] {
+    if (!this.db) throw new Error("Store not opened");
+    if (mergedIds.length === 0) return [];
+
+    const placeholders = mergedIds.map(() => "?").join(", ");
+    const ids = mergedIds.map((r) => r.id);
+
+    const rows = this.db
+      .prepare(`
+        SELECT ${CHUNK_COLS}, s.path AS source_path
+        FROM chunks c
+        JOIN sources s ON s.id = c.source_id
+        WHERE c.id IN (${placeholders})
+      `)
+      .all(...ids) as Record<string, unknown>[];
+
+    // Index by id for O(1) lookup
+    const rowById = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      rowById.set(row.id as string, row);
+    }
+
+    // Build results in the ranked order from mergedIds
+    const results: SearchResult[] = [];
+    for (const entry of mergedIds) {
+      const row = rowById.get(entry.id);
+      if (!row) continue; // shouldn't happen — stale vec index entry
+      results.push({
+        chunk: this.rowToChunk(row),
+        score: entry.score,
+        scoreVector: entry.scoreVector,
+        scoreKeyword: entry.scoreKeyword,
+      });
+    }
+
+    return results;
   }
 
   private async vectorSearch(embedding: Float32Array, limit: number): Promise<SearchResult[]> {
@@ -512,7 +753,7 @@ export class Store {
       const embeddingBlob = Buffer.from(embedding.buffer);
       const rows = this.db
         .prepare(`
-        SELECT c.*, s.path AS source_path, vec_distance_cosine(v.embedding, ?) AS dist
+        SELECT ${CHUNK_COLS}, s.path AS source_path, vec_distance_cosine(v.embedding, ?) AS dist
         FROM chunks_vec v
         JOIN chunks c ON c.id = v.id
         JOIN sources s ON s.id = c.source_id
@@ -573,7 +814,7 @@ export class Store {
     const ids = topK.map((r) => r.id);
     const fullRows = this.db
       .prepare(`
-      SELECT c.*, s.path AS source_path
+      SELECT ${CHUNK_COLS}, s.path AS source_path
       FROM chunks c
       JOIN sources s ON s.id = c.source_id
       WHERE c.id IN (${placeholders})
@@ -605,15 +846,16 @@ export class Store {
     if (!this.db) throw new Error("Store not opened");
 
     // Build a prefix-token query for the unicode61 (exact) index.
-    // Each whitespace-separated word becomes a prefix token (word*), so
-    // partial input and slight suffix variations still match.  The old
-    // phrase wrapper ("…") required exact adjacency and broke on any typo.
-    const prefixQuery = text
+    // Each whitespace-separated word becomes a prefix token (word*) joined
+    // with OR so that compound queries ("auth and migration") match chunks
+    // about either topic.  BM25 naturally boosts chunks matching more terms.
+    const words = text
       .trim()
       .split(/\s+/)
       .filter(Boolean)
-      .map((w) => `${w.replace(/['"*]/g, "")}*`)
-      .join(" ");
+      .map((w) => w.replace(/['"*]/g, ""))
+      .filter((w) => w.length > 0);
+    const prefixQuery = words.map((w) => `${w}*`).join(" OR ");
 
     // Build a trigram query for the fuzzy index.
     // Trigrams do not support the * operator — pass the raw text, but strip
@@ -626,7 +868,7 @@ export class Store {
       try {
         exactRows = this.db
           .prepare(`
-            SELECT c.*, s.path AS source_path, bm25(chunks_fts) AS rank
+            SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts) AS rank
             FROM chunks_fts fts
             JOIN chunks c ON c.id = fts.id
             JOIN sources s ON s.id = c.source_id
@@ -647,7 +889,7 @@ export class Store {
       try {
         trigramRows = this.db
           .prepare(`
-            SELECT c.*, s.path AS source_path, bm25(chunks_fts_trigram) AS rank
+            SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts_trigram) AS rank
             FROM chunks_fts_trigram fts
             JOIN chunks c ON c.id = fts.id
             JOIN sources s ON s.id = c.source_id
@@ -685,40 +927,6 @@ export class Store {
       score: 1 - Math.abs(row.rank as number) / maxRank,
       scoreKeyword: 1 - Math.abs(row.rank as number) / maxRank,
     }));
-  }
-
-  private mergeResults(
-    vectorResults: SearchResult[],
-    keywordResults: SearchResult[],
-    limit: number
-  ): SearchResult[] {
-    const merged = new Map<string, SearchResult>();
-
-    // Add vector results
-    for (const result of vectorResults) {
-      merged.set(result.chunk.id, {
-        ...result,
-        score: result.score * this.config.vectorWeight,
-      });
-    }
-
-    // Merge keyword results
-    for (const result of keywordResults) {
-      const existing = merged.get(result.chunk.id);
-      if (existing) {
-        existing.score += result.score * this.config.keywordWeight;
-        existing.scoreKeyword = result.scoreKeyword;
-      } else {
-        merged.set(result.chunk.id, {
-          ...result,
-          score: result.score * this.config.keywordWeight,
-        });
-      }
-    }
-
-    const results = Array.from(merged.values());
-    results.sort((a, b) => b.score - a.score);
-    return results.slice(0, limit);
   }
 
   private rowToChunk(row: Record<string, unknown>): ChunkRecord {

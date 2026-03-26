@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
-import type { EmbedderPlugin, Source } from "@emdzej/ragclaw-core";
+import type { EmbedderPlugin, SearchResult, Source } from "@emdzej/ragclaw-core";
 import {
   createEmbedder,
   getConfig,
@@ -59,6 +59,42 @@ async function getEmbedder(dbName: string, store: Store): Promise<EmbedderPlugin
   return embedder;
 }
 
+/**
+ * Persistent Store connections cached per DB name.
+ *
+ * Opening a Store is expensive: schema init, migration checks, sqlite-vec
+ * loading attempt.  By keeping one open Store per DB we avoid ~20-50 ms of
+ * overhead on every MCP tool call.  SQLite WAL mode allows concurrent reads,
+ * and better-sqlite3 is synchronous so there are no concurrent-write hazards.
+ *
+ * Write operations (add, remove, reindex, merge) call `invalidateStoreCache()`
+ * after they are done to ensure the next read picks up fresh state.
+ */
+const cachedStores = new Map<string, Store>();
+
+async function getCachedStore(dbName: string): Promise<Store> {
+  const existing = cachedStores.get(dbName);
+  if (existing) return existing;
+
+  const dbPath = getDbPath(dbName);
+  const store = new Store();
+  await store.open(dbPath);
+  cachedStores.set(dbName, store);
+  return store;
+}
+
+/**
+ * Close and evict a cached Store.  Call after write operations so the next
+ * read picks up any schema or data changes.
+ */
+async function invalidateStoreCache(dbName: string): Promise<void> {
+  const store = cachedStores.get(dbName);
+  if (store) {
+    await store.close();
+    cachedStores.delete(dbName);
+  }
+}
+
 /** IndexingService used for add/reindex operations. */
 let cachedIndexingService: IndexingService | null = null;
 
@@ -77,6 +113,116 @@ async function getIndexingService(): Promise<IndexingService> {
 }
 
 // ---------------------------------------------------------------------------
+// Query decomposition
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a compound query into independent sub-queries.
+ *
+ * Agents often pack multiple topics into a single search, e.g.:
+ *   "how authentication works and what are the database migration steps"
+ *
+ * A single embedding for such a query lands in a "middle ground" of the
+ * vector space that matches *neither* topic well, and the FTS leg requires
+ * all terms to appear in a single chunk.
+ *
+ * This function splits on common natural-language delimiters so each
+ * sub-query can be embedded and searched independently.
+ */
+function decomposeQuery(text: string): string[] {
+  // Split on explicit delimiters that indicate separate intents:
+  //   • semicolons, newlines
+  //   • " and " / " & " when surrounded by 3+ word phrases
+  //   • numbered list items (1. / 2. / - / *)
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  // Step 1: split on semicolons and newlines
+  let parts = trimmed
+    .split(/[;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Step 2: split on " and " / " & " only when both sides have ≥3 words
+  // (avoids splitting "pros and cons" or "search and replace")
+  const refined: string[] = [];
+  for (const part of parts) {
+    const andSplit = part.split(/\s+(?:and|&)\s+/i);
+    if (andSplit.length > 1 && andSplit.every((s) => s.trim().split(/\s+/).length >= 3)) {
+      refined.push(...andSplit.map((s) => s.trim()).filter(Boolean));
+    } else {
+      refined.push(part);
+    }
+  }
+  parts = refined;
+
+  // Step 3: split numbered/bulleted items (e.g. "1. foo 2. bar" or "- foo - bar")
+  const finalParts: string[] = [];
+  for (const part of parts) {
+    const listItems = part
+      .split(/(?:^|\s)(?:\d+[.)]\s+|[-*]\s+)/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (listItems.length > 1) {
+      finalParts.push(...listItems);
+    } else {
+      finalParts.push(part);
+    }
+  }
+
+  // Deduplicate and filter out very short fragments (< 3 chars)
+  const seen = new Set<string>();
+  return finalParts.filter((q) => {
+    if (q.length < 3) return false;
+    const key = q.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Merge multiple ranked result lists using Reciprocal Rank Fusion (RRF).
+ *
+ * RRF is position-based and doesn't depend on raw score scales, making it
+ * ideal for combining results from different sub-queries whose scores are
+ * not directly comparable.
+ *
+ *   score_rrf(chunk) = Σ  1 / (k + rank_in_list)
+ *
+ * @param resultLists - Array of result arrays (each sorted by descending relevance)
+ * @param limit - Maximum results to return
+ * @param k - RRF constant (default 60, per the original paper)
+ */
+function reciprocalRankFusion(
+  resultLists: SearchResult[][],
+  limit: number,
+  k = 60
+): SearchResult[] {
+  const scores = new Map<string, { result: SearchResult; rrfScore: number }>();
+
+  for (const results of resultLists) {
+    for (let rank = 0; rank < results.length; rank++) {
+      const r = results[rank];
+      const existing = scores.get(r.chunk.id);
+      const contribution = 1 / (k + rank + 1);
+      if (existing) {
+        existing.rrfScore += contribution;
+      } else {
+        scores.set(r.chunk.id, { result: r, rrfScore: contribution });
+      }
+    }
+  }
+
+  const merged = Array.from(scores.values());
+  merged.sort((a, b) => b.rrfScore - a.rrfScore);
+  return merged.slice(0, limit).map((entry) => ({
+    ...entry.result,
+    score: entry.rrfScore,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Tool implementations
 // ---------------------------------------------------------------------------
 
@@ -88,36 +234,53 @@ async function ragSearch(args: { query: string; db?: string; limit?: number }): 
     return `Knowledge base "${dbName}" not found. Run kb_add first to create it.`;
   }
 
-  const store = new Store();
-  await store.open(dbPath);
+  const store = await getCachedStore(dbName);
+  const embedder = await getEmbedder(dbName, store);
+  const limit = args.limit || 5;
 
-  try {
-    const embedding = await getEmbedder(dbName, store).then((e) => e.embedQuery(args.query));
+  const subQueries = decomposeQuery(args.query);
 
-    const results = await store.search({
+  let results: SearchResult[];
+
+  if (subQueries.length <= 1) {
+    // Single query — use the original path (faster, no extra embedding calls)
+    const embedding = await embedder.embedQuery(args.query);
+    results = await store.search({
       text: args.query,
       embedding,
-      limit: args.limit || 5,
+      limit,
       mode: "hybrid",
     });
-
-    if (results.length === 0) {
-      return "No results found.";
-    }
-
-    const formatted = results.map((r, i) => {
-      const lines =
-        r.chunk.startLine && r.chunk.endLine
-          ? ` (lines ${r.chunk.startLine}-${r.chunk.endLine})`
-          : "";
-      const score = (r.score * 100).toFixed(1);
-      return `[${i + 1}] ${r.chunk.sourcePath}${lines}\nScore: ${score}%\n${r.chunk.text}`;
-    });
-
-    return formatted.join("\n\n---\n\n");
-  } finally {
-    await store.close();
+  } else {
+    // Multiple sub-queries — search each independently, merge with RRF
+    const subResults = await Promise.all(
+      subQueries.map(async (sq) => {
+        const embedding = await embedder.embedQuery(sq);
+        return store.search({
+          text: sq,
+          embedding,
+          limit: limit * 2, // over-fetch per sub-query for better RRF merging
+          mode: "hybrid",
+        });
+      })
+    );
+    results = reciprocalRankFusion(subResults, limit);
   }
+
+  if (results.length === 0) {
+    return "No results found.";
+  }
+
+  const formatted = results.map((r, i) => {
+    const lines =
+      r.chunk.startLine && r.chunk.endLine
+        ? ` (lines ${r.chunk.startLine}-${r.chunk.endLine})`
+        : "";
+    const score = (r.score * 100).toFixed(1);
+    return `[${i + 1}] ${r.chunk.sourcePath}${lines}\nScore: ${score}%\n${r.chunk.text}`;
+  });
+
+  return formatted.join("\n\n---\n\n");
 }
 
 async function ragAdd(args: {
@@ -143,6 +306,7 @@ async function ragAdd(args: {
   // Ensure directory exists
   await mkdir(RAGCLAW_DIR, { recursive: true });
 
+  // Write operation — use a fresh Store and invalidate cache afterward
   const store = new Store();
   await store.open(dbPath);
 
@@ -240,6 +404,7 @@ async function ragAdd(args: {
     return result;
   } finally {
     await store.close();
+    await invalidateStoreCache(dbName);
   }
 }
 
@@ -251,20 +416,18 @@ async function ragStatus(args: { db?: string }): Promise<string> {
     return `Knowledge base "${dbName}" not found.`;
   }
 
-  const store = new Store();
-  await store.open(dbPath);
+  const store = await getCachedStore(dbName);
 
-  try {
-    const stats = await store.getStats();
-    const meta = await store.getAllMeta();
-    const sizeKB = (stats.sizeBytes / 1024).toFixed(1);
-    const updated = stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleString() : "never";
+  const stats = await store.getStats();
+  const meta = await store.getAllMeta();
+  const sizeKB = (stats.sizeBytes / 1024).toFixed(1);
+  const updated = stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleString() : "never";
 
-    const embedderName = meta.embedder_name ?? "nomic";
-    const embedderModel = meta.embedder_model ?? embedderName;
-    const embedderDims = meta.embedder_dimensions ?? "?";
+  const embedderName = meta.embedder_name ?? "nomic";
+  const embedderModel = meta.embedder_model ?? embedderName;
+  const embedderDims = meta.embedder_dimensions ?? "?";
 
-    return `Knowledge Base: ${dbName}
+  return `Knowledge Base: ${dbName}
 Path: ${dbPath}
 Embedder: ${embedderName} (${embedderModel}, ${embedderDims} dims)
 Sources: ${stats.sources}
@@ -272,9 +435,6 @@ Chunks: ${stats.chunks}
 Size: ${sizeKB} KB
 Last Updated: ${updated}
 Vector Support: ${store.hasVectorSupport ? "native" : "JS fallback"}`;
-  } finally {
-    await store.close();
-  }
 }
 
 async function ragRemove(args: { source: string; db?: string }): Promise<string> {
@@ -285,6 +445,7 @@ async function ragRemove(args: { source: string; db?: string }): Promise<string>
     return `Knowledge base "${dbName}" not found.`;
   }
 
+  // Write operation — use a fresh Store and invalidate cache afterward
   const store = new Store();
   await store.open(dbPath);
 
@@ -298,6 +459,7 @@ async function ragRemove(args: { source: string; db?: string }): Promise<string>
     return `Removed: ${args.source}`;
   } finally {
     await store.close();
+    await invalidateStoreCache(dbName);
   }
 }
 
@@ -316,6 +478,7 @@ async function ragReindex(args: {
     return `Knowledge base "${dbName}" not found.`;
   }
 
+  // Write operation — use a fresh Store and invalidate cache afterward
   const store = new Store();
   await store.open(dbPath);
 
@@ -381,6 +544,7 @@ async function ragReindex(args: {
     return result;
   } finally {
     await store.close();
+    await invalidateStoreCache(dbName);
   }
 }
 
@@ -486,6 +650,7 @@ async function ragMerge(args: {
     return result;
   } finally {
     await destDb.close();
+    await invalidateStoreCache(dbName);
   }
 }
 
@@ -585,10 +750,8 @@ async function ragListDatabases(): Promise<string> {
   // Open each store briefly to read description + keywords
   const results = await Promise.all(
     names.map(async (name) => {
-      const dbPath = getDbPath(name);
-      const store = new Store();
       try {
-        await store.open(dbPath);
+        const store = await getCachedStore(name);
         const description = (await store.getMeta("db_description")) ?? null;
         const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
         const keywords = keywordsRaw
@@ -600,8 +763,6 @@ async function ragListDatabases(): Promise<string> {
         return { name, description, keywords };
       } catch {
         return { name, description: null, keywords: [] };
-      } finally {
-        await store.close();
       }
     })
   );
@@ -623,6 +784,7 @@ async function ragDbInit(args: {
 
   await mkdir(RAGCLAW_DIR, { recursive: true });
 
+  // Write operation — create and then close so the next read picks it up
   const store = new Store();
   await store.open(dbPath);
 
@@ -635,6 +797,7 @@ async function ragDbInit(args: {
     }
   } finally {
     await store.close();
+    // No invalidation needed — this is a brand-new DB, not in cache yet
   }
 
   return `Created knowledge base "${dbName}" at ${dbPath}`;
@@ -656,6 +819,7 @@ async function ragDbInfo(args: {
     return "Error: Provide at least one of description or keywords.";
   }
 
+  // Write operation — use a fresh Store and invalidate cache afterward
   const store = new Store();
   await store.open(dbPath);
 
@@ -668,6 +832,7 @@ async function ragDbInfo(args: {
     }
   } finally {
     await store.close();
+    await invalidateStoreCache(dbName);
   }
 
   return `Updated info for knowledge base "${dbName}"`;
@@ -681,22 +846,17 @@ async function ragDbInfoGet(args: { db?: string }): Promise<string> {
     return `Error: Knowledge base "${dbName}" not found.`;
   }
 
-  const store = new Store();
-  await store.open(dbPath);
+  const store = await getCachedStore(dbName);
 
-  try {
-    const description = (await store.getMeta("db_description")) ?? null;
-    const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
-    const keywords = keywordsRaw
-      ? keywordsRaw
-          .split(",")
-          .map((k: string) => k.trim())
-          .filter(Boolean)
-      : [];
-    return JSON.stringify({ name: dbName, description, keywords });
-  } finally {
-    await store.close();
-  }
+  const description = (await store.getMeta("db_description")) ?? null;
+  const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
+  const keywords = keywordsRaw
+    ? keywordsRaw
+        .split(",")
+        .map((k: string) => k.trim())
+        .filter(Boolean)
+    : [];
+  return JSON.stringify({ name: dbName, description, keywords });
 }
 
 async function ragDbDelete(args: { db?: string; confirm?: boolean }): Promise<string> {
@@ -717,6 +877,9 @@ async function ragDbDelete(args: { db?: string; confirm?: boolean }): Promise<st
   if (!existsSync(dbPath)) {
     return `Error: Knowledge base "${safeName}" not found.`;
   }
+
+  // Close any cached Store before deleting the file
+  await invalidateStoreCache(safeName);
 
   try {
     await rm(dbPath);
@@ -754,6 +917,9 @@ async function ragDbRename(args: {
   if (existsSync(newPath)) {
     return `Error: Knowledge base "${safeNew}" already exists. Choose a different name.`;
   }
+
+  // Close any cached Store before renaming the file
+  await invalidateStoreCache(safeOld);
 
   try {
     await rename(oldPath, newPath);
@@ -809,28 +975,21 @@ async function ragReadSource(args: { source: string; db?: string }): Promise<str
     return `Knowledge base "${dbName}" not found. Run kb_add first to create it.`;
   }
 
-  const store = new Store();
-  await store.open(dbPath);
+  const store = await getCachedStore(dbName);
 
-  try {
-    const chunks = await store.getChunksBySourcePath(args.source);
+  const chunks = await store.getChunksBySourcePath(args.source);
 
-    if (chunks.length === 0) {
-      return `Source not found: ${args.source}`;
-    }
-
-    const formatted = chunks.map(
-      (chunk: { startLine?: number; endLine?: number; text: string }) => {
-        const lines =
-          chunk.startLine && chunk.endLine ? ` (lines ${chunk.startLine}-${chunk.endLine})` : "";
-        return `--- chunk${lines} ---\n${chunk.text}`;
-      }
-    );
-
-    return `Source: ${args.source}\nChunks: ${chunks.length}\n\n${formatted.join("\n\n")}`;
-  } finally {
-    await store.close();
+  if (chunks.length === 0) {
+    return `Source not found: ${args.source}`;
   }
+
+  const formatted = chunks.map((chunk: { startLine?: number; endLine?: number; text: string }) => {
+    const lines =
+      chunk.startLine && chunk.endLine ? ` (lines ${chunk.startLine}-${chunk.endLine})` : "";
+    return `--- chunk${lines} ---\n${chunk.text}`;
+  });
+
+  return `Source: ${args.source}\nChunks: ${chunks.length}\n\n${formatted.join("\n\n")}`;
 }
 
 // Main server

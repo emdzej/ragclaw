@@ -465,7 +465,7 @@ ragclaw config set embedder bge
 2. **Chunk** — Split into semantic units (paragraphs, functions, classes)
 3. **Embed** — Generate vectors using a configurable local model (default: `nomic-embed-text-v1.5`, 768 dims)
 4. **Store** — SQLite with FTS5 for keyword search; embedder info written to `store_meta`
-5. **Search** — Hybrid scoring: 70% vector + 30% BM25; embedder auto-detected from DB metadata
+5. **Search** — Hybrid scoring via Reciprocal Rank Fusion (vector + BM25 keyword); embedder auto-detected from DB metadata
 
 All processing happens locally. No external APIs.
 
@@ -498,6 +498,48 @@ ragclaw doctor
 ```
 
 The doctor command shows whether sqlite-vec is loaded and where it came from (npm package or system-installed extension).
+
+---
+
+## Benchmarks
+
+The `@emdzej/ragclaw-core` package includes a search benchmark suite built on [Vitest bench](https://vitest.dev/guide/features.html#benchmarking). It measures keyword, vector, and hybrid search latency against a synthetic 480-chunk corpus (8 topics, ~60 chunks each).
+
+### Running benchmarks
+
+```bash
+# From the repo root
+pnpm --filter @emdzej/ragclaw-core bench
+```
+
+Results are printed to the terminal and written as JSON to `packages/core/benchmarks/results/latest.json` (gitignored).
+
+### What's measured
+
+| Category | Cases | Notes |
+|----------|-------|-------|
+| **Keyword** | Single term, two terms, compound, broad, no matches, limit=50 | FTS5 exact + trigram |
+| **Vector** | Close match, mid-range, limit=50 | JS fallback (no `sqlite-vec` in test env) |
+| **Hybrid** | Single topic, two terms, compound, broad, limit=50, no keyword hits | Deferred hydration + RRF |
+
+### Comparing results
+
+Save a baseline before making changes, then diff after:
+
+```bash
+# Save baseline
+pnpm --filter @emdzej/ragclaw-core bench
+cp packages/core/benchmarks/results/latest.json packages/core/benchmarks/results/baseline.json
+
+# Make changes, then re-run
+pnpm --filter @emdzej/ragclaw-core bench
+
+# Compare (e.g. with jq)
+jq -r '.files[].groups[].benchmarks[] | "\(.name)\t\(.hz | round) ops/s\t\(.mean | .*1000 | round / 1000) ms"' \
+  packages/core/benchmarks/results/latest.json
+```
+
+Historical results are recorded in [`docs/benchmarks/`](docs/benchmarks/).
 
 ---
 

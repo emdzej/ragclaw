@@ -17,7 +17,8 @@
     "lint": "biome check --error-on-warnings ./src",
     "lint:fix": "biome check --write ./src",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench": "vitest bench"
   },
   "optionalDependencies": {
     "sqlite-vec": "^0.1.6"

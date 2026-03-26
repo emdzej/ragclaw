@@ -6,3 +6,4 @@ dist/
 .turbo/
 coverage/
 .DS_Store
+benchmarks/results/

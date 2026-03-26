@@ -318,10 +318,11 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
   // ── Store lifecycle ───────────────────────────────────────────────────────
 
   describe("store lifecycle", () => {
-    it("always closes the store after search", async () => {
+    it("does not close the store after search (connection is cached)", async () => {
       await callRagSearch({ query: "hello" });
 
-      expect(storeMock.close).toHaveBeenCalledTimes(1);
+      // Store connections are cached for read-only operations — close is not called
+      expect(storeMock.close).toHaveBeenCalledTimes(0);
     });
   });
 });
