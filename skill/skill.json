@@ -1,7 +1,7 @@
 {
   "name": "ragclaw",
-  "version": "0.6.1",
-  "description": "Local-first knowledge base for OpenClaw - index and search documents, code, and web pages",
+  "version": "0.7.0",
+  "description": "Local-first knowledge base for RagClaw - index and search documents, code, and web pages",
   "triggers": [
     "/kb",
     "knowledge base",
@@ -13,32 +13,60 @@
   ],
   "commands": {
     "add": {
-      "description": "Index a file, directory, or URL",
-      "usage": "/kb add <source> [--db <name>] [--embedder <preset>] [--crawl]"
+      "description": "Index a file, directory, or URL into the knowledge base",
+      "usage": "/kb add <source> [--db <name>] [--crawl] [--chunker <name>] [--chunk-size <n>] [--overlap <n>]"
     },
     "search": {
       "description": "Search the knowledge base",
-      "usage": "/kb search <query> [--db <name>] [--limit <n>] [--mode vector|keyword|hybrid]"
+      "usage": "/kb search <query> [--db <name>] [--limit <n>]"
+    },
+    "read-source": {
+      "description": "Retrieve the full indexed content of a source (all chunks concatenated)",
+      "usage": "/kb read-source <source> [--db <name>]"
     },
     "reindex": {
       "description": "Re-process changed sources; optionally force full rebuild or prune missing sources",
-      "usage": "/kb reindex [--db <name>] [--force] [--prune] [--embedder <preset>]"
-    },
-    "merge": {
-      "description": "Merge another knowledge base SQLite file into the local one",
-      "usage": "/kb merge <source.sqlite> [--db <name>] [--strategy strict|reindex] [--dry-run]"
+      "usage": "/kb reindex [--db <name>] [--force] [--prune] [--chunker <name>] [--chunk-size <n>] [--overlap <n>]"
     },
     "status": {
-      "description": "Show knowledge base statistics (chunks, sources, vector backend, embedder)",
+      "description": "Show knowledge base statistics (chunks, sources, size, embedder, vector backend)",
       "usage": "/kb status [--db <name>]"
-    },
-    "list": {
-      "description": "List indexed sources",
-      "usage": "/kb list [--db <name>] [-t file|url]"
     },
     "remove": {
       "description": "Remove a source from the index",
-      "usage": "/kb remove <source> [--db <name>] [-y]"
+      "usage": "/kb remove <source> [--db <name>]"
+    },
+    "db-init": {
+      "description": "Initialize a new named knowledge base",
+      "usage": "/kb db init [<name>] [--description <text>] [--keywords <csv>]"
+    },
+    "db-list": {
+      "description": "List all available knowledge bases with description and keywords",
+      "usage": "/kb db list [--json]"
+    },
+    "db-info-set": {
+      "description": "Set or update description and keywords for a knowledge base",
+      "usage": "/kb db info set [--db <name>] [--description <text>] [--keywords <csv>]"
+    },
+    "db-info-get": {
+      "description": "Get the description and keywords stored for a knowledge base",
+      "usage": "/kb db info get [--db <name>] [--json]"
+    },
+    "db-delete": {
+      "description": "Delete a knowledge base permanently",
+      "usage": "/kb db delete <name> [--yes]"
+    },
+    "db-rename": {
+      "description": "Rename a knowledge base",
+      "usage": "/kb db rename <old> <new>"
+    },
+    "db-merge": {
+      "description": "Merge another knowledge base SQLite file into the local one",
+      "usage": "/kb db merge <source.sqlite> [--db <name>] [--strategy strict|reindex] [--dry-run]"
+    },
+    "chunkers-list": {
+      "description": "List all available chunkers (built-in and plugin-provided)",
+      "usage": "/kb chunkers list [--json]"
     },
     "embedder": {
       "description": "Manage embedder presets (list, download)",
@@ -55,10 +83,6 @@
     "config": {
       "description": "View and set configuration values",
       "usage": "/kb config list | get <key> | set <key> <value>"
-    },
-    "init": {
-      "description": "Initialize a new named knowledge base",
-      "usage": "/kb init <name>"
     }
   },
   "dependencies": {

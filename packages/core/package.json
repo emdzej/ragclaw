@@ -1,6 +1,6 @@
 {
   "name": "@emdzej/ragclaw-core",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Core RAG engine for RagClaw - extractors, chunkers, embedder, store",
   "type": "module",
   "main": "./dist/index.js",

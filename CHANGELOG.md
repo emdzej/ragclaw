@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.7.0] — 2026-03-26
+
+### Breaking changes
+
+#### MCP tool prefix renamed from `rag_` to `kb_`
+
+All MCP tools have been renamed from the `rag_` prefix to `kb_` (knowledge base). This better reflects their purpose and avoids confusion with the broader "RAG" concept. The `kb_list` (list-sources) tool has been removed — agents should use `kb_search` to retrieve content, not enumerate individual sources.
+
+Old → New mapping: `rag_search` → `kb_search`, `rag_add` → `kb_add`, `rag_status` → `kb_status`, `rag_remove` → `kb_remove`, `rag_reindex` → `kb_reindex`, `rag_merge` → `kb_db_merge`, `rag_list_databases` → `kb_list_databases`, `rag_db_init` → `kb_db_init`, `rag_db_info` → `kb_db_info`, `rag_db_info_get` → `kb_db_info_get`, `rag_db_delete` → `kb_db_delete`, `rag_db_rename` → `kb_db_rename`, `rag_list_chunkers` → `kb_list_chunkers`.
+
+### New features
+
+#### `kb_read_source` — retrieve full indexed content of a source
+
+A new MCP tool and CLI command that returns all chunks for a given source path, concatenated in document order. Useful when `kb_search` returns a relevant source and the agent needs the complete content rather than a single matching chunk. Search results now also return full chunk text instead of truncated previews.
+
+#### Typo-tolerant keyword search
+
+Keyword search now uses trigram tokenisation via FTS5 plus prefix token matching, making it resilient to typos and partial matches. Search mode defaults to `hybrid` for all queries, combining vector similarity with the improved keyword matching.
+
+#### Configurable file extension allowlist
+
+The hardcoded extension allowlist has been removed. A new `allowedExtensions` config field lets users control which file types are indexed. An empty list (the default) means no restriction — extractors decide what they can handle.
+
+### Fixes
+
+- **MCP embedder mismatch** — the MCP server now honours the embedder stored in the database when reindexing or adding sources, preventing dimension mismatches when a DB was indexed with a non-default model
+- **Embedder model persistence** — `embedder_model` (the full HuggingFace model ID) is now persisted to store metadata alongside `embedder_name`, ensuring correct model resolution on reopen
+- **Store meta migration** — skip legacy meta migration on empty new databases, avoiding unnecessary schema operations
+- **BGE embedder crash** — the `bge-small` and `bge-base` presets now use dtype `q8` to avoid an ONNX external-data crash on certain platforms
+- **ReDoS CVE in picomatch** — overridden `picomatch` to `>=4.0.4` to resolve a Regular Expression Denial of Service vulnerability (CVE)
+
+---
+
 ## [0.6.1] — 2026-03-23
 
 ### Fixes and maintenance
