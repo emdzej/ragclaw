@@ -132,7 +132,14 @@ export class Store {
   /**
    * Write nomic defaults into store_meta for legacy databases that were
    * created before the embedder plugin system existed.
-   * Only runs if `embedder_name` is not yet set.
+   *
+   * Only runs when ALL of these conditions are true:
+   *   1. `embedder_name` is not yet set in store_meta (the DB has no embedder recorded)
+   *   2. The database already contains chunks (it is a legacy DB, not a brand-new one)
+   *
+   * Condition 2 prevents newly-created databases from being pre-seeded with
+   * nomic defaults, which would block the user from indexing with a different
+   * embedder on the very first `ragclaw add` invocation.
    */
   private migrateLegacyMeta(): void {
     if (!this.db) return;
@@ -142,6 +149,11 @@ export class Store {
       .get() as { value: string } | undefined;
 
     if (!existing) {
+      // Only backfill if the DB already has chunks — i.e., it is a real legacy
+      // database, not an empty newly-created one.
+      const hasChunks = this.db.prepare("SELECT 1 FROM chunks LIMIT 1").get() as undefined | object;
+      if (!hasChunks) return;
+
       const insert = this.db.prepare("INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)");
       const migrate = this.db.transaction(() => {
         insert.run("embedder_name", "nomic");

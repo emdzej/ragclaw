@@ -437,11 +437,11 @@ describe("Store", () => {
     });
 
     describe("getAllMeta", () => {
-      it("returns an empty-ish object when only legacy defaults are set", async () => {
+      it("returns an empty object for a brand-new database", async () => {
         const meta = await store.getAllMeta();
-        // Legacy migration writes 3 keys on open
+        // Empty DB: migration does not pre-seed any keys
         expect(typeof meta).toBe("object");
-        expect(Object.keys(meta).length).toBeGreaterThanOrEqual(0);
+        expect(Object.keys(meta).length).toBe(0);
       });
 
       it("returns all set keys", async () => {
@@ -454,27 +454,95 @@ describe("Store", () => {
     });
 
     describe("legacy migration", () => {
-      it("writes nomic defaults on first open", async () => {
-        // store is opened in beforeEach — should already have defaults
-        expect(await store.getMeta("embedder_name")).toBe("nomic");
-        expect(await store.getMeta("embedder_model")).toBe("nomic-ai/nomic-embed-text-v1.5");
-        expect(await store.getMeta("embedder_dimensions")).toBe("768");
+      it("does NOT write nomic defaults when the database is empty (new DB)", async () => {
+        // An empty DB has no chunks — migration must not pre-seed embedder meta.
+        // This prevents a freshly-created knowledge base from blocking users who
+        // want to index with a non-nomic embedder on their first `ragclaw add`.
+        expect(await store.getMeta("embedder_name")).toBeNull();
+        expect(await store.getMeta("embedder_model")).toBeNull();
+        expect(await store.getMeta("embedder_dimensions")).toBeNull();
       });
 
-      it("does not overwrite existing embedder meta", async () => {
-        // Override to something non-nomic
+      it("writes nomic defaults on open when chunks exist but no embedder meta is set (legacy DB)", async () => {
+        // Simulate a legacy DB: has chunks but no embedder_name in store_meta.
+        // We close the current :memory: store, write a temp file with chunks but
+        // no embedder meta, then re-open it to trigger the migration.
+        const { tmpdir } = await import("node:os");
+        const { join } = await import("node:path");
+        const { unlink } = await import("node:fs/promises");
+        const { randomUUID: uuid } = await import("node:crypto");
+
+        const tmpPath = join(tmpdir(), `ragclaw-legacy-${uuid()}.sqlite`);
+        const legacyStore = new Store();
+        await legacyStore.open(tmpPath);
+        // Add a source and a chunk so the DB looks like a legacy populated DB
+        const srcId = await legacyStore.addSource({
+          path: "/legacy/doc.md",
+          type: "file",
+          contentHash: "abc",
+          indexedAt: Date.now(),
+        });
+        await legacyStore.addChunks([
+          {
+            id: uuid(),
+            text: "legacy text",
+            sourceId: srcId,
+            sourcePath: "/legacy/doc.md",
+            metadata: { type: "paragraph" },
+            createdAt: Date.now(),
+          },
+        ]);
+        // Remove embedder meta to mimic a pre-plugin-system DB
+        // (store_meta was populated by migration — delete it to simulate legacy state)
+        await legacyStore.close();
+
+        // Manually strip the embedder meta using a raw SQLite connection
+        const Database = (await import("better-sqlite3")).default;
+        const rawDb = new Database(tmpPath);
+        rawDb
+          .prepare(
+            "DELETE FROM store_meta WHERE key IN ('embedder_name','embedder_model','embedder_dimensions')"
+          )
+          .run();
+        rawDb.close();
+
+        // Re-open — migration should now fire because chunks exist but meta is absent
+        const migratedStore = new Store();
+        await migratedStore.open(tmpPath);
+        expect(await migratedStore.getMeta("embedder_name")).toBe("nomic");
+        expect(await migratedStore.getMeta("embedder_model")).toBe(
+          "nomic-ai/nomic-embed-text-v1.5"
+        );
+        expect(await migratedStore.getMeta("embedder_dimensions")).toBe("768");
+        await migratedStore.close();
+        await unlink(tmpPath);
+      });
+
+      it("does not overwrite existing embedder meta on re-open", async () => {
+        // Seed some data and custom embedder meta
+        const srcId = await store.addSource({
+          path: "/doc.md",
+          type: "file",
+          contentHash: "h",
+          indexedAt: Date.now(),
+        });
+        await store.addChunks([
+          {
+            id: randomUUID(),
+            text: "text",
+            sourceId: srcId,
+            sourcePath: "/doc.md",
+            metadata: { type: "paragraph" },
+            createdAt: Date.now(),
+          },
+        ]);
         await store.setMeta("embedder_name", "minilm");
         await store.setMeta("embedder_dimensions", "384");
-
-        // Close and re-open — migration should NOT revert our custom values
-        await store.close();
-        await store.open(":memory:");
-        // A fresh :memory: will always get defaults (it's a new DB)
-        // So test that setMeta + reopen on a persistent path would preserve
-        // (We test this indirectly: the migration uses INSERT OR IGNORE,
-        // so once set, it won't overwrite on a real DB reopen)
-        // For :memory: we just verify the initial migration ran
-        expect(await store.getMeta("embedder_name")).toBe("nomic");
+        // The INSERT OR IGNORE in migrateLegacyMeta means a re-open on a real file
+        // DB will not overwrite. For :memory: we just verify the explicitly set
+        // values are not touched by migration (migration skips because meta exists).
+        expect(await store.getMeta("embedder_name")).toBe("minilm");
+        expect(await store.getMeta("embedder_dimensions")).toBe("384");
       });
     });
 

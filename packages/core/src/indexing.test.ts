@@ -88,7 +88,9 @@ describe("IndexingService", () => {
     it("throws when embedder dims don't match stored dims", async () => {
       const store = await makeStore();
 
-      // store_meta already has embedder_dimensions=768 from legacy migration
+      // Seed stored embedder meta to simulate a DB previously indexed with nomic (768 dims)
+      await store.setMeta("embedder_name", "nomic");
+      await store.setMeta("embedder_dimensions", "768");
 
       // Now create a service with a 1024-dim embedder
       const embedder1024 = makePluginEmbedder(1024, "bge");
@@ -105,7 +107,11 @@ describe("IndexingService", () => {
     it("succeeds when embedder dims match stored dims", async () => {
       const store = await makeStore();
 
-      // Use a 768-dim embedder matching the nomic default in store_meta
+      // Seed stored embedder meta to simulate a DB previously indexed with nomic (768 dims)
+      await store.setMeta("embedder_name", "nomic");
+      await store.setMeta("embedder_dimensions", "768");
+
+      // Use a 768-dim embedder matching the stored meta
       const embedder768 = makePluginEmbedder(768, "nomic-embed-text-v1.5");
       const svc = new IndexingService({ embedder: embedder768 });
 
