@@ -72,6 +72,7 @@ export interface HuggingFaceEmbedderConfig extends Partial<EmbedderPreset> {
  */
 export class HuggingFaceEmbedder implements EmbedderPlugin {
   readonly name: string;
+  readonly model: string;
   private _dimensions: number;
   private readonly modelId: string;
   private readonly docPrefix: string;
@@ -92,6 +93,7 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
     }
 
     this.modelId = config.model ?? defaultPreset.model;
+    this.model = this.modelId;
     this._dimensions = config.dim ?? 0; // 0 = auto-detect
     this.docPrefix = config.docPrefix ?? "";
     this.queryPrefix = config.queryPrefix ?? "";

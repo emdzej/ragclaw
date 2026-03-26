@@ -77,7 +77,7 @@ export class OllamaEmbedder implements EmbedderPlugin {
 
   dimensions: number;
 
-  private readonly model: string;
+  readonly model: string;
   private readonly baseUrl: string;
   private dimensionsDetected: boolean;
 

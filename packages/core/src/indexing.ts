@@ -375,6 +375,9 @@ export class IndexingService {
 
     await store.setMeta("embedder_name", this.embedder.name);
     await store.setMeta("embedder_dimensions", String(currentDim));
+    if (this.embedder.model) {
+      await store.setMeta("embedder_model", this.embedder.model);
+    }
   }
 
   /**
@@ -426,6 +429,9 @@ export class IndexingService {
       if (this.embedder.dimensions > 0) {
         await store.setMeta("embedder_name", this.embedder.name);
         await store.setMeta("embedder_dimensions", String(this.embedder.dimensions));
+        if (this.embedder.model) {
+          await store.setMeta("embedder_model", this.embedder.model);
+        }
       }
 
       const now = Date.now();

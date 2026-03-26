@@ -154,6 +154,15 @@ export interface EmbedderPlugin {
   readonly name: string;
 
   /**
+   * Full model identifier (e.g. "nomic-ai/nomic-embed-text-v1.5").
+   *
+   * When present, this is stored as `embedder_model` in the database and
+   * used during search to reconstruct the exact embedder without relying on
+   * preset alias lookup.  Plugin-provided embedders may omit this field.
+   */
+  readonly model?: string;
+
+  /**
    * Output vector dimensions (e.g. 768, 1024).
    *
    * For HuggingFace models with auto-detection this starts as `0` and is
