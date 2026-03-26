@@ -34,7 +34,12 @@ export const EMBEDDER_PRESETS: Record<string, EmbedderPreset> = {
     dim: 1024,
     pooling: "mean",
     normalize: true,
-    estimatedRAM: 2.3 * 1024 * 1024 * 1024, // ~2.3 GB
+    // Use the quantized (q8) variant to avoid the external-data-file split.
+    // fp32 ONNX for bge-m3 is split into model.onnx (stub) + model.onnx_data
+    // (2.3 GB), which @huggingface/transformers cannot load.  "q8" maps to
+    // model_quantized.onnx — a self-contained 570 MB file.
+    dtype: "q8",
+    estimatedRAM: 600 * 1024 * 1024, // ~600 MB (quantized)
   },
 
   mxbai: {

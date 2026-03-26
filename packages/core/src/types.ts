@@ -199,6 +199,22 @@ export interface EmbedderPreset {
   pooling?: "mean" | "none" | "cls" | "first_token" | "eos" | "last_token";
   /** Whether to L2-normalize output vectors (default: true). */
   normalize?: boolean;
+  /**
+   * ONNX dtype / quantization variant to load.
+   *
+   * Maps to a filename suffix via `DEFAULT_DTYPE_SUFFIX_MAPPING` in
+   * `@huggingface/transformers`:
+   *   - `"fp32"` → `model.onnx`           (default, no suffix)
+   *   - `"q8"`   → `model_quantized.onnx`  (recommended for large models)
+   *   - `"int8"` → `model_int8.onnx`
+   *   - `"q4"`   → `model_q4.onnx`
+   *   - `"q4f16"` → `model_q4f16.onnx`
+   *
+   * Use `"q8"` for models whose `fp32` ONNX file is split into an external
+   * data file (`model.onnx` + `model.onnx_data`), which the JS runtime
+   * cannot load.  If omitted, the library default (`fp32`) is used.
+   */
+  dtype?: string;
 }
 
 /** Legacy config interface kept for backward compatibility. */

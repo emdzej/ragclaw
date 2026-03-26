@@ -78,6 +78,7 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
   private readonly queryPrefix: string;
   private readonly pooling: "mean" | "none" | "cls" | "first_token" | "eos" | "last_token";
   private readonly normalize: boolean;
+  private readonly dtype?: string;
   private pipe: FeatureExtractionPipeline | null = null;
   private onProgress?: (progress: number) => void;
   private dimensionsDetected = false;
@@ -97,6 +98,7 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
     this.pooling = config.pooling ?? "mean";
     this.normalize = config.normalize ?? true;
     this.onProgress = config.onProgress;
+    this.dtype = config.dtype;
 
     // Derive a short name from the model ID (last path segment, lower-cased)
     this.name = this.modelId.split("/").pop()?.toLowerCase() ?? "huggingface";
@@ -124,6 +126,8 @@ export class HuggingFaceEmbedder implements EmbedderPlugin {
   private async getPipeline(): Promise<FeatureExtractionPipeline> {
     if (!this.pipe) {
       this.pipe = await pipeline("feature-extraction", this.modelId, {
+        // biome-ignore lint/suspicious/noExplicitAny: DataType is not re-exported from @huggingface/transformers
+        dtype: this.dtype as any,
         progress_callback: this.onProgress
           ? (progress: { status: string; progress?: number }) => {
               if (progress.progress !== undefined) {

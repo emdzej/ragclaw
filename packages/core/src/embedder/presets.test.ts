@@ -48,6 +48,15 @@ describe("EMBEDDER_PRESETS", () => {
     expect(EMBEDDER_PRESETS.mxbai.dim).toBe(1024);
   });
 
+  it("bge preset uses q8 dtype to avoid external-data-file split", () => {
+    expect(EMBEDDER_PRESETS.bge.dtype).toBe("q8");
+  });
+
+  it("nomic and mxbai presets have no dtype (use fp32 default)", () => {
+    expect(EMBEDDER_PRESETS.nomic.dtype).toBeUndefined();
+    expect(EMBEDDER_PRESETS.mxbai.dtype).toBeUndefined();
+  });
+
   it("mxbai has query prefix but no doc prefix", () => {
     const mxbai = EMBEDDER_PRESETS.mxbai;
     expect(mxbai.queryPrefix).toBe("Represent this sentence: ");
