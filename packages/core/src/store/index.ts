@@ -740,6 +740,26 @@ export class Store {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
+   * Return all chunk records for a given source path (the path/URL shown in
+   * search results), ordered by start_line so the caller can reconstruct the
+   * original document.  Embeddings are omitted for efficiency.
+   */
+  async getChunksBySourcePath(sourcePath: string): Promise<ChunkRecord[]> {
+    if (!this.db) throw new Error("Store not opened");
+    const rows = this.db
+      .prepare(`
+        SELECT c.id, c.source_id, c.text, c.start_line, c.end_line,
+               c.metadata, c.created_at, s.path AS source_path
+        FROM chunks c
+        JOIN sources s ON s.id = c.source_id
+        WHERE s.path = ?
+        ORDER BY c.start_line ASC, c.rowid ASC
+      `)
+      .all(sourcePath) as Record<string, unknown>[];
+    return rows.map((row) => this.rowToChunk(row));
+  }
+
+  /**
    * Return all chunk records for a given source, including raw embedding blobs.
    * Used by MergeService to copy or re-embed chunks from a source DB.
    */

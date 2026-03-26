@@ -463,6 +463,21 @@ Options:
   --json            Output as JSON
 ```
 
+### `ragclaw read <source> [options]`
+Read the full indexed content of a source from the knowledge base. Returns all
+chunks in document order, concatenated. Use the source path exactly as shown in
+`ragclaw search` or `ragclaw list` output.
+
+```bash
+ragclaw read /path/to/file.md
+ragclaw read https://docs.example.com/page
+ragclaw read /path/to/file.md --json
+
+Options:
+  --db <name>       Knowledge base name (default: "default")
+  --json            Output as JSON
+```
+
 ### `ragclaw status [options]`
 Show knowledge base statistics.
 
@@ -835,3 +850,4 @@ interface EmbedderConfigBlock {
 - [x] **Upgraded transformers.js** — Migrated to `@huggingface/transformers` v3
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command
 - [x] **Pluggable chunker system** — Four built-in chunkers (`semantic`, `code`, `sentence`, `fixed`); `Chunker` interface now exposes `name`/`description`/`handles`; priority-based `resolveChunker()` (CLI flag → config overrides → plugin chunkers → built-in auto); `--chunker`/`--chunk-size`/`--overlap` flags on `ragclaw add` and `ragclaw reindex`; `ragclaw chunkers list [--json]`; `chunking:` config block with `strategy`/`defaults`/`overrides[]`; MCP: `chunker`/`chunkSize`/`overlap` params on `kb_add`/`kb_reindex`, `kb_list_chunkers` tool; unknown chunker name → hard fail with typo suggestion
+- [x] **`ragclaw read` / `kb_read_source`** — Retrieve the full indexed content of a source from the knowledge base; returns all chunks in document order, concatenated; agents should use this instead of reading original files when they need more context than a single search chunk provides; CLI: `ragclaw read <source> [--db <name>] [--json]`; MCP: `kb_read_source` tool with `source` and optional `db` params; search results now return full chunk text (no truncation) so agents have complete content without needing to go to source files

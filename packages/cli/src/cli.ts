@@ -32,6 +32,7 @@ import {
   pluginList,
   pluginRemove,
 } from "./commands/plugin.js";
+import { readCommand } from "./commands/read.js";
 import { reindex } from "./commands/reindex.js";
 import { removeCommand } from "./commands/remove.js";
 import { searchCommand } from "./commands/search.js";
@@ -105,6 +106,14 @@ program
   .option("-l, --limit <number>", "Max results", "10")
   .option("--json", "Output as JSON")
   .action(searchCommand);
+
+program
+  .command("read")
+  .description("Read the full indexed content of a source from the knowledge base")
+  .argument("<source>", "Source path or URL exactly as shown in search/list output")
+  .option("-d, --db <name>", "Knowledge base name", "default")
+  .option("--json", "Output as JSON")
+  .action(readCommand);
 
 program
   .command("status")

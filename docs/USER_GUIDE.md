@@ -660,6 +660,7 @@ mcpServers:
 | Tool | Description |
 |------|-------------|
 | `kb_search` | Search a knowledge base (query, mode, limit) |
+| `kb_read_source` | Retrieve the full indexed content of a source by path — use when you need more than the matching chunk |
 | `kb_add` | Index a file/directory/URL (`chunker`, `chunkSize`, `overlap` params supported) |
 | `kb_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
 | `kb_db_merge` | Merge another `.db` file |

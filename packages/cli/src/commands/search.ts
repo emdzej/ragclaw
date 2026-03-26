@@ -81,9 +81,9 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
         );
       }
 
-      // Show snippet (first 200 chars)
-      const snippet = chunk.text.slice(0, 200).replace(/\n/g, " ");
-      console.log(`    ${snippet}${chunk.text.length > 200 ? "..." : ""}`);
+      // Show full chunk text
+      const snippet = chunk.text.replace(/\n/g, " ");
+      console.log(`    ${snippet}`);
       console.log();
     }
   } finally {

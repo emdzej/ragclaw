@@ -111,7 +111,7 @@ async function ragSearch(args: { query: string; db?: string; limit?: number }): 
           ? ` (lines ${r.chunk.startLine}-${r.chunk.endLine})`
           : "";
       const score = (r.score * 100).toFixed(1);
-      return `[${i + 1}] ${r.chunk.sourcePath}${lines}\nScore: ${score}%\n${r.chunk.text.slice(0, 500)}${r.chunk.text.length > 500 ? "..." : ""}`;
+      return `[${i + 1}] ${r.chunk.sourcePath}${lines}\nScore: ${score}%\n${r.chunk.text}`;
     });
 
     return formatted.join("\n\n---\n\n");
@@ -801,6 +801,38 @@ async function ragListChunkers(): Promise<string> {
   return JSON.stringify(chunkers, null, 2);
 }
 
+async function ragReadSource(args: { source: string; db?: string }): Promise<string> {
+  const dbName = args.db || "default";
+  const dbPath = getDbPath(dbName);
+
+  if (!existsSync(dbPath)) {
+    return `Knowledge base "${dbName}" not found. Run kb_add first to create it.`;
+  }
+
+  const store = new Store();
+  await store.open(dbPath);
+
+  try {
+    const chunks = await store.getChunksBySourcePath(args.source);
+
+    if (chunks.length === 0) {
+      return `Source not found: ${args.source}`;
+    }
+
+    const formatted = chunks.map(
+      (chunk: { startLine?: number; endLine?: number; text: string }) => {
+        const lines =
+          chunk.startLine && chunk.endLine ? ` (lines ${chunk.startLine}-${chunk.endLine})` : "";
+        return `--- chunk${lines} ---\n${chunk.text}`;
+      }
+    );
+
+    return `Source: ${args.source}\nChunks: ${chunks.length}\n\n${formatted.join("\n\n")}`;
+  } finally {
+    await store.close();
+  }
+}
+
 // Main server
 async function main() {
   const server = new McpServer({
@@ -824,6 +856,26 @@ async function main() {
     async ({ query, db, limit }) => {
       try {
         const result = await ragSearch({ query, db, limit });
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (error) {
+        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "kb_read_source",
+    {
+      description:
+        "Retrieve the full indexed content of a source from the knowledge base. Returns all chunks in document order, concatenated. Use this when kb_search returns a relevant source and you need the complete content instead of just the matching chunk. The source parameter should be a source path exactly as shown in kb_search results.",
+      inputSchema: {
+        source: z.string().describe("Source path or URL exactly as shown in kb_search results"),
+        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
+      },
+    },
+    async ({ source, db }) => {
+      try {
+        const result = await ragReadSource({ source, db });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
