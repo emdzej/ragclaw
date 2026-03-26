@@ -498,7 +498,7 @@ MCP tools live in `packages/mcp/src/index.ts` and are registered with `server.to
 import { z } from "zod";
 
 server.tool(
-  "rag_my_tool",                           // tool name — snake_case, prefixed with rag_
+  "kb_my_tool",                           // tool name — snake_case, prefixed with kb_
   "Human-readable description for the LLM.",
   {
     // Zod schema for input validation
@@ -523,11 +523,12 @@ server.tool(
 ```
 
 **Rules:**
-- Tool names must be `snake_case`, prefixed with `rag_`.
+- Tool names must be `snake_case`, prefixed with `kb_`.
 - Use **Zod** for all input validation — never trust raw input.
 - Always apply `isPathAllowed` / `isUrlAllowed` guards before touching the filesystem or network.
 - Return `{ content: [{ type: "text", text: "Error: ..." }] }` for user-facing errors — do NOT throw from a tool handler.
 - Expensive resources (embedders, IndexingService) must be cached as module-level singletons (see `cachedEmbedders` pattern in `packages/mcp/src/index.ts`).
+- Do **not** expose a `kb_list` (list-sources) tool — agents must retrieve content via `kb_search`, not by enumerating and reading individual sources.
 
 ---
 

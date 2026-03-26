@@ -181,7 +181,7 @@ Storage paths and backwards compatibility:
 
 ### Agent routing with description and keywords
 
-When using the MCP server, AI agents can call `rag_list_databases` to see all available KBs along with their descriptions and keywords. This allows agents to automatically choose the most relevant KB for a given query — without the user having to specify `--db` every time.
+When using the MCP server, AI agents can call `kb_list_databases` to see all available KBs along with their descriptions and keywords. This allows agents to automatically choose the most relevant KB for a given query — without the user having to specify `--db` every time.
 
 Example workflow:
 
@@ -192,7 +192,7 @@ ragclaw db init infra     --description "Infrastructure and DevOps runbooks" --k
 ragclaw db init research  --description "Academic papers on ML and RAG" --keywords "ml, rag, embeddings"
 ```
 
-2. The MCP agent calls `rag_list_databases` and receives:
+2. The MCP agent calls `kb_list_databases` and receives:
 ```json
 [
   { "name": "api-docs",  "description": "REST API and auth endpoints",         "keywords": ["api","rest","oauth","jwt"] },
@@ -201,7 +201,7 @@ ragclaw db init research  --description "Academic papers on ML and RAG" --keywor
 ]
 ```
 
-3. For a query like "how does the OAuth flow work?", the agent selects `api-docs` and calls `rag_search` with `db: "api-docs"`.
+3. For a query like "how does the OAuth flow work?", the agent selects `api-docs` and calls `kb_search` with `db: "api-docs"`.
 
 You can update metadata at any time without re-indexing:
 
@@ -659,18 +659,19 @@ mcpServers:
 
 | Tool | Description |
 |------|-------------|
-| `rag_search` | Search a knowledge base (query, mode, limit) |
-| `rag_add` | Index a file/directory/URL (`chunker`, `chunkSize`, `overlap` params supported) |
-| `rag_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
-| `rag_merge` | Merge another `.db` file |
-| `rag_status` | Get KB statistics |
-| `rag_list` | List indexed sources — output is prefixed with a description/keywords header so agents get KB context |
-| `rag_remove` | Remove source from index |
-| `rag_list_chunkers` | List all available chunkers (built-in + plugin) |
-| `rag_list_databases` | List all KBs with name, description, and keywords — used by agents for KB routing |
-| `rag_db_init` | Create a new KB (optional `description` and `keywords`) |
-| `rag_db_info` | Set or update description and keywords on an existing KB |
-| `rag_db_info_get` | Read description and keywords from an existing KB |
+| `kb_search` | Search a knowledge base (query, mode, limit) |
+| `kb_add` | Index a file/directory/URL (`chunker`, `chunkSize`, `overlap` params supported) |
+| `kb_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
+| `kb_db_merge` | Merge another `.db` file |
+| `kb_status` | Get KB statistics |
+| `kb_remove` | Remove source from index |
+| `kb_list_chunkers` | List all available chunkers (built-in + plugin) |
+| `kb_list_databases` | List all KBs with name, description, and keywords — used by agents for KB routing |
+| `kb_db_init` | Create a new KB (optional `description` and `keywords`) |
+| `kb_db_info` | Set or update description and keywords on an existing KB |
+| `kb_db_info_get` | Read description and keywords from an existing KB |
+| `kb_db_delete` | Delete a KB permanently (requires `confirm: true`) |
+| `kb_db_rename` | Rename a KB (requires `confirm: true`) |
 
 ### Example prompts
 

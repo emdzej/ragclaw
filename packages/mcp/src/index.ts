@@ -90,7 +90,7 @@ async function ragSearch(args: {
   const dbPath = getDbPath(dbName);
 
   if (!existsSync(dbPath)) {
-    return `Knowledge base "${dbName}" not found. Run rag_add first to create it.`;
+    return `Knowledge base "${dbName}" not found. Run kb_add first to create it.`;
   }
 
   const store = new Store();
@@ -279,51 +279,6 @@ Chunks: ${stats.chunks}
 Size: ${sizeKB} KB
 Last Updated: ${updated}
 Vector Support: ${store.hasVectorSupport ? "native" : "JS fallback"}`;
-  } finally {
-    await store.close();
-  }
-}
-
-async function ragList(args: { db?: string }): Promise<string> {
-  const dbName = args.db || "default";
-  const dbPath = getDbPath(dbName);
-
-  if (!existsSync(dbPath)) {
-    return `Knowledge base "${dbName}" not found.`;
-  }
-
-  const store = new Store();
-  await store.open(dbPath);
-
-  try {
-    const sources = await store.listSources();
-
-    // Build metadata header
-    const description = (await store.getMeta("db_description")) ?? null;
-    const keywordsRaw = (await store.getMeta("db_keywords")) ?? "";
-    const keywords = keywordsRaw
-      ? keywordsRaw
-          .split(",")
-          .map((k: string) => k.trim())
-          .filter(Boolean)
-      : [];
-
-    const metaLines: string[] = [];
-    if (description) metaLines.push(`Description: ${description}`);
-    if (keywords.length > 0) metaLines.push(`Keywords: ${keywords.join(", ")}`);
-    const metaHeader = metaLines.length > 0 ? `${metaLines.join("\n")}\n\n` : "";
-
-    if (sources.length === 0) {
-      return `${metaHeader}No sources indexed.`;
-    }
-
-    const lines = sources.map((s) => {
-      const icon = s.type === "file" ? "📄" : s.type === "url" ? "🌐" : "📝";
-      const date = new Date(s.indexedAt).toLocaleDateString();
-      return `${icon} ${s.path} (${date})`;
-    });
-
-    return `${metaHeader}Indexed sources (${sources.length}):\n${lines.join("\n")}`;
   } finally {
     await store.close();
   }
@@ -858,13 +813,15 @@ async function main() {
   const server = new McpServer({
     name: "ragclaw-mcp",
     version,
+    description:
+      "RagClaw knowledge base server. Provides tools to index, search, and manage local knowledge bases (kb). Use kb_search to retrieve relevant information via hybrid vector + keyword search.",
   });
 
   server.registerTool(
-    "rag_search",
+    "kb_search",
     {
       description:
-        "Search the local knowledge base for relevant documents and code. Returns matching chunks with source paths and relevance scores.",
+        "Search the knowledge base for relevant documents and code. Returns matching chunks with source paths and relevance scores. Always prefer this over listing sources — search finds the relevant content directly.",
       inputSchema: {
         query: z.string().describe("Search query text"),
         db: z.string().optional().describe("Knowledge base name (default: 'default')"),
@@ -886,7 +843,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_add",
+    "kb_add",
     {
       description:
         "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
@@ -982,7 +939,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_status",
+    "kb_status",
     {
       description: "Get statistics about a knowledge base (number of sources, chunks, size).",
       inputSchema: {
@@ -1000,25 +957,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_list",
-    {
-      description: "List all indexed sources in a knowledge base.",
-      inputSchema: {
-        db: z.string().optional().describe("Knowledge base name (default: 'default')"),
-      },
-    },
-    async ({ db }) => {
-      try {
-        const result = await ragList({ db });
-        return { content: [{ type: "text" as const, text: result }] };
-      } catch (error) {
-        return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };
-      }
-    }
-  );
-
-  server.registerTool(
-    "rag_remove",
+    "kb_remove",
     {
       description: "Remove a source from the knowledge base index.",
       inputSchema: {
@@ -1037,7 +976,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_reindex",
+    "kb_reindex",
     {
       description:
         "Re-process changed sources in the knowledge base. Only re-indexes files that have changed since last indexing.",
@@ -1080,7 +1019,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_list_chunkers",
+    "kb_list_chunkers",
     {
       description:
         "List all available chunkers (built-in and plugin-provided). Returns a JSON array with name, description, handles, and source fields.",
@@ -1097,7 +1036,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_db_merge",
+    "kb_db_merge",
     {
       description:
         "Merge another knowledge base (SQLite .db file) into a local one. The source database is never modified. Use strategy='strict' (default) when both databases share the same embedder — embeddings are copied verbatim. Use strategy='reindex' to re-embed with the local model when embedders differ.",
@@ -1149,10 +1088,10 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_list_databases",
+    "kb_list_databases",
     {
       description:
-        "List all available knowledge bases (databases). Returns a JSON array of objects with name, description, and keywords fields — use this to decide which database to search.",
+        "List all available knowledge bases. Returns a JSON array of objects with name, description, and keywords fields — use this to decide which knowledge base to search.",
       inputSchema: {},
     },
     async () => {
@@ -1166,7 +1105,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_db_init",
+    "kb_db_init",
     {
       description:
         "Initialize a new knowledge base. Creates an empty SQLite database at the configured data directory. Safe to call if the knowledge base already exists — returns a message without overwriting.",
@@ -1195,10 +1134,10 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_db_info",
+    "kb_db_info",
     {
       description:
-        "Set or update the description and keywords for an existing knowledge base. Use this so that rag_list_databases can return enriched metadata that helps an agent decide which database to search.",
+        "Set or update the description and keywords for an existing knowledge base. Use this so that kb_list_databases can return enriched metadata that helps an agent decide which knowledge base to search.",
       inputSchema: {
         db: z.string().optional().describe("Knowledge base name (default: 'default')"),
         description: z
@@ -1224,7 +1163,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_db_info_get",
+    "kb_db_info_get",
     {
       description:
         "Get the description and keywords stored for a knowledge base. Returns a JSON object with name, description, and keywords fields. Use this to inspect metadata before updating it.",
@@ -1243,7 +1182,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_db_delete",
+    "kb_db_delete",
     {
       description:
         "Delete a knowledge base and its .sqlite file permanently. This operation is irreversible. You MUST pass confirm=true explicitly to proceed — this prevents accidental deletion.",
@@ -1268,7 +1207,7 @@ async function main() {
   );
 
   server.registerTool(
-    "rag_db_rename",
+    "kb_db_rename",
     {
       description:
         "Rename a knowledge base. Errors if the new name already exists. You MUST pass confirm=true explicitly to proceed — this prevents accidental renaming.",

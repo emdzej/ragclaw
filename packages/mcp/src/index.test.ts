@@ -149,10 +149,10 @@ function makeResult(sourcePath: string, text: string): SearchResult {
   return { chunk, score: 0.85, scoreVector: 0.9, scoreKeyword: 0.7 };
 }
 
-/** Call the rag_search tool handler and return the text content. */
+/** Call the kb_search tool handler and return the text content. */
 async function callRagSearch(args: Record<string, unknown>): Promise<string> {
-  const handler = capturedToolHandlers.get("rag_search");
-  if (!handler) throw new Error("rag_search handler not registered");
+  const handler = capturedToolHandlers.get("kb_search");
+  if (!handler) throw new Error("kb_search handler not registered");
   const response = (await handler(args)) as { content: Array<{ type: string; text: string }> };
   return response.content[0].text;
 }
@@ -166,7 +166,7 @@ function freshDb() {
   return `testdb-${++dbCounter}`;
 }
 
-describe("MCP rag_search — embedder resolution (Bug 1 + Bug 3)", () => {
+describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(true);
