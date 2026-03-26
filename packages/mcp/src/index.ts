@@ -549,25 +549,6 @@ async function collectFilesRecursive(
 
   const entries = await readdir(dir, { withFileTypes: true });
 
-  const supportedExts = [
-    ".md",
-    ".markdown",
-    ".mdx",
-    ".txt",
-    ".text",
-    ".pdf",
-    ".docx",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".cjs",
-    ".py",
-    ".go",
-    ".java",
-  ];
-
   for (const entry of entries) {
     if (collected.length >= maxFiles) return;
 
@@ -580,9 +561,12 @@ async function collectFilesRecursive(
       await collectFilesRecursive(fullPath, collected, currentDepth + 1, maxDepth, maxFiles);
     } else if (entry.isFile()) {
       const ext = extname(entry.name).toLowerCase();
-      if (supportedExts.includes(ext)) {
-        collected.push({ type: "file", path: fullPath });
+      // If a config allowedExtensions list is set, skip files not in it.
+      // An empty list means no restriction — let extractors decide.
+      if (config.allowedExtensions.length > 0 && !config.allowedExtensions.includes(ext)) {
+        continue;
       }
+      collected.push({ type: "file", path: fullPath });
     }
   }
 }

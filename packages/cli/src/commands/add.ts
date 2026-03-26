@@ -408,36 +408,13 @@ async function collectFilesRecursive(
         continue;
       }
 
-      // Only include supported extensions
-      const supportedExts = [
-        ".md",
-        ".markdown",
-        ".mdx",
-        ".txt",
-        ".text",
-        ".pdf",
-        ".docx",
-        ".ts",
-        ".tsx",
-        ".js",
-        ".jsx",
-        ".mjs",
-        ".cjs",
-        ".py",
-        ".go",
-        ".java",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".webp",
-        ".bmp",
-        ".tiff",
-        ".tif",
-      ];
-      if (supportedExts.includes(ext)) {
-        collected.push({ type: "file", path: fullPath });
+      // If a config allowedExtensions list is set, skip files not in it.
+      // An empty list means no restriction — let extractors decide.
+      if (config.allowedExtensions.length > 0 && !config.allowedExtensions.includes(ext)) {
+        continue;
       }
+
+      collected.push({ type: "file", path: fullPath });
     }
   }
 

@@ -166,6 +166,14 @@ export interface RagclawConfig {
    *  MCP always enforces guards regardless of this setting. */
   enforceGuards: boolean;
 
+  /**
+   * Optional allowlist of file extensions (with leading dot, lower-case) that
+   * may be collected during directory walks.  When the list is empty or
+   * undefined every file extension is allowed (the extractor chain decides).
+   * Example: `[".ts", ".md", ".adoc"]`
+   */
+  allowedExtensions: string[];
+
   /** Resource limits for built-in extractors (web, PDF, image/OCR). */
   extractorLimits: ExtractorLimits;
 
@@ -248,6 +256,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   let enforceGuards = false;
   const extractorLimits: ExtractorLimits = { ...DEFAULT_EXTRACTOR_LIMITS };
   const pluginConfig: Record<string, Record<string, unknown>> = {};
+  let allowedExtensions: string[] = [];
   let embedder: string | EmbedderConfigBlock | undefined;
   let chunking: ChunkingConfig | undefined;
 
@@ -301,6 +310,20 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
           .map((s: string) => s.trim())
           .filter(Boolean)
           .map((p: string) => resolve(expandHome(p)));
+      }
+
+      // allowedExtensions: YAML list or comma-separated string (normalise to lower-case with leading dot)
+      if (Array.isArray(parsed.allowedExtensions)) {
+        allowedExtensions = (parsed.allowedExtensions as unknown[])
+          .map(String)
+          .filter(Boolean)
+          .map((e: string) => (e.startsWith(".") ? e.toLowerCase() : `.${e.toLowerCase()}`));
+      } else if (typeof parsed.allowedExtensions === "string") {
+        allowedExtensions = parsed.allowedExtensions
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .map((e: string) => (e.startsWith(".") ? e.toLowerCase() : `.${e.toLowerCase()}`));
       }
 
       if (typeof parsed.allowUrls === "boolean") {
@@ -510,6 +533,12 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
   if (process.env.RAGCLAW_EMBEDDER) {
     embedder = process.env.RAGCLAW_EMBEDDER;
   }
+  if (process.env.RAGCLAW_ALLOWED_EXTENSIONS) {
+    allowedExtensions = process.env.RAGCLAW_ALLOWED_EXTENSIONS.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((e) => (e.startsWith(".") ? e.toLowerCase() : `.${e.toLowerCase()}`));
+  }
 
   let config: RagclawConfig = {
     configDir,
@@ -523,6 +552,7 @@ export function getConfig(overrides?: Partial<RagclawConfig>): RagclawConfig {
     maxDepth,
     maxFiles,
     enforceGuards,
+    allowedExtensions,
     extractorLimits,
     pluginConfig,
     embedder,
@@ -719,6 +749,14 @@ export const SETTABLE_KEYS: ConfigKeyMeta[] = [
     type: "boolean",
     configKey: "enforceGuards",
     description: "Enforce path/URL guards in CLI (for autonomous use)",
+  },
+  {
+    yamlKey: "allowedExtensions",
+    envVar: "RAGCLAW_ALLOWED_EXTENSIONS",
+    type: "string[]",
+    configKey: "allowedExtensions",
+    description:
+      "Allowed file extensions during directory walks (e.g. .ts,.md,.adoc). Empty = no restriction.",
   },
   {
     yamlKey: "extractor.fetchTimeoutMs",

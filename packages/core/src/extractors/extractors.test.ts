@@ -35,8 +35,16 @@ describe("Extractor canHandle", () => {
       expect(ext.canHandle({ type: "file", path: "/tmp/README" })).toBe(true);
     });
 
-    it("does not handle .md files", () => {
-      expect(ext.canHandle({ type: "file", path: "/tmp/doc.md" })).toBe(false);
+    it("handles .md files (catch-all — MarkdownExtractor is registered first)", () => {
+      expect(ext.canHandle({ type: "file", path: "/tmp/doc.md" })).toBe(true);
+    });
+
+    it("handles .adoc files", () => {
+      expect(ext.canHandle({ type: "file", path: "/tmp/doc.adoc" })).toBe(true);
+    });
+
+    it("handles files with unknown extensions", () => {
+      expect(ext.canHandle({ type: "file", path: "/tmp/doc.xyz" })).toBe(true);
     });
 
     it("does not handle URL sources", () => {

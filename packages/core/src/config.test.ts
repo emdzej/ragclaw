@@ -91,6 +91,7 @@ describe("getConfig", () => {
     "RAGCLAW_MAX_DEPTH",
     "RAGCLAW_MAX_FILES",
     "RAGCLAW_ENFORCE_GUARDS",
+    "RAGCLAW_ALLOWED_EXTENSIONS",
     "RAGCLAW_FETCH_TIMEOUT_MS",
     "RAGCLAW_MAX_RESPONSE_SIZE_BYTES",
     "RAGCLAW_MAX_PDF_PAGES",
@@ -197,6 +198,12 @@ describe("getConfig", () => {
       expect(config.allowedPaths).toHaveLength(2);
       expect(config.allowedPaths[0]).toContain("path/one");
       expect(config.allowedPaths[1]).toContain("path/two");
+    });
+
+    it("RAGCLAW_ALLOWED_EXTENSIONS sets allowed extensions (normalised)", () => {
+      process.env.RAGCLAW_ALLOWED_EXTENSIONS = ".ts, .MD, adoc";
+      const config = getConfig();
+      expect(config.allowedExtensions).toEqual([".ts", ".md", ".adoc"]);
     });
 
     it("RAGCLAW_ALLOW_URLS=false disables URLs", () => {
@@ -360,6 +367,7 @@ describe("SETTABLE_KEYS", () => {
     expect(yamlKeys).toContain("dataDir");
     expect(yamlKeys).toContain("plugins");
     expect(yamlKeys).toContain("allowedPaths");
+    expect(yamlKeys).toContain("allowedExtensions");
     expect(yamlKeys).toContain("enforceGuards");
     expect(yamlKeys).toContain("maxDepth");
     expect(yamlKeys).toContain("maxFiles");
@@ -487,6 +495,18 @@ describe("config file YAML parsing", () => {
     expect(cfg.allowedPaths).toHaveLength(2);
     expect(cfg.allowedPaths[0]).toContain("tmp/a");
     expect(cfg.allowedPaths[1]).toContain("tmp/b");
+  });
+
+  it("parses allowedExtensions as a YAML list (normalised)", () => {
+    writeConfig("allowedExtensions:\n  - .ts\n  - .MD\n  - adoc\n");
+    const cfg = getConfig();
+    expect(cfg.allowedExtensions).toEqual([".ts", ".md", ".adoc"]);
+  });
+
+  it("parses allowedExtensions as a comma-separated string", () => {
+    writeConfig("allowedExtensions: .ts, .md, adoc\n");
+    const cfg = getConfig();
+    expect(cfg.allowedExtensions).toEqual([".ts", ".md", ".adoc"]);
   });
 
   it("parses nested extractor block", () => {
