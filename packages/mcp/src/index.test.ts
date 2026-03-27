@@ -42,6 +42,18 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
   }),
 }));
 
+// ── pino mock — prevent real logging ──────────────────────────────────────────
+vi.mock("pino", () => {
+  const noopLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => noopLogger),
+  };
+  return { default: vi.fn(() => noopLogger) };
+});
+
 // ── fs mocks ──────────────────────────────────────────────────────────────────
 const mockExistsSync = vi.fn((_p: string) => true);
 vi.mock("fs", () => ({ existsSync: (p: string) => mockExistsSync(p) }));
@@ -110,17 +122,20 @@ vi.mock("@emdzej/ragclaw-core", () => ({
     extractorLimits: {},
     maxDepth: 10,
     maxFiles: 1000,
+    allowedExtensions: [],
   })),
   getDbPath: vi.fn((name: string) => `/mock/data/${name}.sqlite`),
   isPathAllowed: vi.fn(() => ({ allowed: true })),
   isUrlAllowed: vi.fn(async () => ({ allowed: true })),
 }));
 
-// ── Import SUT after all vi.mock calls ────────────────────────────────────────
-// This triggers main() which registers the handlers on serverMock.
-await import("./index.js");
-
 import { createEmbedder as mockCreateEmbedder } from "@emdzej/ragclaw-core";
+// ── Import SUT after all vi.mock calls ────────────────────────────────────────
+// This registers tools on the serverMock via createServer().
+import { createServer } from "./server.js";
+
+// Register all tools on our mocked server by creating a server
+createServer("0.0.0-test");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -324,5 +339,37 @@ describe("MCP kb_search — embedder resolution (Bug 1 + Bug 3)", () => {
       // Store connections are cached for read-only operations — close is not called
       expect(storeMock.close).toHaveBeenCalledTimes(0);
     });
+  });
+});
+
+// ── createServer tests ──────────────────────────────────────────────────────
+
+describe("createServer", () => {
+  it("registers all 14 tools", () => {
+    // capturedToolHandlers was populated when createServer() was called above
+    expect(capturedToolHandlers.size).toBe(14);
+  });
+
+  it("registers expected tool names", () => {
+    const expectedTools = [
+      "kb_search",
+      "kb_read_source",
+      "kb_add",
+      "kb_status",
+      "kb_remove",
+      "kb_reindex",
+      "kb_list_chunkers",
+      "kb_db_merge",
+      "kb_list_databases",
+      "kb_db_init",
+      "kb_db_info",
+      "kb_db_info_get",
+      "kb_db_delete",
+      "kb_db_rename",
+    ];
+
+    for (const name of expectedTools) {
+      expect(capturedToolHandlers.has(name), `Missing tool: ${name}`).toBe(true);
+    }
   });
 });

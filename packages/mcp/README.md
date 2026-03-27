@@ -1,6 +1,8 @@
 # @emdzej/ragclaw-mcp
 
-MCP server for RagClaw — exposes RAG tools to Codex, Claude Code, OpenCode, Cursor, and Windsurf.
+MCP server for RagClaw — exposes 14 RAG knowledge-base tools to AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/).
+
+Supports **stdio** (default, single-client) and **HTTP** (multi-client, Streamable HTTP) transports.
 
 ## Installation
 
@@ -8,18 +10,51 @@ MCP server for RagClaw — exposes RAG tools to Codex, Claude Code, OpenCode, Cu
 npm install -g @emdzej/ragclaw-mcp
 ```
 
-## Configuration
+Or use without installing:
 
-### Codex CLI
+```bash
+npx @emdzej/ragclaw-mcp
+```
+
+## Usage
+
+```bash
+# Default — stdio transport (launched by MCP hosts)
+ragclaw-mcp
+
+# HTTP transport on localhost:3000
+ragclaw-mcp --transport http
+
+# HTTP on a custom port with debug logging
+ragclaw-mcp --transport http --port 8080 --log-level debug
+```
+
+### CLI flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--transport <type>` | `stdio` or `http` | `stdio` |
+| `--port <number>` | Port for HTTP transport | `3000` |
+| `--host <host>` | Host/IP for HTTP transport | `127.0.0.1` |
+| `--log-level <level>` | `debug`, `info`, `warn`, `error` | `info` |
+| `-V, --version` | Print version | |
+| `-h, --help` | Print help | |
+
+## Client configuration
+
+### stdio transport (default)
+
+Clients that manage the MCP process lifecycle (most common setup):
+
+**Codex CLI** (`~/.codex/config.yaml`):
 
 ```yaml
-# ~/.codex/config.yaml
 mcpServers:
   ragclaw:
     command: ragclaw-mcp
 ```
 
-### Claude Code / Cursor / Windsurf
+**Claude Code** (MCP settings):
 
 ```json
 {
@@ -31,22 +66,93 @@ mcpServers:
 }
 ```
 
+**OpenCode** (`~/.opencode/config.json`):
+
+```json
+{
+  "mcp": {
+    "ragclaw": {
+      "command": "ragclaw-mcp"
+    }
+  }
+}
+```
+
+**Cursor** (Settings > MCP):
+
+```json
+{
+  "ragclaw": {
+    "command": "ragclaw-mcp"
+  }
+}
+```
+
+**Windsurf** (`~/.windsurf/mcp.json`):
+
+```json
+{
+  "servers": {
+    "ragclaw": {
+      "command": "ragclaw-mcp"
+    }
+  }
+}
+```
+
+### HTTP transport
+
+Start the server separately, then point clients at `http://127.0.0.1:3000/mcp`:
+
+```bash
+ragclaw-mcp --transport http --port 3000
+```
+
+The HTTP endpoint supports MCP Streamable HTTP:
+- `POST /mcp` — JSON-RPC requests (initialize + subsequent)
+- `GET /mcp` — SSE stream for server-to-client notifications
+- `DELETE /mcp` — explicit session termination
+
+Sessions are stateful — each client gets its own MCP server instance, while expensive resources (embedders, SQLite stores) are shared across sessions.
+
 ## Tools
 
 | Tool | Description |
 |------|-------------|
-| `rag_search` | Search knowledge base |
-| `rag_add` | Index file/directory/URL |
-| `rag_reindex` | Re-process changed sources |
-| `rag_status` | Get KB statistics including embedder info |
-| `rag_list` | List indexed sources |
-| `rag_remove` | Remove source from index |
+| `kb_search` | Hybrid/vector/keyword search with query decomposition and RRF |
+| `kb_read_source` | Retrieve full indexed content of a source |
+| `kb_add` | Index a file, directory, or URL (with optional crawl) |
+| `kb_status` | Knowledge base statistics |
+| `kb_remove` | Remove a source from the index |
+| `kb_reindex` | Re-process changed sources |
+| `kb_db_merge` | Merge another `.db` file into a local KB |
+| `kb_list_chunkers` | List available chunkers (built-in + plugin) |
+| `kb_list_databases` | List all knowledge bases with name, description, keywords |
+| `kb_db_init` | Create a new knowledge base |
+| `kb_db_info` | Set description and keywords on a KB |
+| `kb_db_info_get` | Read description and keywords from a KB |
+| `kb_db_delete` | Delete a KB permanently (requires `confirm: true`) |
+| `kb_db_rename` | Rename a KB (requires `confirm: true`) |
 
-**Note:** The MCP server automatically detects the embedder from each knowledge base's stored metadata. Different databases can use different embedding models — the correct model is loaded per database on first search.
+## Security
+
+- The MCP server **always enforces guards** (`isPathAllowed`, `isUrlAllowed`) regardless of the CLI `enforceGuards` setting.
+- HTTP transport binds to `127.0.0.1` by default. Binding to `0.0.0.0` logs a warning — no built-in authentication.
+- Configure `allowedPaths`, `allowedUrls`, and other guard settings in `~/.config/ragclaw/config.yaml`.
+
+## Development
+
+```bash
+pnpm install
+pnpm build
+pnpm --filter @emdzej/ragclaw-mcp test
+```
 
 ## Documentation
 
-See the main [RagClaw repository](https://github.com/emdzej/ragclaw) for full documentation.
+See the main [RagClaw repository](https://github.com/emdzej/ragclaw) for full documentation:
+- [SPEC.md](../../docs/SPEC.md) — Canonical specification
+- [USER_GUIDE.md](../../docs/USER_GUIDE.md) — Feature reference
 
 ## License
 

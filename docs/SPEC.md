@@ -17,6 +17,7 @@ RagClaw is a local-first RAG (Retrieval-Augmented Generation) engine designed fo
 @emdzej/ragclaw (monorepo)
 ├── @emdzej/ragclaw-core      # Extractors, chunkers, embedder, store
 ├── @emdzej/ragclaw-cli       # Standalone CLI tool
+├── @emdzej/ragclaw-mcp       # MCP server (stdio + HTTP transport)
 └── @emdzej/ragclaw-skill     # OpenClaw skill integration
 ```
 
@@ -695,6 +696,66 @@ Options:
 | `skip` (default) | Keep the local version, ignore the remote one |
 | `prefer-local` | Same as `skip` |
 | `prefer-remote` | Overwrite local chunks with remote chunks |
+
+## MCP Server
+
+`@emdzej/ragclaw-mcp` exposes all RagClaw tools to AI agents via the
+[Model Context Protocol](https://modelcontextprotocol.io/).
+
+### Transports
+
+| Transport | Flag | Description |
+|-----------|------|-------------|
+| **stdio** (default) | `--transport stdio` | One-client, launched per-process by MCP hosts (Codex, Claude Code, Cursor, etc.) |
+| **HTTP** | `--transport http` | Streamable HTTP on `/mcp`. Stateful sessions — each client gets its own `McpServer` instance. Shared resource caches across sessions. |
+
+### CLI Flags
+
+```
+ragclaw-mcp [options]
+
+Options:
+  --transport <type>   Transport type: "stdio" or "http"    (default: "stdio")
+  --port <number>      Port for HTTP transport               (default: "3000")
+  --host <host>        Host/IP for HTTP transport            (default: "127.0.0.1")
+  --log-level <level>  Log level: debug, info, warn, error   (default: "info")
+  -V, --version        Output the version number
+  -h, --help           Display help for command
+```
+
+### Tools (14)
+
+All tool names use `snake_case` with a `kb_` prefix.
+
+| Tool | Description |
+|------|-------------|
+| `kb_search` | Hybrid/vector/keyword search with query decomposition and RRF |
+| `kb_read_source` | Retrieve full indexed content of a source |
+| `kb_add` | Index file, directory, or URL (with optional crawl) |
+| `kb_status` | Knowledge base statistics |
+| `kb_remove` | Remove a source from the index |
+| `kb_reindex` | Re-process changed sources |
+| `kb_db_merge` | Merge another `.db` file |
+| `kb_list_chunkers` | List available chunkers (built-in + plugin) |
+| `kb_list_databases` | List all knowledge bases with metadata |
+| `kb_db_init` | Create a new knowledge base |
+| `kb_db_info` | Set description and keywords |
+| `kb_db_info_get` | Read description and keywords |
+| `kb_db_delete` | Delete a knowledge base (requires `confirm: true`) |
+| `kb_db_rename` | Rename a knowledge base (requires `confirm: true`) |
+
+### HTTP Transport Details
+
+- **Endpoint:** `POST /mcp` (JSON-RPC), `GET /mcp` (SSE notifications), `DELETE /mcp` (session termination)
+- **Session model:** Stateful — session IDs assigned via `mcp-session-id` header.
+- **Authentication:** None (localhost-only by default). A warning is logged when binding to `0.0.0.0`.
+- **Graceful shutdown:** SIGINT/SIGTERM close all active transports and cached SQLite stores before exit.
+- **DNS rebinding protection:** Provided by `createMcpExpressApp()` from the MCP SDK.
+
+### Logging
+
+Pino to stderr in both transports. Pretty-printed in development, JSON in production
+(`NODE_ENV=production`). Controlled via `--log-level`.
 
 ## OpenClaw Skill Integration
 

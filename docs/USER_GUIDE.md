@@ -586,6 +586,49 @@ When syncing between machines with different embedders or resources, prefer `mer
 
 RagClaw ships a standalone MCP server package (`@emdzej/ragclaw-mcp`) that exposes RagClaw tools to AI clients. The MCP server **always enforces guards**, regardless of the CLI `enforceGuards` setting.
 
+### Transports
+
+The MCP server supports two transports:
+
+| Transport | When to use |
+|-----------|-------------|
+| **stdio** (default) | Standard single-client mode — each MCP host launches its own `ragclaw-mcp` process. |
+| **HTTP** | Multi-client mode — a single long-running `ragclaw-mcp` process serves multiple clients over HTTP. |
+
+**stdio** is the default and what all MCP hosts (Codex, Claude Code, Cursor, OpenCode, Windsurf) expect when they manage the process lifecycle themselves.
+
+**HTTP** is useful when you want a shared, long-running server — for example, serving a team or multiple local tools at once.
+
+```bash
+# Default (stdio)
+ragclaw-mcp
+
+# HTTP on localhost:3000
+ragclaw-mcp --transport http
+
+# HTTP on a custom port with debug logging
+ragclaw-mcp --transport http --port 8080 --log-level debug
+```
+
+> **Security warning:** the HTTP transport has no built-in authentication.
+> By default it binds to `127.0.0.1` (localhost only). If you bind to
+> `0.0.0.0`, the server will be accessible from the network — it has
+> filesystem access scoped by your `allowedPaths` config, so use caution.
+
+### CLI flags
+
+```
+ragclaw-mcp [options]
+
+Options:
+  --transport <type>   "stdio" or "http"                     (default: "stdio")
+  --port <number>      Port for HTTP transport               (default: "3000")
+  --host <host>        Host/IP for HTTP transport            (default: "127.0.0.1")
+  --log-level <level>  debug | info | warn | error           (default: "info")
+  -V, --version        Output the version number
+  -h, --help           Display help for command
+```
+
 ### Install the MCP server
 
 Option 1 — global install:
