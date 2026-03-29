@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.8.0] — 2026-03-29
+
+### New features
+
+#### MCP HTTP transport and modular architecture
+
+The MCP server now supports Streamable HTTP transport alongside stdio, enabling remote and multi-client deployments without socket forwarding.
+
+- `--transport http` flag starts an HTTP server (default `localhost:3100`)
+- `--port`, `--host`, `--log-level` CLI flags via Commander.js
+- Stateful session management: each HTTP client gets its own `McpServer` instance
+- Graceful shutdown on `SIGINT`/`SIGTERM` in HTTP mode
+- Pino structured logging to stderr (pretty in dev, JSON in production)
+
+The server internals were refactored from a single 1400-line file into 9 domain-grouped tool modules under `src/tools/`, with shared caches and services extracted into `src/services.ts`.
+
+#### Improved search accuracy and performance
+
+Hybrid search now uses **Reciprocal Rank Fusion (RRF)** instead of the previous weighted-score merge, producing more consistent rankings across diverse queries.
+
+- **Deferred hydration** — both search legs score lightly and merge IDs first, hydrating full chunk data only for the final winners, reducing memory and I/O
+- **FTS5 OR queries** — keyword leg now uses OR instead of implicit AND, improving recall for compound queries
+- **Embedding BLOBs excluded** from search result hydration (`CHUNK_COLS` constant), reducing per-result payload
+- **Store connection caching** in MCP server avoids per-call open/close overhead
+- **Query decomposition** in MCP — multi-phrase queries are split, searched independently, and merged via RRF
+- **Benchmark suite** — a Vitest bench suite (480-chunk synthetic corpus, 15 cases) was added with baseline results recorded in `docs/benchmarks/`
+
+---
+
 ## [0.7.0] — 2026-03-26
 
 ### Breaking changes

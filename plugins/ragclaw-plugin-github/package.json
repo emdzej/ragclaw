@@ -1,6 +1,6 @@
 {
   "name": "ragclaw-plugin-github",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "RagClaw plugin for indexing GitHub repositories, issues, PRs, and discussions",
   "type": "module",
   "main": "dist/index.js",
@@ -25,7 +25,7 @@
   "author": "Michał Jaskólski",
   "keywords": ["ragclaw", "ragclaw-plugin", "github", "issues", "pull-requests"],
   "peerDependencies": {
-    "@emdzej/ragclaw-core": ">=0.7.0"
+    "@emdzej/ragclaw-core": ">=0.8.0"
   },
   "devDependencies": {
     "@emdzej/ragclaw-core": "workspace:*",
