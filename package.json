@@ -24,7 +24,8 @@
       "esbuild"
     ],
     "overrides": {
-      "picomatch": ">=4.0.4"
+      "picomatch": ">=4.0.4",
+      "path-to-regexp": ">=8.4.0"
     }
   }
 }
