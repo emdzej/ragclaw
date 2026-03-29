@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1] — 2026-03-29
+
+### Fixes
+
+- **path-to-regexp DoS CVE** — overridden `path-to-regexp` to `>=8.4.0` to resolve a Denial of Service vulnerability via sequential optional groups (GHSA-j3q9-mxjg-w52f), pulled in transitively through `express@5` in the MCP server
+
+---
+
 ## [0.8.0] — 2026-03-29
 
 ### New features

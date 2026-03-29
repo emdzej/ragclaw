@@ -1,6 +1,6 @@
 {
   "name": "ragclaw",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Local-first knowledge base for RagClaw - index and search documents, code, and web pages",
   "triggers": [
     "/kb",
