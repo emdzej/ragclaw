@@ -81,7 +81,9 @@ const storeMock = {
 // IndexingService mock
 const indexingServiceMock = {
   init: vi.fn(async () => {}),
-  indexSource: vi.fn(async () => ({ status: "indexed" as const, sourceId: "s1", chunks: 1 })),
+  indexSource: vi.fn(
+    async (): Promise<Record<string, unknown>> => ({ status: "indexed", sourceId: "s1", chunks: 1 })
+  ),
   reindexSource: vi.fn(async () => ({ status: "unchanged" as const, sourceId: "s1" })),
   indexCrawl: vi.fn(async () => ({ indexed: 0, totalChunks: 0, skipped: 0, errors: 0 })),
 };
@@ -371,5 +373,147 @@ describe("createServer", () => {
     for (const name of expectedTools) {
       expect(capturedToolHandlers.has(name), `Missing tool: ${name}`).toBe(true);
     }
+  });
+});
+
+// ── kb_add inline text tests ────────────────────────────────────────────────
+
+/** Call the kb_add tool handler and return the text content. */
+async function callRagAdd(args: Record<string, unknown>): Promise<string> {
+  const handler = capturedToolHandlers.get("kb_add");
+  if (!handler) throw new Error("kb_add handler not registered");
+  const response = (await handler(args)) as { content: Array<{ type: string; text: string }> };
+  return response.content[0].text;
+}
+
+describe("MCP kb_add — inline text (content parameter)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(true);
+    storeMock.open.mockResolvedValue(undefined);
+    storeMock.close.mockResolvedValue(undefined);
+    storeMock.getMeta.mockResolvedValue(null);
+    indexingServiceMock.indexSource.mockResolvedValue({
+      status: "indexed" as const,
+      sourceId: "s1",
+      chunks: 3,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── Validation ──────────────────────────────────────────────────────────────
+
+  describe("input validation", () => {
+    it("returns error when neither source nor content is provided", async () => {
+      const result = await callRagAdd({ db: "default" });
+
+      expect(result).toContain("Error");
+      expect(result).toContain("provide either");
+    });
+
+    it("returns error when both source and content are provided", async () => {
+      const result = await callRagAdd({
+        source: "./file.md",
+        content: "hello world",
+      });
+
+      expect(result).toContain("Error");
+      expect(result).toContain("only one of");
+    });
+  });
+
+  // ── Inline text indexing ────────────────────────────────────────────────────
+
+  describe("content parameter", () => {
+    it("indexes inline text content when content is provided", async () => {
+      const result = await callRagAdd({
+        content: "Remember this important fact",
+      });
+
+      expect(result).toContain("Indexed");
+      expect(result).toContain("3 chunks");
+      expect(indexingServiceMock.indexSource).toHaveBeenCalledOnce();
+    });
+
+    it("passes TextSource with correct type and content to indexSource", async () => {
+      await callRagAdd({ content: "OAuth2 flow notes" });
+
+      expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: "text",
+          content: "OAuth2 flow notes",
+        })
+      );
+    });
+
+    it("passes name to TextSource when provided", async () => {
+      await callRagAdd({
+        content: "API key rotation policy",
+        name: "security-notes",
+      });
+
+      expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: "text",
+          content: "API key rotation policy",
+          name: "security-notes",
+        })
+      );
+    });
+
+    it("uses 'inline-text' as default display name in response", async () => {
+      const result = await callRagAdd({ content: "No name given" });
+
+      expect(result).toContain("inline-text");
+    });
+
+    it("uses custom name in response when provided", async () => {
+      const result = await callRagAdd({
+        content: "Named content",
+        name: "my-notes",
+      });
+
+      expect(result).toContain("my-notes");
+    });
+
+    it("reports 'unchanged' when indexSource returns unchanged status", async () => {
+      indexingServiceMock.indexSource.mockResolvedValueOnce({
+        status: "unchanged" as const,
+        sourceId: "s1",
+      });
+
+      const result = await callRagAdd({ content: "Duplicate content" });
+
+      expect(result).toContain("Skipped");
+      expect(result).toContain("unchanged");
+    });
+
+    it("reports error when indexSource returns error status", async () => {
+      indexingServiceMock.indexSource.mockResolvedValueOnce({
+        status: "error" as const,
+        sourceId: "s1",
+        error: "embedding failed",
+      });
+
+      const result = await callRagAdd({ content: "Broken content" });
+
+      expect(result).toContain("Error");
+      expect(result).toContain("embedding failed");
+    });
+  });
+
+  // ── Store lifecycle ─────────────────────────────────────────────────────────
+
+  describe("store lifecycle", () => {
+    it("closes the store after inline text indexing", async () => {
+      await callRagAdd({ content: "Test content" });
+
+      expect(storeMock.close).toHaveBeenCalledOnce();
+    });
   });
 });

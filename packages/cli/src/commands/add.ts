@@ -37,6 +37,12 @@ interface AddOptions {
   chunkSize?: string;
   /** Override overlap for the selected chunker. */
   overlap?: string;
+  /** Inline text content to index directly. */
+  text?: string;
+  /** Read text content from stdin. */
+  stdin?: boolean;
+  /** Name / label for inline text source. */
+  name?: string;
   // Security guard overrides (from CLI flags)
   allowedPaths?: string;
   maxDepth?: string;
@@ -103,7 +109,60 @@ function buildOverrides(options: AddOptions): Partial<RagclawConfig> | undefined
   return hasAny ? o : undefined;
 }
 
-export async function addCommand(source: string, options: AddOptions): Promise<void> {
+/**
+ * Read all content from stdin.
+ *
+ * Returns the full stdin content as a string.  Rejects after 30 s of
+ * silence so the CLI does not hang indefinitely when stdin is a TTY and
+ * the user forgot to pipe anything.
+ */
+function readStdin(): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const timeout = setTimeout(() => {
+      process.stdin.removeAllListeners();
+      reject(new Error("Timed out waiting for stdin (30 s). Did you forget to pipe content?"));
+    }, 30_000);
+
+    process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
+    process.stdin.on("end", () => {
+      clearTimeout(timeout);
+      resolve(Buffer.concat(chunks).toString("utf-8"));
+    });
+    process.stdin.on("error", (err: Error) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    process.stdin.resume();
+  });
+}
+
+export async function addCommand(source: string | undefined, options: AddOptions): Promise<void> {
+  // -------------------------------------------------------------------------
+  // Validate input: exactly one of source, --text, or --stdin must be given
+  // -------------------------------------------------------------------------
+  const hasInlineText = options.text !== undefined;
+  const hasStdin = options.stdin === true;
+  const hasSource = source !== undefined && source !== "";
+
+  if (!hasSource && !hasInlineText && !hasStdin) {
+    console.error(chalk.red("Error: provide a <source> argument, --text <content>, or --stdin"));
+    process.exitCode = 1;
+    return;
+  }
+  if ((hasInlineText && hasStdin) || (hasInlineText && hasSource) || (hasStdin && hasSource)) {
+    console.error(chalk.red("Error: provide only one of <source>, --text, or --stdin"));
+    process.exitCode = 1;
+    return;
+  }
+
+  // After validation, narrow `options.text` to `string` (guaranteed by hasInlineText)
+  const inlineText: string | undefined = hasInlineText ? options.text : undefined;
+
+  // After validation, narrow `source` to `string` for crawl/normal-mode branches
+  // (guaranteed non-empty by hasSource — used only in code paths gated on hasSource)
+  const resolvedSource: string = hasSource ? (source as string) : "";
+
   const overrides = buildOverrides(options);
   const config = getConfig(overrides);
   const dbPath = getDbPath(options.db);
@@ -191,17 +250,67 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
 
   try {
     // -------------------------------------------------------------------------
+    // Inline text mode: --text or --stdin
+    // -------------------------------------------------------------------------
+    if (hasInlineText || hasStdin) {
+      let content: string;
+      if (hasInlineText) {
+        content = inlineText as string;
+      } else {
+        // Read all of stdin
+        content = await readStdin();
+        if (!content.trim()) {
+          console.error(chalk.red("Error: no content received from stdin"));
+          process.exitCode = 1;
+          return;
+        }
+      }
+
+      const textSource: Source = {
+        type: "text",
+        content,
+        name: options.name,
+      };
+
+      const displayName = options.name ?? "inline-text";
+      const fileSpinner = ora(`Processing ${displayName}`).start();
+
+      try {
+        const outcome = await indexingService.indexSource(store, textSource);
+
+        switch (outcome.status) {
+          case "indexed":
+            fileSpinner.succeed(`Indexed ${displayName} (${outcome.chunks} chunks)`);
+            break;
+          case "unchanged":
+            fileSpinner.info(`Skipping ${displayName} (unchanged)`);
+            break;
+          case "skipped":
+            fileSpinner.warn(`Skipping ${displayName} (${outcome.reason})`);
+            break;
+          case "error":
+            fileSpinner.fail(`Failed to process ${displayName}: ${outcome.error}`);
+            break;
+        }
+      } catch (error) {
+        fileSpinner.fail(`Failed to process ${displayName}: ${error}`);
+      }
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
     // Crawl mode: follow links from a seed URL
     // -------------------------------------------------------------------------
     if (options.crawl) {
-      if (!source.includes("://")) {
+      if (!resolvedSource.includes("://")) {
         console.error(chalk.red("--crawl requires a URL source (e.g. https://docs.example.com)"));
         await store.close();
         process.exit(1);
       }
 
       if (config.enforceGuards) {
-        const urlCheck = await isUrlAllowed(source, config);
+        const urlCheck = await isUrlAllowed(resolvedSource, config);
         if (!urlCheck.allowed) {
           console.error(chalk.red(`Blocked: ${urlCheck.reason}`));
           await store.close();
@@ -230,13 +339,13 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
             .filter(Boolean)
         : undefined;
 
-      console.log(chalk.dim(`Crawling ${source}...`));
+      console.log(chalk.dim(`Crawling ${resolvedSource}...`));
 
       let indexed = 0;
 
       const crawlSpinner = ora("Crawling...").start();
 
-      const summary = await indexingService.indexCrawl(store, source, {
+      const summary = await indexingService.indexCrawl(store, resolvedSource, {
         maxDepth: crawlMaxDepth,
         maxPages: crawlMaxPages,
         sameOrigin: options.crawlSameOrigin,
@@ -272,7 +381,7 @@ export async function addCommand(source: string, options: AddOptions): Promise<v
     // -------------------------------------------------------------------------
     // Normal mode: file / directory / single URL
     // -------------------------------------------------------------------------
-    const sources = await collectSources(source, options, config);
+    const sources = await collectSources(resolvedSource, options, config);
 
     // Let plugins expand compound sources (e.g. vault URL → individual notes)
     const expandedSources: Source[] = [];

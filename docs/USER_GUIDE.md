@@ -213,12 +213,12 @@ ragclaw db info set --db api-docs --description "REST API, auth, and webhook doc
 
 ## 5. Indexing content
 
-RagClaw supports local files, directories, and web pages. The `ragclaw add` command handles ingestion, splitting, embedding, and storing metadata.
+RagClaw supports local files, directories, web pages, and inline text. The `ragclaw add` command handles ingestion, splitting, embedding, and storing metadata.
 
 Common pattern:
 
 ```bash
-ragclaw add <source> -d <kb-name> [flags]
+ragclaw add [source] -d <kb-name> [flags]
 ```
 
 ### 5.1 Files and directories
@@ -300,7 +300,37 @@ Security and URL flags:
 
 Notes: RagClaw respects guard settings and the CLI's security flags. Use `--enforce-guards` for stricter, automated runs.
 
-### 5.3 Custom schemes and plugins
+### 5.3 Inline text
+
+You can index text directly from the command line without creating a file. This is useful for quick notes, facts, or piped content from other tools.
+
+Using `--text`:
+
+```bash
+# Index a quick note
+ragclaw add --text "OAuth2 uses refresh tokens to maintain sessions" -d notes-kb
+
+# Add a label with --name
+ragclaw add --text "API key rotation policy" --name security-notes -d notes-kb
+```
+
+Using `--stdin` (pipe from another command):
+
+```bash
+# Pipe content from another tool
+echo "Important deployment note" | ragclaw add --stdin -d ops-kb
+
+# Pipe with a label
+curl -s https://example.com/api/status | ragclaw add --stdin --name api-status -d ops-kb
+```
+
+Rules:
+- Provide exactly one of: `<source>`, `--text`, or `--stdin`. They are mutually exclusive.
+- `--name` is optional; defaults to "inline-text" if omitted.
+- Inline text is chunked and embedded like any other content.
+- The `--stdin` flag has a 30-second timeout — it will error if no data arrives within 30 seconds (e.g. when stdin is a TTY and nothing is piped).
+
+### 5.4 Custom schemes and plugins
 
 Plugins can add new source schemes (examples: `github://`, `obsidian://`, `youtube://`). To add plugin-provided sources you must install and enable the plugin.
 
@@ -706,7 +736,7 @@ mcpServers:
 |------|-------------|
 | `kb_search` | Search a knowledge base (query, mode, limit) |
 | `kb_read_source` | Retrieve the full indexed content of a source by path — use when you need more than the matching chunk |
-| `kb_add` | Index a file/directory/URL (`chunker`, `chunkSize`, `overlap` params supported) |
+| `kb_add` | Index a file/directory/URL or inline text (`content`, `name`, `chunker`, `chunkSize`, `overlap` params supported) |
 | `kb_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
 | `kb_db_merge` | Merge another `.db` file |
 | `kb_status` | Get KB statistics |

@@ -6,6 +6,7 @@
  */
 
 import { mkdir } from "node:fs/promises";
+import type { Source } from "@emdzej/ragclaw-core";
 import { getDbPath, isUrlAllowed, Store } from "@emdzej/ragclaw-core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -22,7 +23,9 @@ import {
 // ---------------------------------------------------------------------------
 
 async function ragAdd(args: {
-  source: string;
+  source?: string;
+  content?: string;
+  name?: string;
   db?: string;
   recursive?: boolean;
   crawl?: boolean;
@@ -38,6 +41,21 @@ async function ragAdd(args: {
   chunkSize?: number;
   overlap?: number;
 }): Promise<string> {
+  // Validate: exactly one of source or content must be provided
+  const hasSource = args.source !== undefined && args.source !== "";
+  const hasContent = args.content !== undefined && args.content !== "";
+
+  if (!hasSource && !hasContent) {
+    return "Error: provide either 'source' (file/directory/URL) or 'content' (inline text)";
+  }
+  if (hasSource && hasContent) {
+    return "Error: provide only one of 'source' or 'content', not both";
+  }
+
+  // Narrow types after validation — safe because gated by hasSource / hasContent
+  const resolvedSource: string = hasSource ? (args.source as string) : "";
+  const resolvedContent: string = hasContent ? (args.content as string) : "";
+
   const dbName = args.db || "default";
   const dbPath = getDbPath(dbName);
 
@@ -57,14 +75,39 @@ async function ragAdd(args: {
         : await buildIndexingService(undefined, undefined, undefined, store);
 
     // -----------------------------------------------------------------------
+    // Inline text mode (content parameter)
+    // -----------------------------------------------------------------------
+    if (hasContent) {
+      const textSource: Source = {
+        type: "text",
+        content: resolvedContent,
+        name: args.name,
+      };
+
+      const displayName = args.name ?? "inline-text";
+      const outcome = await indexingService.indexSource(store, textSource);
+
+      switch (outcome.status) {
+        case "indexed":
+          return `Indexed ${displayName} (${outcome.chunks} chunks).`;
+        case "unchanged":
+          return `Skipped ${displayName} (unchanged).`;
+        case "skipped":
+          return `Skipped ${displayName} (${outcome.reason}).`;
+        case "error":
+          return `Error indexing ${displayName}: ${outcome.error}`;
+      }
+    }
+
+    // -----------------------------------------------------------------------
     // Crawl mode
     // -----------------------------------------------------------------------
     if (args.crawl) {
-      if (!args.source.startsWith("http://") && !args.source.startsWith("https://")) {
+      if (!resolvedSource.startsWith("http://") && !resolvedSource.startsWith("https://")) {
         return "Error: crawl=true requires a URL source (http:// or https://)";
       }
 
-      const urlCheck = await isUrlAllowed(args.source, config);
+      const urlCheck = await isUrlAllowed(resolvedSource, config);
       if (!urlCheck.allowed) {
         return `Error: ${urlCheck.reason}`;
       }
@@ -82,7 +125,7 @@ async function ragAdd(args: {
             .filter(Boolean)
         : undefined;
 
-      const summary = await indexingService.indexCrawl(store, args.source, {
+      const summary = await indexingService.indexCrawl(store, resolvedSource, {
         maxDepth: args.crawlMaxDepth,
         maxPages: args.crawlMaxPages,
         sameOrigin: args.crawlSameOrigin,
@@ -102,7 +145,7 @@ async function ragAdd(args: {
     // -----------------------------------------------------------------------
     // Normal mode
     // -----------------------------------------------------------------------
-    const sources = await collectSources(args.source, args.recursive ?? true);
+    const sources = await collectSources(resolvedSource, args.recursive ?? true);
 
     let indexed = 0;
     let totalChunks = 0;
@@ -155,9 +198,24 @@ export function registerAddTool(server: McpServer): void {
     "kb_add",
     {
       description:
-        "Index a file, directory, or URL into the knowledge base. Supports markdown, PDF, DOCX, code files, and web pages. Pass crawl=true with a URL to follow links and index an entire site section.",
+        "Index content into the knowledge base. Provide either 'source' (file/directory/URL) or 'content' (inline text). Supports markdown, PDF, DOCX, code files, web pages, and inline text. Pass crawl=true with a URL to follow links and index an entire site section.",
       inputSchema: {
-        source: z.string().describe("File path, directory path, or URL to index"),
+        source: z
+          .string()
+          .optional()
+          .describe(
+            "File path, directory path, or URL to index. Mutually exclusive with 'content'."
+          ),
+        content: z
+          .string()
+          .optional()
+          .describe(
+            "Inline text content to index directly (e.g. 'remember this: ...'). Mutually exclusive with 'source'."
+          ),
+        name: z
+          .string()
+          .optional()
+          .describe("Label for inline text content (default: 'inline-text')"),
         db: z.string().optional().describe("Knowledge base name (default: 'default')"),
         recursive: z.boolean().optional().describe("Recurse into directories (default: true)"),
         crawl: z
@@ -207,6 +265,8 @@ export function registerAddTool(server: McpServer): void {
     },
     async ({
       source,
+      content,
+      name,
       db,
       recursive,
       crawl,
@@ -225,6 +285,8 @@ export function registerAddTool(server: McpServer): void {
       try {
         const result = await ragAdd({
           source,
+          content,
+          name,
           db,
           recursive,
           crawl,

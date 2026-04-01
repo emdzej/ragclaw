@@ -376,14 +376,21 @@ Default weights:
 ragclaw init my-docs    # works, but prints deprecation warning
 ```
 
-### `ragclaw add <source> [options]`
-Add content to the knowledge base.
+### `ragclaw add [source] [options]`
+Add content to the knowledge base. Provide either a `<source>` argument (file, directory, or URL),
+inline text via `--text`, or piped content via `--stdin`.
 
 ```bash
 ragclaw add ./docs/                    # Directory (recursive)
 ragclaw add ./paper.pdf                # Single file
 ragclaw add https://example.com/page   # Web page
 ragclaw add ./src/ --type code         # Code files
+
+# Inline text (no file needed)
+ragclaw add --text "OAuth2 uses refresh tokens to maintain sessions"
+ragclaw add --text "API key rotation policy" --name security-notes
+echo "piped content" | ragclaw add --stdin
+echo "named stdin" | ragclaw add --stdin --name my-notes
 
 # Web crawling — follow links from a seed URL
 ragclaw add https://docs.example.com --crawl
@@ -394,6 +401,9 @@ Options:
   --db <name>              Knowledge base name (default: "default")
   --type <type>            Force source type: auto|text|code|web
   --recursive              Recurse into directories (default: true)
+  --text <content>         Index inline text content directly
+  --stdin                  Read text content from stdin
+  -n, --name <name>        Name / label for inline text source (default: "inline-text")
   --include <glob>         Include pattern (e.g., "*.md")
   --exclude <glob>         Exclude pattern (e.g., "node_modules")
 
@@ -736,7 +746,7 @@ All tool names use `snake_case` with a `kb_` prefix.
 |------|-------------|
 | `kb_search` | Hybrid/vector/keyword search with query decomposition and RRF |
 | `kb_read_source` | Retrieve full indexed content of a source |
-| `kb_add` | Index file, directory, or URL (with optional crawl) |
+| `kb_add` | Index file, directory, URL, or inline text (with optional crawl) |
 | `kb_status` | Knowledge base statistics |
 | `kb_remove` | Remove a source from the index |
 | `kb_reindex` | Re-process changed sources |

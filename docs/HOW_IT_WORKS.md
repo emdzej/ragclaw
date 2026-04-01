@@ -4,10 +4,10 @@ This document explains how RagClaw processes your documents and makes them searc
 
 ## The Big Picture
 
-When you run `ragclaw add ./docs/`, here's what happens:
+When you run `ragclaw add ./docs/` (or `ragclaw add --text "..."` for inline text), here's what happens:
 
 ```
-Your Files → Extract Text → Split into Chunks → Generate Embeddings → Store in Database
+Your Files / Inline Text → Extract Text → Split into Chunks → Generate Embeddings → Store in Database
 ```
 
 When you run `ragclaw search "how to authenticate"`:
