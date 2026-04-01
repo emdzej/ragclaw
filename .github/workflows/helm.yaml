@@ -1,0 +1,71 @@
+name: Helm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'Chart version to publish (e.g., 0.1.0)'
+        required: true
+        type: string
+      app_version:
+        description: 'App version (e.g., 0.8.1) — defaults to Chart.yaml appVersion'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-chart:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
+        with:
+          version: v3.17.0
+
+      - name: Determine versions
+        run: |
+          if [ -n "${{ inputs.chart_version }}" ]; then
+            CHART_VERSION="${{ inputs.chart_version }}"
+          else
+            # On release: read version from Chart.yaml
+            CHART_VERSION=$(grep '^version:' charts/ragclaw-mcp/Chart.yaml | awk '{print $2}')
+          fi
+
+          if [ -n "${{ inputs.app_version }}" ]; then
+            APP_VERSION="${{ inputs.app_version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            APP_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            APP_VERSION=$(grep '^appVersion:' charts/ragclaw-mcp/Chart.yaml | awk '{print $2}' | tr -d '"')
+          fi
+
+          echo "CHART_VERSION=$CHART_VERSION" >> $GITHUB_ENV
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+          echo "Chart version: $CHART_VERSION"
+          echo "App version:   $APP_VERSION"
+
+      - name: Update Chart.yaml versions
+        run: |
+          sed -i "s/^version:.*/version: ${{ env.CHART_VERSION }}/" charts/ragclaw-mcp/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ env.APP_VERSION }}\"/" charts/ragclaw-mcp/Chart.yaml
+          cat charts/ragclaw-mcp/Chart.yaml
+
+      - name: Lint chart
+        run: helm lint charts/ragclaw-mcp
+
+      - name: Package chart
+        run: helm package charts/ragclaw-mcp --destination .helm-packages
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Push chart to GHCR
+        run: helm push .helm-packages/ragclaw-mcp-${{ env.CHART_VERSION }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

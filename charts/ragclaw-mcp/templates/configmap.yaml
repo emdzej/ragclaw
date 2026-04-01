@@ -1,0 +1,11 @@
+{{- if and .Values.config.content (not .Values.config.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ragclaw-mcp.fullname" . }}
+  labels:
+    {{- include "ragclaw-mcp.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- .Values.config.content | nindent 4 }}
+{{- end }}

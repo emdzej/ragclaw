@@ -39,6 +39,13 @@ export async function startHttp(options: HttpTransportOptions): Promise<void> {
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
   // -------------------------------------------------------------------------
+  // GET /healthz — lightweight liveness / readiness probe
+  // -------------------------------------------------------------------------
+  app.get("/healthz", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
+
+  // -------------------------------------------------------------------------
   // POST /mcp — handles JSON-RPC requests (new sessions + existing sessions)
   // -------------------------------------------------------------------------
   app.post("/mcp", async (req, res) => {

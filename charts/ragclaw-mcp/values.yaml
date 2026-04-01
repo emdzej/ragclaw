@@ -1,0 +1,153 @@
+# -- Number of replicas. SQLite does not support concurrent writers;
+# -- keep this at 1 unless you know what you are doing.
+replicaCount: 1
+
+image:
+  # -- Container image registry
+  registry: ghcr.io
+  # -- Container image repository
+  repository: emdzej/ragclaw-mcp
+  # -- Image tag (defaults to .Chart.AppVersion)
+  tag: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a ServiceAccount
+  create: true
+  # -- Annotations for the ServiceAccount
+  annotations: {}
+  # -- Override the ServiceAccount name (defaults to fullname)
+  name: ""
+
+# -- Annotations added to all pods
+podAnnotations: {}
+
+# -- Labels added to all pods
+podLabels: {}
+
+# -- Pod-level security context
+podSecurityContext:
+  fsGroup: 10001
+
+# -- Container-level security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port
+  port: 3000
+
+# -- Additional environment variables for the container.
+# Example:
+#   env:
+#     - name: RAGCLAW_EMBEDDER
+#       value: "ollama"
+#     - name: RAGCLAW_ALLOW_URLS
+#       value: "true"
+env: []
+
+# -- Additional envFrom sources (ConfigMaps, Secrets).
+# Example:
+#   envFrom:
+#     - secretRef:
+#         name: ragclaw-secrets
+envFrom: []
+
+# -- Resource requests and limits
+resources: {}
+  # limits:
+  #   cpu: 1000m
+  #   memory: 1Gi
+  # requests:
+  #   cpu: 250m
+  #   memory: 512Mi
+
+# -- Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -- Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -- Node selector constraints
+nodeSelector: {}
+
+# -- Tolerations for pod scheduling
+tolerations: []
+
+# -- Affinity rules for pod scheduling
+affinity: {}
+
+# ---------------------------------------------------------------------------
+# Configuration — mount a config.yaml into /etc/ragclaw
+# ---------------------------------------------------------------------------
+config:
+  # -- Provide an existing ConfigMap name containing config.yaml.
+  # When set, the chart does NOT create its own ConfigMap.
+  existingConfigMap: ""
+
+  # -- Inline config.yaml content. Rendered into a chart-managed ConfigMap
+  # only when existingConfigMap is empty.
+  # Example:
+  #   content: |
+  #     embedder: nomic
+  #     allowedPaths:
+  #       - /data/ragclaw
+  #     allowUrls: true
+  #     blockPrivateUrls: true
+  content: ""
+
+# ---------------------------------------------------------------------------
+# Persistence — data volume for SQLite knowledge bases (/data/ragclaw)
+# ---------------------------------------------------------------------------
+persistence:
+  # -- Enable persistent storage for knowledge bases.
+  # When disabled an emptyDir is used (data lost on pod restart).
+  enabled: true
+
+  # -- Use an existing PVC instead of creating one.
+  existingClaim: ""
+
+  # -- Storage class for the PVC. Empty string uses the cluster default.
+  storageClass: ""
+
+  # -- Requested storage size
+  size: 2Gi
+
+  # -- PVC access modes
+  accessModes:
+    - ReadWriteOnce
+
+  # -- Annotations added to the PVC
+  annotations: {}

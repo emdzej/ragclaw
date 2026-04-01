@@ -18,10 +18,13 @@ RagClaw is a local-first RAG (Retrieval-Augmented Generation) engine designed fo
 ├── @emdzej/ragclaw-core      # Extractors, chunkers, embedder, store
 ├── @emdzej/ragclaw-cli       # Standalone CLI tool
 ├── @emdzej/ragclaw-mcp       # MCP server (stdio + HTTP transport)
-└── @emdzej/ragclaw-skill     # OpenClaw skill integration
+├── @emdzej/ragclaw-skill     # OpenClaw skill integration
+└── charts/ragclaw-mcp        # Helm chart for Kubernetes deployment
 ```
 
 **Docker image:** `ghcr.io/emdzej/ragclaw-mcp` — pre-built MCP server image with all native dependencies and plugins. Published to GitHub Container Registry on each release.
+
+**Helm chart:** `oci://ghcr.io/emdzej/charts/ragclaw-mcp` — Kubernetes Helm chart for deploying the MCP server. Published to GHCR OCI registry. Versioned independently from the application.
 
 ## Components
 
@@ -748,7 +751,7 @@ All tool names use `snake_case` with a `kb_` prefix.
 
 ### HTTP Transport Details
 
-- **Endpoint:** `POST /mcp` (JSON-RPC), `GET /mcp` (SSE notifications), `DELETE /mcp` (session termination)
+- **Endpoints:** `POST /mcp` (JSON-RPC), `GET /mcp` (SSE notifications), `DELETE /mcp` (session termination), `GET /healthz` (liveness/readiness probe — returns `{"status":"ok"}`)
 - **Session model:** Stateful — session IDs assigned via `mcp-session-id` header.
 - **Authentication:** None (localhost-only by default). A warning is logged when binding to `0.0.0.0`.
 - **Graceful shutdown:** SIGINT/SIGTERM close all active transports and cached SQLite stores before exit.

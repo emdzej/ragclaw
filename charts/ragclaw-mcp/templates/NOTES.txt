@@ -1,0 +1,24 @@
+RagClaw MCP server has been deployed.
+
+Get the application URL:
+{{- if eq .Values.service.type "ClusterIP" }}
+  kubectl port-forward svc/{{ include "ragclaw-mcp.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- else }}
+  export SERVICE_IP=$(kubectl get svc {{ include "ragclaw-mcp.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo http://$SERVICE_IP:{{ .Values.service.port }}/mcp
+{{- end }}
+
+MCP endpoint: http://localhost:{{ .Values.service.port }}/mcp
+Health check: http://localhost:{{ .Values.service.port }}/healthz
+
+IMPORTANT — SQLite limitations:
+  - SQLite does not support concurrent writers. Keep replicas at 1.
+  - Do NOT use network filesystems (NFS, CIFS) for the data volume.
+    SQLite WAL mode may corrupt data on network-attached storage.
+  - Use a local volume or a block storage class (e.g. gp3, pd-ssd).
+
+{{- if not .Values.persistence.enabled }}
+
+WARNING: Persistence is disabled. Knowledge bases will be lost on pod restart.
+         Set persistence.enabled=true for production use.
+{{- end }}

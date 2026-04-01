@@ -18,9 +18,10 @@ Table of contents
 - [12. Portability and backups](#12-portability-and-backups)
 - [13. MCP server and tools](#13-mcp-server-and-tools)
 - [14. Docker](#14-docker)
-- [15. OpenClaw skill setup](#15-openclaw-skill-setup)
-- [16. Plugins](#16-plugins)
-- [17. Troubleshooting](#17-troubleshooting)
+- [15. Kubernetes (Helm)](#15-kubernetes-helm)
+- [16. OpenClaw skill setup](#16-openclaw-skill-setup)
+- [17. Plugins](#17-plugins)
+- [18. Troubleshooting](#18-troubleshooting)
 - [Appendix A — Supported formats](#appendix-a---supported-formats)
 - [Appendix B — Environment variables](#appendix-b---environment-variables)
 
@@ -838,12 +839,12 @@ volumes:
 
 ### Health checks
 
-The Docker image does not include a `HEALTHCHECK` directive. For orchestrators that need health probes, configure them externally:
+The HTTP transport exposes a `GET /healthz` endpoint that returns `{"status":"ok"}` with a 200 status code. Use this for orchestrator health probes.
 
 **Docker Compose:**
 ```yaml
 healthcheck:
-  test: ["CMD", "node", "-e", "fetch('http://localhost:3000/mcp').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  test: ["CMD", "node", "-e", "fetch('http://localhost:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
   interval: 30s
   timeout: 5s
   retries: 3
@@ -853,10 +854,16 @@ healthcheck:
 ```yaml
 livenessProbe:
   httpGet:
-    path: /mcp
+    path: /healthz
     port: 3000
   initialDelaySeconds: 10
   periodSeconds: 30
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 10
 ```
 
 ### Plugins in Docker
@@ -873,7 +880,138 @@ pluginsDir: /app/plugins
 
 The entrypoint warns if the data volume is on a network filesystem (NFS, CIFS, etc.). SQLite WAL mode can corrupt data on network-attached storage. Always use a local bind mount or Docker named volume for `/data/ragclaw`.
 
-## 15. OpenClaw skill setup
+## 15. Kubernetes (Helm)
+
+The RagClaw MCP server can be deployed to Kubernetes using the official Helm chart. The chart creates a Deployment, Service, and optional PersistentVolumeClaim and ConfigMap.
+
+**Chart:** `oci://ghcr.io/emdzej/charts/ragclaw-mcp`
+
+### Install the chart
+
+```bash
+helm install ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp
+```
+
+Install a specific version:
+
+```bash
+helm install ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp --version 0.1.0
+```
+
+### Configuration overview
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `replicaCount` | `1` | Number of replicas (keep at 1 — SQLite limitation) |
+| `image.registry` | `ghcr.io` | Container image registry |
+| `image.repository` | `emdzej/ragclaw-mcp` | Container image repository |
+| `image.tag` | `""` (appVersion) | Image tag |
+| `service.type` | `ClusterIP` | Kubernetes Service type |
+| `service.port` | `3000` | Service port |
+| `persistence.enabled` | `true` | Enable PVC for data |
+| `persistence.existingClaim` | `""` | Use an existing PVC |
+| `persistence.storageClass` | `""` | Storage class (cluster default) |
+| `persistence.size` | `2Gi` | PVC size |
+| `config.existingConfigMap` | `""` | Use an existing ConfigMap |
+| `config.content` | `""` | Inline config.yaml content |
+
+### Providing configuration
+
+**Option 1 — inline config in values:**
+
+```yaml
+# values.yaml
+config:
+  content: |
+    embedder: nomic
+    allowedPaths:
+      - /data/ragclaw
+    allowUrls: true
+    blockPrivateUrls: true
+```
+
+```bash
+helm install ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp -f values.yaml
+```
+
+**Option 2 — existing ConfigMap:**
+
+Create a ConfigMap with a `config.yaml` key, then reference it:
+
+```bash
+kubectl create configmap ragclaw-config --from-file=config.yaml=./my-config.yaml
+helm install ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp \
+  --set config.existingConfigMap=ragclaw-config
+```
+
+### Data persistence
+
+By default the chart creates a 2Gi PVC with `ReadWriteOnce` access mode. To use an existing PVC:
+
+```bash
+helm install ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp \
+  --set persistence.existingClaim=my-existing-pvc
+```
+
+To customise storage class and size:
+
+```bash
+helm install ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp \
+  --set persistence.storageClass=gp3 \
+  --set persistence.size=10Gi
+```
+
+### Environment variables
+
+The chart exposes generic `env` and `envFrom` fields for passing environment variables to the container. No RagClaw-specific env vars are templated — use these fields for any overrides:
+
+```yaml
+# values.yaml
+env:
+  - name: RAGCLAW_EMBEDDER
+    value: "ollama"
+  - name: RAGCLAW_ALLOW_URLS
+    value: "false"
+
+envFrom:
+  - secretRef:
+      name: ragclaw-secrets
+```
+
+### Security
+
+The chart sets a hardened security context by default:
+
+- Runs as non-root (UID 10001)
+- Read-only root filesystem
+- All capabilities dropped
+- No privilege escalation
+- A tmpfs is mounted at `/tmp`
+
+### Important SQLite limitations
+
+- **Single writer only.** SQLite does not support concurrent writers from multiple pods. Keep `replicaCount: 1`.
+- **No network filesystems.** Do NOT use NFS, CIFS, or other network-attached storage for the data volume. SQLite WAL mode can corrupt data. Use block storage (e.g., `gp3`, `pd-ssd`).
+
+### Upgrading
+
+```bash
+helm upgrade ragclaw oci://ghcr.io/emdzej/charts/ragclaw-mcp
+```
+
+### Uninstalling
+
+```bash
+helm uninstall ragclaw
+```
+
+Note: the PVC is **not** deleted on uninstall. Delete it manually if you want to remove the data:
+
+```bash
+kubectl delete pvc ragclaw-ragclaw-mcp
+```
+
+## 16. OpenClaw skill setup
 
 The `skill/` directory in the RagClaw repository bundles a ready-to-use OpenClaw skill. It exposes all RagClaw commands as `/rag` slash commands directly inside the OpenClaw chat interface — no MCP server required.
 
@@ -933,7 +1071,7 @@ Knowledge bases created via the skill are stored in the same location as the CLI
 - Default: `~/.local/share/ragclaw/<name>.sqlite`
 - Backwards compat: `~/.openclaw/ragclaw/` (used automatically if it exists)
 
-## 16. Plugins
+## 17. Plugins
 
 Plugin discovery and locations:
 
@@ -971,7 +1109,7 @@ ragclaw plugin enable ragclaw-plugin-github
 ragclaw add github://myorg/myrepo -d code-kb
 ```
 
-## 17. Troubleshooting
+## 18. Troubleshooting
 
 Problem: sqlite-vec native extension missing → fallback to JS vectors is slow above ~5k chunks
 

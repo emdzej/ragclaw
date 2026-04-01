@@ -1,0 +1,20 @@
+apiVersion: v2
+name: ragclaw-mcp
+description: RagClaw MCP server — local-first RAG engine for Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.8.1"
+home: https://github.com/emdzej/ragclaw
+sources:
+  - https://github.com/emdzej/ragclaw
+maintainers:
+  - name: emdzej
+    url: https://github.com/emdzej
+keywords:
+  - ragclaw
+  - rag
+  - mcp
+  - ai
+  - embeddings
+  - sqlite
+  - knowledge-base
