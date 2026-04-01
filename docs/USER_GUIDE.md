@@ -17,9 +17,10 @@ Table of contents
 - [11. Configuration](#11-configuration)
 - [12. Portability and backups](#12-portability-and-backups)
 - [13. MCP server and tools](#13-mcp-server-and-tools)
-- [14. OpenClaw skill setup](#14-openclaw-skill-setup)
-- [15. Plugins](#15-plugins)
-- [16. Troubleshooting](#16-troubleshooting)
+- [14. Docker](#14-docker)
+- [15. OpenClaw skill setup](#15-openclaw-skill-setup)
+- [16. Plugins](#16-plugins)
+- [17. Troubleshooting](#17-troubleshooting)
 - [Appendix A — Supported formats](#appendix-a---supported-formats)
 - [Appendix B — Environment variables](#appendix-b---environment-variables)
 
@@ -728,7 +729,151 @@ Crawl https://docs.example.com and index it into ragclaw
 
 **Security note:** the MCP server always enforces guards. Configure `allowedPaths` and other guard settings in `~/.config/ragclaw/config.yaml` before exposing RagClaw to external clients.
 
-## 14. OpenClaw skill setup
+## 14. Docker
+
+The RagClaw MCP server is available as a pre-built Docker image on GitHub Container Registry. The image includes all native dependencies (sqlite-vec, canvas, tree-sitter, tesseract.js) and all four plugins (GitHub, Obsidian, YouTube, Ollama).
+
+**Image:** `ghcr.io/emdzej/ragclaw-mcp`
+
+### Pull the image
+
+```bash
+docker pull ghcr.io/emdzej/ragclaw-mcp:latest
+```
+
+### Run with HTTP transport (default)
+
+```bash
+docker run -d \
+  --name ragclaw-mcp \
+  -p 3000:3000 \
+  -v ./config:/etc/ragclaw:ro \
+  -v ragclaw-data:/data/ragclaw \
+  --cap-drop=ALL \
+  --no-new-privileges \
+  --read-only \
+  --tmpfs /tmp:noexec,nosuid,size=64m \
+  ghcr.io/emdzej/ragclaw-mcp:latest
+```
+
+The server listens on `0.0.0.0:3000` inside the container.
+
+### Run with stdio transport
+
+For MCP clients that manage the process lifecycle (e.g., Claude Desktop):
+
+```bash
+docker run -i --rm \
+  -v ./config:/etc/ragclaw:ro \
+  -v ragclaw-data:/data/ragclaw \
+  --cap-drop=ALL \
+  --no-new-privileges \
+  ghcr.io/emdzej/ragclaw-mcp:latest --transport stdio
+```
+
+### Volumes
+
+| Mount point | Purpose | Recommended flags |
+|-------------|---------|-------------------|
+| `/etc/ragclaw` | Configuration (`config.yaml`) | `:ro` (read-only) |
+| `/data/ragclaw` | Knowledge base SQLite files | rw (default) |
+
+### Extending allowed paths
+
+By default the container restricts filesystem access to `/data/ragclaw`. To mount additional directories for indexing, override `RAGCLAW_ALLOWED_PATHS`:
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v ./config:/etc/ragclaw:ro \
+  -v ragclaw-data:/data/ragclaw \
+  -v /home/user/projects:/workspace:ro \
+  -e RAGCLAW_ALLOWED_PATHS="/data/ragclaw,/workspace" \
+  --cap-drop=ALL \
+  --no-new-privileges \
+  ghcr.io/emdzej/ragclaw-mcp:latest
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAGCLAW_CONFIG_DIR` | `/etc/ragclaw` | Config directory |
+| `RAGCLAW_DATA_DIR` | `/data/ragclaw` | Data directory |
+| `RAGCLAW_PLUGINS_DIR` | `/app/plugins` | Plugins directory |
+| `RAGCLAW_ALLOWED_PATHS` | `/data/ragclaw` | Comma-separated allowed path prefixes |
+| `RAGCLAW_BLOCK_PRIVATE_URLS` | `true` | Block RFC1918/private IP fetches |
+
+### Security hardening
+
+The image runs as a non-root user (UID 10001). For maximum security, combine with these `docker run` flags:
+
+- `--cap-drop=ALL` — drop all Linux capabilities
+- `--no-new-privileges` — prevent privilege escalation
+- `--read-only` — read-only root filesystem (use `--tmpfs /tmp:noexec,nosuid,size=64m` for temp files)
+
+### Docker Compose example
+
+```yaml
+services:
+  ragclaw-mcp:
+    image: ghcr.io/emdzej/ragclaw-mcp:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config:/etc/ragclaw:ro
+      - ragclaw-data:/data/ragclaw
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    restart: unless-stopped
+
+volumes:
+  ragclaw-data:
+```
+
+### Health checks
+
+The Docker image does not include a `HEALTHCHECK` directive. For orchestrators that need health probes, configure them externally:
+
+**Docker Compose:**
+```yaml
+healthcheck:
+  test: ["CMD", "node", "-e", "fetch('http://localhost:3000/mcp').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+```
+
+**Kubernetes:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /mcp
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+### Plugins in Docker
+
+All four plugins are included in the image. To activate a plugin, list it in your `config.yaml`:
+
+```yaml
+# /etc/ragclaw/config.yaml (mounted at /etc/ragclaw)
+plugins: ragclaw-plugin-github, ragclaw-plugin-youtube
+pluginsDir: /app/plugins
+```
+
+### SQLite and network filesystems
+
+The entrypoint warns if the data volume is on a network filesystem (NFS, CIFS, etc.). SQLite WAL mode can corrupt data on network-attached storage. Always use a local bind mount or Docker named volume for `/data/ragclaw`.
+
+## 15. OpenClaw skill setup
 
 The `skill/` directory in the RagClaw repository bundles a ready-to-use OpenClaw skill. It exposes all RagClaw commands as `/rag` slash commands directly inside the OpenClaw chat interface — no MCP server required.
 
@@ -788,7 +933,7 @@ Knowledge bases created via the skill are stored in the same location as the CLI
 - Default: `~/.local/share/ragclaw/<name>.sqlite`
 - Backwards compat: `~/.openclaw/ragclaw/` (used automatically if it exists)
 
-## 15. Plugins
+## 16. Plugins
 
 Plugin discovery and locations:
 
@@ -826,7 +971,7 @@ ragclaw plugin enable ragclaw-plugin-github
 ragclaw add github://myorg/myrepo -d code-kb
 ```
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 Problem: sqlite-vec native extension missing → fallback to JS vectors is slow above ~5k chunks
 

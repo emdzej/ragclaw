@@ -6,7 +6,7 @@ RagClaw is a local-first RAG (Retrieval-Augmented Generation) engine designed fo
 
 ## Design Principles
 
-1. **Zero-Ops** — No external services, no Docker, no API keys required
+1. **Zero-Ops** — No external services, no API keys required (Docker image available but optional)
 2. **Local-First** — All data stays on the user's machine
 3. **Graceful Degradation** — Works even if native extensions fail to load
 4. **Extensible** — Pluggable extractors, chunkers, and embedding models
@@ -20,6 +20,8 @@ RagClaw is a local-first RAG (Retrieval-Augmented Generation) engine designed fo
 ├── @emdzej/ragclaw-mcp       # MCP server (stdio + HTTP transport)
 └── @emdzej/ragclaw-skill     # OpenClaw skill integration
 ```
+
+**Docker image:** `ghcr.io/emdzej/ragclaw-mcp` — pre-built MCP server image with all native dependencies and plugins. Published to GitHub Container Registry on each release.
 
 ## Components
 

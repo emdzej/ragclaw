@@ -134,6 +134,35 @@ Sessions are stateful — each client gets its own MCP server instance, while ex
 | `kb_db_delete` | Delete a KB permanently (requires `confirm: true`) |
 | `kb_db_rename` | Rename a KB (requires `confirm: true`) |
 
+## Docker
+
+A pre-built Docker image is available on GitHub Container Registry with all native dependencies and plugins included.
+
+```bash
+# Pull the image
+docker pull ghcr.io/emdzej/ragclaw-mcp:latest
+
+# Run with HTTP transport (default in Docker)
+docker run -d \
+  --name ragclaw-mcp \
+  -p 3000:3000 \
+  -v ./config:/etc/ragclaw:ro \
+  -v ragclaw-data:/data/ragclaw \
+  --cap-drop=ALL \
+  --no-new-privileges \
+  --read-only \
+  --tmpfs /tmp:noexec,nosuid,size=64m \
+  ghcr.io/emdzej/ragclaw-mcp:latest
+
+# Run with stdio transport
+docker run -i --rm \
+  -v ./config:/etc/ragclaw:ro \
+  -v ragclaw-data:/data/ragclaw \
+  ghcr.io/emdzej/ragclaw-mcp:latest --transport stdio
+```
+
+The container runs as a non-root user (UID 10001). See [Docker section in the User Guide](../../docs/USER_GUIDE.md#14-docker) for full configuration, volumes, security hardening, and compose examples.
+
 ## Security
 
 - The MCP server **always enforces guards** (`isPathAllowed`, `isUrlAllowed`) regardless of the CLI `enforceGuards` setting.
