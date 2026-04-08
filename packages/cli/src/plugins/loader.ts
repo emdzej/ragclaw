@@ -102,7 +102,7 @@ export class PluginLoader {
 
     for (const manifest of manifests) {
       // Only load plugins explicitly listed in the allowlist
-      if (!allowed || !allowed.includes(manifest.name)) {
+      if (!allowed?.includes(manifest.name)) {
         continue;
       }
 

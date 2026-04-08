@@ -42,6 +42,11 @@ Skills moved from `skill/` to `skills/` with two variants:
 - `skills/openclaw/` — CLI-oriented skill for OpenClaw (moved from `skill/`)
 - `skills/opencode/` — MCP-oriented skill for OpenCode, renamed from `kb-search` to `memory`. Covers knowledge base search, temporal recall, and storing memories for later retrieval.
 
+### Fixes
+
+- **Removed all `pnpm.overrides`** — updated transitive dependencies (vitest 4.1.0→4.1.3, vite 7.3.1→8.0.7) so all CVEs are resolved naturally without version overrides. Removed stale overrides for `picomatch`, `path-to-regexp`, `@xmldom/xmldom`, and `vite`.
+- **Fixed biome lint warning** in `packages/cli/src/plugins/loader.ts` — replaced manual null guard with optional chain.
+
 ---
 
 ## [0.8.1] — 2026-03-29
