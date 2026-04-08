@@ -216,6 +216,8 @@ const storeReady: Promise<Store> = (async () => {
       type: "file",
       contentHash: randomUUID(),
       indexedAt: Date.now(),
+      createdAt: Date.now(),
+      timestamp: Date.now(),
     });
     sourceIds.set(topic.source, id);
   }
@@ -233,6 +235,7 @@ const storeReady: Promise<Store> = (async () => {
       metadata: { type: "paragraph" as const },
       embedding: fakeEmbedding(entry.index),
       createdAt: Date.now(),
+      timestamp: Date.now(),
     };
   });
 

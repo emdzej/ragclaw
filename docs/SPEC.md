@@ -258,6 +258,8 @@ CREATE TABLE sources (
   content_hash TEXT,               -- SHA-256 of content
   mtime INTEGER,                   -- File modification time
   indexed_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,     -- First-seen time (UTC epoch ms, immutable)
+  timestamp INTEGER NOT NULL,      -- Content time (UTC epoch ms, user-supplied or defaults to ingestion time)
   metadata TEXT                    -- JSON
 );
 
@@ -270,7 +272,8 @@ CREATE TABLE chunks (
   end_line INTEGER,
   metadata TEXT,                   -- JSON
   embedding BLOB,                  -- Float32Array as binary (fallback)
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL       -- Denormalized from source for query performance
 );
 
 -- Vector search (sqlite-vec extension, dimension-aware)
@@ -309,6 +312,7 @@ CREATE TABLE IF NOT EXISTS merge_history (
 CREATE INDEX idx_chunks_source ON chunks(source_id);
 CREATE INDEX idx_sources_path ON sources(path);
 CREATE INDEX idx_sources_indexed_at ON sources(indexed_at);
+CREATE INDEX idx_chunks_timestamp ON chunks(timestamp);
 ```
 
 **Store Interface:**
@@ -340,8 +344,8 @@ interface SearchQuery {
   limit?: number;                  // Default: 10
   mode?: 'vector' | 'keyword' | 'hybrid';  // Default: 'hybrid'
   filter?: {
-    sourceType?: string;
-    sourcePath?: string;
+    after?: number;                // UTC epoch ms — inclusive lower bound on chunk timestamp
+    before?: number;               // UTC epoch ms — exclusive upper bound on chunk timestamp
   };
 }
 
@@ -366,6 +370,23 @@ Default weights:
 1. Try `sqlite-vec` for vector search
 2. If unavailable, fall back to brute-force JS cosine similarity
 3. FTS5 is standard SQLite, always available
+
+**Temporal Memory:**
+
+Sources and chunks carry timestamps for time-aware retrieval, enabling RagClaw to serve as long-term memory for AI agents.
+
+| Column | Table | Type | Default | Semantics |
+|--------|-------|------|---------|-----------|
+| `created_at` | `sources` | `INTEGER NOT NULL` | `Date.now()` | Immutable first-seen time. Never overwritten on re-index. |
+| `timestamp` | `sources` | `INTEGER NOT NULL` | `Date.now()` | Content time — user-supplied via `--timestamp` / MCP `timestamp` param, or ingestion time if omitted. |
+| `timestamp` | `chunks` | `INTEGER NOT NULL` | inherited from source | Denormalized copy for query performance. Indexed via `idx_chunks_timestamp`. |
+
+- All values are **UTC epoch milliseconds**.
+- CLI flags accept both epoch ms and ISO 8601 strings (parsed to epoch ms before storage).
+- MCP tools accept epoch ms numbers.
+- On **re-index**: `created_at` preserved, `indexed_at` updated, `timestamp` preserved (unless explicitly overridden). New chunks inherit the source's `timestamp`.
+- **Migration**: Lazy on `store.open()` — detects missing columns via `PRAGMA table_info`, runs `ALTER TABLE ADD COLUMN`, backfills `created_at = indexed_at`, `sources.timestamp = indexed_at`, `chunks.timestamp = created_at`. Idempotent.
+- **Search filtering**: `after`/`before` on `SearchQuery.filter` apply a hard `WHERE` clause on `chunks.timestamp` before scoring. No recency boost — purely a filter.
 
 ## CLI Commands
 
@@ -406,6 +427,7 @@ Options:
   -n, --name <name>        Name / label for inline text source (default: "inline-text")
   --include <glob>         Include pattern (e.g., "*.md")
   --exclude <glob>         Exclude pattern (e.g., "node_modules")
+  --timestamp <value>      Content timestamp (UTC epoch ms or ISO 8601 string; defaults to now)
 
   # Chunker options
   --chunker <name>         Force a specific chunker: semantic|code|sentence|fixed (or plugin name)
@@ -477,6 +499,8 @@ Options:
   --limit <n>       Max results (default: 10)
   --mode <mode>     Search mode: vector|keyword|hybrid (default: hybrid)
   --json            Output as JSON
+  --after <value>   Only return chunks with timestamp >= value (UTC epoch ms or ISO 8601)
+  --before <value>  Only return chunks with timestamp < value (UTC epoch ms or ISO 8601)
 ```
 
 ### `ragclaw read <source> [options]`
@@ -744,9 +768,9 @@ All tool names use `snake_case` with a `kb_` prefix.
 
 | Tool | Description |
 |------|-------------|
-| `kb_search` | Hybrid/vector/keyword search with query decomposition and RRF |
+| `kb_search` | Hybrid/vector/keyword search with query decomposition, RRF, and optional `after`/`before` time filtering |
 | `kb_read_source` | Retrieve full indexed content of a source |
-| `kb_add` | Index file, directory, URL, or inline text (with optional crawl) |
+| `kb_add` | Index file, directory, URL, or inline text (with optional crawl and `timestamp`) |
 | `kb_status` | Knowledge base statistics |
 | `kb_remove` | Remove a source from the index |
 | `kb_reindex` | Re-process changed sources |
@@ -927,3 +951,4 @@ interface EmbedderConfigBlock {
 - [x] **Embedder plugin system** — Multiple built-in presets (nomic/bge/mxbai/minilm), plugin-provided embedders, store metadata tracking, system requirements checker, `ragclaw doctor` command
 - [x] **Pluggable chunker system** — Four built-in chunkers (`semantic`, `code`, `sentence`, `fixed`); `Chunker` interface now exposes `name`/`description`/`handles`; priority-based `resolveChunker()` (CLI flag → config overrides → plugin chunkers → built-in auto); `--chunker`/`--chunk-size`/`--overlap` flags on `ragclaw add` and `ragclaw reindex`; `ragclaw chunkers list [--json]`; `chunking:` config block with `strategy`/`defaults`/`overrides[]`; MCP: `chunker`/`chunkSize`/`overlap` params on `kb_add`/`kb_reindex`, `kb_list_chunkers` tool; unknown chunker name → hard fail with typo suggestion
 - [x] **`ragclaw read` / `kb_read_source`** — Retrieve the full indexed content of a source from the knowledge base; returns all chunks in document order, concatenated; agents should use this instead of reading original files when they need more context than a single search chunk provides; CLI: `ragclaw read <source> [--db <name>] [--json]`; MCP: `kb_read_source` tool with `source` and optional `db` params; search results now return full chunk text (no truncation) so agents have complete content without needing to go to source files
+- [x] **Temporal memory** — Every source and chunk carries a `timestamp` (UTC epoch ms) for time-aware retrieval; `sources.created_at` is immutable first-seen time; `timestamp` defaults to `Date.now()` if not supplied; `SearchQuery.filter` supports `after`/`before` (hard WHERE clause on `chunks.timestamp`); CLI: `--timestamp` on `ragclaw add`, `--after`/`--before` on `ragclaw search`; MCP: `timestamp` param on `kb_add`, `after`/`before` params on `kb_search`; lazy migration backfills existing databases on `store.open()`

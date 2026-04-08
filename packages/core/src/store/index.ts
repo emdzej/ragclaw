@@ -21,7 +21,8 @@ import { cosineSimilarity } from "../utils/math.js";
  * Explicit column list for search result hydration — excludes `embedding`
  * to avoid transferring large BLOBs that are never needed in results.
  */
-const CHUNK_COLS = "c.id, c.source_id, c.text, c.start_line, c.end_line, c.metadata, c.created_at";
+const CHUNK_COLS =
+  "c.id, c.source_id, c.text, c.start_line, c.end_line, c.metadata, c.created_at, c.timestamp";
 
 const SCHEMA = `
 -- Source files/URLs tracking
@@ -32,6 +33,8 @@ CREATE TABLE IF NOT EXISTS sources (
   content_hash TEXT,
   mtime INTEGER,
   indexed_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL,
   metadata TEXT
 );
 
@@ -44,7 +47,8 @@ CREATE TABLE IF NOT EXISTS chunks (
   end_line INTEGER,
   metadata TEXT,
   embedding BLOB,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL
 );
 
 -- Store-level key/value metadata (embedder name, dimensions, etc.)
@@ -69,6 +73,9 @@ CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_sources_path ON sources(path);
 -- Speeds up listSources() ORDER BY indexed_at DESC and getStats() MAX(indexed_at)
 CREATE INDEX IF NOT EXISTS idx_sources_indexed_at ON sources(indexed_at);
+-- NOTE: idx_chunks_timestamp is created in migrateTemporalColumns() so that it
+-- works for both new and legacy databases (legacy DBs lack the column until the
+-- migration runs).
 
 -- Full-text search — unicode61 tokenizer (exact word matches, fast)
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -125,6 +132,12 @@ export class Store {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+
+    // Add created_at / timestamp columns for databases created before temporal
+    // support.  Must run BEFORE the SCHEMA DDL so that the UPDATE … SET
+    // timestamp = created_at does not fire the FTS AFTER UPDATE triggers
+    // (which would fail because no matching FTS row exists yet for the chunk).
+    this.migrateTemporalColumns();
 
     // Initialize schema
     this.db.exec(SCHEMA);
@@ -219,6 +232,56 @@ export class Store {
       .run("fts_trigram_built", "1");
   }
 
+  /**
+   * Add `created_at` and `timestamp` columns to `sources` and `timestamp` to
+   * `chunks` for databases created before temporal memory support.
+   *
+   * Detection: uses `PRAGMA table_info` to check whether the columns exist.
+   * Backfill:
+   *   - `sources.created_at = indexed_at`
+   *   - `sources.timestamp  = indexed_at`
+   *   - `chunks.timestamp   = created_at`
+   *
+   * Also creates `idx_chunks_timestamp` if missing.
+   * Idempotent — runs once per DB, takes milliseconds.
+   */
+  private migrateTemporalColumns(): void {
+    if (!this.db) return;
+
+    // If the sources table does not exist yet (brand-new DB), skip — the
+    // SCHEMA DDL will create tables with the temporal columns already present.
+    const tableExists = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sources'")
+      .get();
+    if (!tableExists) return;
+
+    // Check if sources.created_at already exists
+    const sourceCols = this.db.pragma("table_info(sources)") as { name: string }[];
+    const sourceColNames = new Set(sourceCols.map((c) => c.name));
+
+    if (!sourceColNames.has("created_at")) {
+      this.db.exec(`
+        ALTER TABLE sources ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE sources ADD COLUMN timestamp INTEGER NOT NULL DEFAULT 0;
+        UPDATE sources SET created_at = indexed_at, timestamp = indexed_at;
+      `);
+    }
+
+    // Check if chunks.timestamp already exists
+    const chunkCols = this.db.pragma("table_info(chunks)") as { name: string }[];
+    const chunkColNames = new Set(chunkCols.map((c) => c.name));
+
+    if (!chunkColNames.has("timestamp")) {
+      this.db.exec(`
+        ALTER TABLE chunks ADD COLUMN timestamp INTEGER NOT NULL DEFAULT 0;
+        UPDATE chunks SET timestamp = created_at;
+      `);
+    }
+
+    // Ensure the timestamp index exists (CREATE INDEX IF NOT EXISTS is safe)
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_chunks_timestamp ON chunks(timestamp)");
+  }
+
   private async tryLoadVec(): Promise<void> {
     if (!this.db) return;
 
@@ -306,8 +369,8 @@ export class Store {
 
     const id = randomUUID();
     const stmt = this.db.prepare(`
-      INSERT INTO sources (id, path, type, content_hash, mtime, indexed_at, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sources (id, path, type, content_hash, mtime, indexed_at, created_at, timestamp, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -317,6 +380,8 @@ export class Store {
       source.contentHash,
       source.mtime ?? null,
       source.indexedAt,
+      source.createdAt,
+      source.timestamp,
       source.metadata ? JSON.stringify(source.metadata) : null
     );
 
@@ -339,6 +404,8 @@ export class Store {
       contentHash: row.content_hash as string,
       mtime: row.mtime as number | undefined,
       indexedAt: row.indexed_at as number,
+      createdAt: row.created_at as number,
+      timestamp: row.timestamp as number,
       metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
     };
   }
@@ -364,6 +431,10 @@ export class Store {
     if (updates.metadata !== undefined) {
       fields.push("metadata = ?");
       values.push(JSON.stringify(updates.metadata));
+    }
+    if (updates.timestamp !== undefined) {
+      fields.push("timestamp = ?");
+      values.push(updates.timestamp);
     }
 
     if (fields.length === 0) return;
@@ -405,6 +476,8 @@ export class Store {
       contentHash: row.content_hash as string,
       mtime: row.mtime as number | undefined,
       indexedAt: row.indexed_at as number,
+      createdAt: row.created_at as number,
+      timestamp: row.timestamp as number,
       metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
     }));
   }
@@ -417,8 +490,8 @@ export class Store {
     if (!this.db) throw new Error("Store not opened");
 
     const insertChunk = this.db.prepare(`
-      INSERT INTO chunks (id, source_id, text, start_line, end_line, metadata, embedding, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO chunks (id, source_id, text, start_line, end_line, metadata, embedding, created_at, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertVec = this.hasVec
@@ -437,7 +510,8 @@ export class Store {
           chunk.endLine ?? null,
           JSON.stringify(chunk.metadata),
           embeddingBlob,
-          chunk.createdAt
+          chunk.createdAt,
+          chunk.timestamp
         );
 
         if (insertVec && chunk.embedding) {
@@ -478,16 +552,17 @@ export class Store {
 
     const limit = query.limit ?? 10;
     const mode = query.mode ?? "hybrid";
+    const timeFilter = query.filter;
 
     if (mode === "keyword") {
-      return this.keywordSearch(query.text, limit);
+      return this.keywordSearch(query.text, limit, timeFilter);
     }
 
     if (mode === "vector") {
       if (!query.embedding) {
         throw new Error("Vector search requires embedding");
       }
-      return this.vectorSearch(query.embedding, limit);
+      return this.vectorSearch(query.embedding, limit, timeFilter);
     }
 
     // Hybrid search — use deferred hydration for efficiency:
@@ -498,8 +573,8 @@ export class Store {
       throw new Error("Hybrid search requires embedding");
     }
 
-    const vectorScored = await this.vectorScoreOnly(query.embedding, limit * 2);
-    const keywordScored = await this.keywordScoreOnly(query.text, limit * 2);
+    const vectorScored = await this.vectorScoreOnly(query.embedding, limit * 2, timeFilter);
+    const keywordScored = this.keywordScoreOnly(query.text, limit * 2, timeFilter);
 
     const mergedIds = this.mergeScored(vectorScored, keywordScored, limit);
 
@@ -512,19 +587,79 @@ export class Store {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
+   * Build a SQL WHERE fragment and parameter list for temporal filtering.
+   * Returns `{ clause: string; params: unknown[] }` where `clause` is either
+   * empty or starts with " AND ..." so it can be appended to any existing WHERE.
+   */
+  private buildTimeFilter(
+    timeFilter: SearchQuery["filter"] | undefined,
+    tableAlias = "c"
+  ): { clause: string; params: unknown[] } {
+    if (!timeFilter) return { clause: "", params: [] };
+    const parts: string[] = [];
+    const params: unknown[] = [];
+    if (timeFilter.after !== undefined) {
+      parts.push(`${tableAlias}.timestamp >= ?`);
+      params.push(timeFilter.after);
+    }
+    if (timeFilter.before !== undefined) {
+      parts.push(`${tableAlias}.timestamp < ?`);
+      params.push(timeFilter.before);
+    }
+    if (parts.length === 0) return { clause: "", params: [] };
+    return { clause: ` AND ${parts.join(" AND ")}`, params };
+  }
+
+  /**
    * Return lightweight `{id, score}` pairs from vector search without
    * hydrating full chunk rows.  Uses native sqlite-vec when available,
    * falling back to the JS cosine scan.
    */
   private async vectorScoreOnly(
     embedding: Float32Array,
-    limit: number
+    limit: number,
+    timeFilter?: SearchQuery["filter"]
   ): Promise<{ id: string; score: number }[]> {
     if (!this.db) throw new Error("Store not opened");
+
+    const tf = this.buildTimeFilter(timeFilter);
 
     if (this.hasVec) {
       try {
         const embeddingBlob = Buffer.from(embedding.buffer);
+        // When time filter is active, we must post-filter — vec0 virtual tables
+        // do not support JOINs in the ORDER BY distance path.  Over-fetch and
+        // trim after filtering.
+        if (tf.clause) {
+          const overFetch = limit * 5;
+          const rows = this.db
+            .prepare(`
+              SELECT v.id, vec_distance_cosine(v.embedding, ?) AS dist
+              FROM chunks_vec v
+              ORDER BY dist ASC
+              LIMIT ?
+            `)
+            .all(embeddingBlob, overFetch) as { id: string; dist: number }[];
+
+          // Post-filter by timestamp via a quick lookup
+          const ids = rows.map((r) => r.id);
+          if (ids.length === 0) return [];
+
+          const placeholders = ids.map(() => "?").join(", ");
+          const validIds = new Set(
+            (
+              this.db
+                .prepare(`SELECT id FROM chunks c WHERE c.id IN (${placeholders})${tf.clause}`)
+                .all(...ids, ...tf.params) as { id: string }[]
+            ).map((r) => r.id)
+          );
+
+          return rows
+            .filter((r) => validIds.has(r.id))
+            .slice(0, limit)
+            .map((r) => ({ id: r.id, score: 1 - r.dist }));
+        }
+
         const rows = this.db
           .prepare(`
             SELECT v.id, vec_distance_cosine(v.embedding, ?) AS dist
@@ -541,17 +676,22 @@ export class Store {
     }
 
     // JS fallback — score every embedding, keep top-K
-    const rows = this.db
-      .prepare("SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL")
-      .all() as { id: string; embedding: Buffer }[];
+    const jsRows = tf.clause
+      ? (this.db
+          .prepare(`SELECT id, embedding FROM chunks c WHERE embedding IS NOT NULL${tf.clause}`)
+          .all(...tf.params) as { id: string; embedding: Buffer }[])
+      : (this.db.prepare("SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL").all() as {
+          id: string;
+          embedding: Buffer;
+        }[]);
 
-    if (rows.length === 0) return [];
+    if (jsRows.length === 0) return [];
 
-    const scored: { id: string; score: number }[] = new Array(rows.length);
-    for (let i = 0; i < rows.length; i++) {
-      const buf = rows[i].embedding;
+    const scored: { id: string; score: number }[] = new Array(jsRows.length);
+    for (let i = 0; i < jsRows.length; i++) {
+      const buf = jsRows[i].embedding;
       const chunkEmbedding = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
-      scored[i] = { id: rows[i].id, score: cosineSimilarity(embedding, chunkEmbedding) };
+      scored[i] = { id: jsRows[i].id, score: cosineSimilarity(embedding, chunkEmbedding) };
     }
 
     scored.sort((a, b) => b.score - a.score);
@@ -563,8 +703,14 @@ export class Store {
    * without hydrating full chunk rows.  Merges exact and trigram legs,
    * normalises BM25 to [0, 1].
    */
-  private keywordScoreOnly(text: string, limit: number): { id: string; score: number }[] {
+  private keywordScoreOnly(
+    text: string,
+    limit: number,
+    timeFilter?: SearchQuery["filter"]
+  ): { id: string; score: number }[] {
     if (!this.db) throw new Error("Store not opened");
+
+    const tf = this.buildTimeFilter(timeFilter);
 
     // Build prefix-token query for unicode61 index (OR join)
     const words = text
@@ -582,15 +728,28 @@ export class Store {
     let exactRows: { id: string; rank: number }[] = [];
     if (prefixQuery.length > 0) {
       try {
-        exactRows = this.db
-          .prepare(`
-            SELECT fts.id, bm25(chunks_fts) AS rank
-            FROM chunks_fts fts
-            WHERE chunks_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-          `)
-          .all(prefixQuery, limit) as { id: string; rank: number }[];
+        if (tf.clause) {
+          exactRows = this.db
+            .prepare(`
+              SELECT fts.id, bm25(chunks_fts) AS rank
+              FROM chunks_fts fts
+              JOIN chunks c ON c.id = fts.id
+              WHERE chunks_fts MATCH ?${tf.clause}
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(prefixQuery, ...tf.params, limit) as { id: string; rank: number }[];
+        } else {
+          exactRows = this.db
+            .prepare(`
+              SELECT fts.id, bm25(chunks_fts) AS rank
+              FROM chunks_fts fts
+              WHERE chunks_fts MATCH ?
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(prefixQuery, limit) as { id: string; rank: number }[];
+        }
       } catch {
         // Malformed query — skip
       }
@@ -600,15 +759,28 @@ export class Store {
     let trigramRows: { id: string; rank: number }[] = [];
     if (trigramQuery.length >= 3) {
       try {
-        trigramRows = this.db
-          .prepare(`
-            SELECT fts.id, bm25(chunks_fts_trigram) AS rank
-            FROM chunks_fts_trigram fts
-            WHERE chunks_fts_trigram MATCH ?
-            ORDER BY rank
-            LIMIT ?
-          `)
-          .all(trigramQuery, limit) as { id: string; rank: number }[];
+        if (tf.clause) {
+          trigramRows = this.db
+            .prepare(`
+              SELECT fts.id, bm25(chunks_fts_trigram) AS rank
+              FROM chunks_fts_trigram fts
+              JOIN chunks c ON c.id = fts.id
+              WHERE chunks_fts_trigram MATCH ?${tf.clause}
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(trigramQuery, ...tf.params, limit) as { id: string; rank: number }[];
+        } else {
+          trigramRows = this.db
+            .prepare(`
+              SELECT fts.id, bm25(chunks_fts_trigram) AS rank
+              FROM chunks_fts_trigram fts
+              WHERE chunks_fts_trigram MATCH ?
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(trigramQuery, limit) as { id: string; rank: number }[];
+        }
       } catch {
         // Trigram table may not be populated — skip
       }
@@ -736,21 +908,77 @@ export class Store {
     return results;
   }
 
-  private async vectorSearch(embedding: Float32Array, limit: number): Promise<SearchResult[]> {
+  private async vectorSearch(
+    embedding: Float32Array,
+    limit: number,
+    timeFilter?: SearchQuery["filter"]
+  ): Promise<SearchResult[]> {
     if (!this.db) throw new Error("Store not opened");
 
     if (this.hasVec) {
-      return this.vectorSearchNative(embedding, limit);
+      return this.vectorSearchNative(embedding, limit, timeFilter);
     }
 
-    return this.vectorSearchFallback(embedding, limit);
+    return this.vectorSearchFallback(embedding, limit, timeFilter);
   }
 
-  private vectorSearchNative(embedding: Float32Array, limit: number): SearchResult[] {
+  private vectorSearchNative(
+    embedding: Float32Array,
+    limit: number,
+    timeFilter?: SearchQuery["filter"]
+  ): SearchResult[] {
     if (!this.db) throw new Error("Store not opened");
+
+    const tf = this.buildTimeFilter(timeFilter);
 
     try {
       const embeddingBlob = Buffer.from(embedding.buffer);
+
+      if (tf.clause) {
+        // vec0 virtual tables don't support JOINs in the distance path.
+        // Over-fetch, then post-filter by timestamp.
+        const overFetch = limit * 5;
+        const vecRows = this.db
+          .prepare(`
+            SELECT v.id, vec_distance_cosine(v.embedding, ?) AS dist
+            FROM chunks_vec v
+            ORDER BY dist ASC
+            LIMIT ?
+          `)
+          .all(embeddingBlob, overFetch) as { id: string; dist: number }[];
+
+        if (vecRows.length === 0) return [];
+
+        const ids = vecRows.map((r) => r.id);
+        const placeholders = ids.map(() => "?").join(", ");
+        const validRows = this.db
+          .prepare(`
+            SELECT ${CHUNK_COLS}, s.path AS source_path
+            FROM chunks c
+            JOIN sources s ON s.id = c.source_id
+            WHERE c.id IN (${placeholders})${tf.clause}
+          `)
+          .all(...ids, ...tf.params) as Record<string, unknown>[];
+
+        const validById = new Map<string, Record<string, unknown>>();
+        for (const row of validRows) {
+          validById.set(row.id as string, row);
+        }
+
+        const results: SearchResult[] = [];
+        for (const vr of vecRows) {
+          if (results.length >= limit) break;
+          const row = validById.get(vr.id);
+          if (!row) continue;
+          results.push({
+            chunk: this.rowToChunk(row),
+            score: 1 - vr.dist,
+            scoreVector: 1 - vr.dist,
+          });
+        }
+        return results;
+      }
+
       const rows = this.db
         .prepare(`
         SELECT ${CHUNK_COLS}, s.path AS source_path, vec_distance_cosine(v.embedding, ?) AS dist
@@ -769,20 +997,31 @@ export class Store {
       }));
     } catch {
       // Fall back to JS if native fails
-      return this.vectorSearchFallback(embedding, limit);
+      return this.vectorSearchFallback(embedding, limit, timeFilter);
     }
   }
 
-  private vectorSearchFallback(embedding: Float32Array, limit: number): SearchResult[] {
+  private vectorSearchFallback(
+    embedding: Float32Array,
+    limit: number,
+    timeFilter?: SearchQuery["filter"]
+  ): SearchResult[] {
     if (!this.db) throw new Error("Store not opened");
+
+    const tf = this.buildTimeFilter(timeFilter);
 
     // ── Pass 1: score every embedding in a tight loop ──────────────────
     // Only fetch id + raw embedding blob to minimise memory and avoid
     // JSON.parse / rowToChunk overhead for the vast majority of rows that
     // won't make it into the final result set.
-    const rows = this.db
-      .prepare("SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL")
-      .all() as { id: string; embedding: Buffer }[];
+    const rows = tf.clause
+      ? (this.db
+          .prepare(`SELECT id, embedding FROM chunks c WHERE embedding IS NOT NULL${tf.clause}`)
+          .all(...tf.params) as { id: string; embedding: Buffer }[])
+      : (this.db.prepare("SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL").all() as {
+          id: string;
+          embedding: Buffer;
+        }[]);
 
     if (rows.length === 0) return [];
 
@@ -842,8 +1081,14 @@ export class Store {
     return results;
   }
 
-  private async keywordSearch(text: string, limit: number): Promise<SearchResult[]> {
+  private async keywordSearch(
+    text: string,
+    limit: number,
+    timeFilter?: SearchQuery["filter"]
+  ): Promise<SearchResult[]> {
     if (!this.db) throw new Error("Store not opened");
+
+    const tf = this.buildTimeFilter(timeFilter);
 
     // Build a prefix-token query for the unicode61 (exact) index.
     // Each whitespace-separated word becomes a prefix token (word*) joined
@@ -866,17 +1111,31 @@ export class Store {
     let exactRows: Record<string, unknown>[] = [];
     if (prefixQuery.length > 0) {
       try {
-        exactRows = this.db
-          .prepare(`
-            SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts) AS rank
-            FROM chunks_fts fts
-            JOIN chunks c ON c.id = fts.id
-            JOIN sources s ON s.id = c.source_id
-            WHERE chunks_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-          `)
-          .all(prefixQuery, limit) as Record<string, unknown>[];
+        if (tf.clause) {
+          exactRows = this.db
+            .prepare(`
+              SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts) AS rank
+              FROM chunks_fts fts
+              JOIN chunks c ON c.id = fts.id
+              JOIN sources s ON s.id = c.source_id
+              WHERE chunks_fts MATCH ?${tf.clause}
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(prefixQuery, ...tf.params, limit) as Record<string, unknown>[];
+        } else {
+          exactRows = this.db
+            .prepare(`
+              SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts) AS rank
+              FROM chunks_fts fts
+              JOIN chunks c ON c.id = fts.id
+              JOIN sources s ON s.id = c.source_id
+              WHERE chunks_fts MATCH ?
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(prefixQuery, limit) as Record<string, unknown>[];
+        }
       } catch {
         // Malformed query (e.g. query too short for some edge cases) — skip.
       }
@@ -887,17 +1146,31 @@ export class Store {
     let trigramRows: Record<string, unknown>[] = [];
     if (trigramQuery.length >= 3) {
       try {
-        trigramRows = this.db
-          .prepare(`
-            SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts_trigram) AS rank
-            FROM chunks_fts_trigram fts
-            JOIN chunks c ON c.id = fts.id
-            JOIN sources s ON s.id = c.source_id
-            WHERE chunks_fts_trigram MATCH ?
-            ORDER BY rank
-            LIMIT ?
-          `)
-          .all(trigramQuery, limit) as Record<string, unknown>[];
+        if (tf.clause) {
+          trigramRows = this.db
+            .prepare(`
+              SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts_trigram) AS rank
+              FROM chunks_fts_trigram fts
+              JOIN chunks c ON c.id = fts.id
+              JOIN sources s ON s.id = c.source_id
+              WHERE chunks_fts_trigram MATCH ?${tf.clause}
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(trigramQuery, ...tf.params, limit) as Record<string, unknown>[];
+        } else {
+          trigramRows = this.db
+            .prepare(`
+              SELECT ${CHUNK_COLS}, s.path AS source_path, bm25(chunks_fts_trigram) AS rank
+              FROM chunks_fts_trigram fts
+              JOIN chunks c ON c.id = fts.id
+              JOIN sources s ON s.id = c.source_id
+              WHERE chunks_fts_trigram MATCH ?
+              ORDER BY rank
+              LIMIT ?
+            `)
+            .all(trigramQuery, limit) as Record<string, unknown>[];
+        }
       } catch {
         // Trigram table may not be populated yet on the first open — skip.
       }
@@ -940,6 +1213,7 @@ export class Store {
       metadata: JSON.parse(row.metadata as string),
       embedding: row.embedding ? new Float32Array(row.embedding as ArrayBuffer) : undefined,
       createdAt: row.created_at as number,
+      timestamp: (row.timestamp as number) ?? 0,
     };
   }
 

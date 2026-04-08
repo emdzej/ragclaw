@@ -23,6 +23,25 @@ import ora from "ora";
 import { ensureDataDir, getConfig, getDbPath } from "../config.js";
 import { PluginLoader } from "../plugins/loader.js";
 
+/**
+ * Parse a user-supplied timestamp value.
+ * Accepts either a numeric epoch (milliseconds) or an ISO 8601 string.
+ * Returns UTC epoch ms or `undefined` if the value is not provided.
+ * Throws on invalid input.
+ */
+function parseTimestamp(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  // Try numeric first (epoch ms)
+  const asNum = Number(value);
+  if (Number.isFinite(asNum) && asNum > 0) return asNum;
+  // Try ISO 8601
+  const asDate = new Date(value);
+  if (!Number.isNaN(asDate.getTime())) return asDate.getTime();
+  throw new Error(
+    `Invalid timestamp: "${value}". Provide epoch milliseconds or an ISO 8601 string.`
+  );
+}
+
 interface AddOptions {
   db: string;
   type: string;
@@ -43,6 +62,11 @@ interface AddOptions {
   stdin?: boolean;
   /** Name / label for inline text source. */
   name?: string;
+  /**
+   * Content timestamp — accepts epoch ms or ISO 8601 string.
+   * Defaults to current time when omitted.
+   */
+  timestamp?: string;
   // Security guard overrides (from CLI flags)
   allowedPaths?: string;
   maxDepth?: string;
@@ -276,7 +300,9 @@ export async function addCommand(source: string | undefined, options: AddOptions
       const fileSpinner = ora(`Processing ${displayName}`).start();
 
       try {
-        const outcome = await indexingService.indexSource(store, textSource);
+        const outcome = await indexingService.indexSource(store, textSource, {
+          timestamp: parseTimestamp(options.timestamp),
+        });
 
         switch (outcome.status) {
           case "indexed":
@@ -422,7 +448,9 @@ export async function addCommand(source: string | undefined, options: AddOptions
           }
         }
 
-        const outcome = await indexingService.indexSource(store, src);
+        const outcome = await indexingService.indexSource(store, src, {
+          timestamp: parseTimestamp(options.timestamp),
+        });
 
         switch (outcome.status) {
           case "indexed":

@@ -15,17 +15,33 @@ import { Store } from "./index.js";
 // ---------------------------------------------------------------------------
 
 function makeSource(
-  overrides: Partial<{ path: string; type: string; contentHash: string; indexedAt: number }> = {}
+  overrides: Partial<{
+    path: string;
+    type: string;
+    contentHash: string;
+    indexedAt: number;
+    createdAt: number;
+    timestamp: number;
+  }> = {}
 ) {
+  const now = Date.now();
   return {
     path: overrides.path ?? `/test/${randomUUID()}.md`,
     type: (overrides.type ?? "file") as "file" | "url",
     contentHash: overrides.contentHash ?? "abc123",
-    indexedAt: overrides.indexedAt ?? Date.now(),
+    indexedAt: overrides.indexedAt ?? now,
+    createdAt: overrides.createdAt ?? now,
+    timestamp: overrides.timestamp ?? now,
   };
 }
 
-function makeChunk(sourceId: string, text: string, embedding?: Float32Array): ChunkRecord {
+function makeChunk(
+  sourceId: string,
+  text: string,
+  embedding?: Float32Array,
+  timestamp?: number
+): ChunkRecord {
+  const now = Date.now();
   return {
     id: randomUUID(),
     sourceId,
@@ -35,7 +51,8 @@ function makeChunk(sourceId: string, text: string, embedding?: Float32Array): Ch
     endLine: 10,
     metadata: { type: "paragraph" as const },
     embedding,
-    createdAt: Date.now(),
+    createdAt: now,
+    timestamp: timestamp ?? now,
   };
 }
 
@@ -496,6 +513,8 @@ describe("Store", () => {
           type: "file",
           contentHash: "abc",
           indexedAt: Date.now(),
+          createdAt: Date.now(),
+          timestamp: Date.now(),
         });
         await legacyStore.addChunks([
           {
@@ -505,6 +524,7 @@ describe("Store", () => {
             sourcePath: "/legacy/doc.md",
             metadata: { type: "paragraph" },
             createdAt: Date.now(),
+            timestamp: Date.now(),
           },
         ]);
         // Remove embedder meta to mimic a pre-plugin-system DB
@@ -540,6 +560,8 @@ describe("Store", () => {
           type: "file",
           contentHash: "h",
           indexedAt: Date.now(),
+          createdAt: Date.now(),
+          timestamp: Date.now(),
         });
         await store.addChunks([
           {
@@ -549,6 +571,7 @@ describe("Store", () => {
             sourcePath: "/doc.md",
             metadata: { type: "paragraph" },
             createdAt: Date.now(),
+            timestamp: Date.now(),
           },
         ]);
         await store.setMeta("embedder_name", "minilm");
@@ -579,8 +602,22 @@ describe("Store", () => {
         // Query sqlite_master for our index
         // We check indirectly: add sources with different indexed_at values
         // and verify ORDER BY still works (index doesn't change behavior, just speed)
-        await tmpStore.addSource({ path: "/x.md", type: "file", contentHash: "h1", indexedAt: 10 });
-        await tmpStore.addSource({ path: "/y.md", type: "file", contentHash: "h2", indexedAt: 20 });
+        await tmpStore.addSource({
+          path: "/x.md",
+          type: "file",
+          contentHash: "h1",
+          indexedAt: 10,
+          createdAt: 10,
+          timestamp: 10,
+        });
+        await tmpStore.addSource({
+          path: "/y.md",
+          type: "file",
+          contentHash: "h2",
+          indexedAt: 20,
+          createdAt: 20,
+          timestamp: 20,
+        });
         const list = await tmpStore.listSources();
         expect(list[0].path).toBe("/y.md"); // DESC order preserved
 
@@ -633,6 +670,344 @@ describe("Store", () => {
 
       expect(results.length).toBeGreaterThanOrEqual(1);
       await customStore.close();
+    });
+  });
+
+  // ─── Temporal Columns ───────────────────────────────────────────────────
+
+  describe("temporal columns", () => {
+    it("stores and retrieves createdAt and timestamp on sources", async () => {
+      const now = Date.now();
+      const _id = await store.addSource(
+        makeSource({ path: "/temporal.md", createdAt: now - 1000, timestamp: now - 2000 })
+      );
+      const src = await store.getSource("/temporal.md");
+      expect(src).not.toBeNull();
+      expect(src?.createdAt).toBe(now - 1000);
+      expect(src?.timestamp).toBe(now - 2000);
+    });
+
+    it("stores and retrieves timestamp on chunks", async () => {
+      const ts = 1700000000000;
+      const sid = await store.addSource(makeSource({ path: "/ts-chunks.md", timestamp: ts }));
+      const chunk = makeChunk(sid, "Temporal chunk test", undefined, ts);
+      await store.addChunks([chunk]);
+
+      const results = await store.search({ text: "Temporal chunk", mode: "keyword" });
+      expect(results.length).toBe(1);
+      expect(results[0].chunk.timestamp).toBe(ts);
+    });
+  });
+
+  // ─── Temporal Column Migration ──────────────────────────────────────────
+
+  describe("temporal column migration (legacy schema)", () => {
+    it("adds created_at and timestamp columns to a pre-temporal DB and backfills", async () => {
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const { unlink } = await import("node:fs/promises");
+      const { randomUUID: uuid } = await import("node:crypto");
+      const Database = (await import("better-sqlite3")).default;
+
+      const tmpPath = join(tmpdir(), `ragclaw-temporal-migration-${uuid()}.sqlite`);
+
+      // Create a DB with the OLD schema (no created_at / timestamp columns)
+      const rawDb = new Database(tmpPath);
+      rawDb.exec(`
+        CREATE TABLE IF NOT EXISTS sources (
+          id TEXT PRIMARY KEY,
+          path TEXT NOT NULL UNIQUE,
+          type TEXT NOT NULL,
+          content_hash TEXT,
+          mtime INTEGER,
+          indexed_at INTEGER NOT NULL,
+          metadata TEXT
+        );
+        CREATE TABLE IF NOT EXISTS chunks (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+          text TEXT NOT NULL,
+          start_line INTEGER,
+          end_line INTEGER,
+          metadata TEXT,
+          embedding BLOB,
+          created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS store_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
+        CREATE INDEX IF NOT EXISTS idx_sources_path ON sources(path);
+      `);
+
+      // Seed some data into the old-schema DB
+      const srcId = uuid();
+      const chunkId = uuid();
+      const indexedAt = 1600000000000;
+      const chunkCreatedAt = 1600000000100;
+
+      rawDb
+        .prepare(
+          "INSERT INTO sources (id, path, type, content_hash, indexed_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .run(srcId, "/old/doc.md", "file", "oldhash", indexedAt);
+
+      rawDb
+        .prepare(
+          "INSERT INTO chunks (id, source_id, text, start_line, end_line, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .run(chunkId, srcId, "Legacy chunk text", 1, 5, '{"type":"paragraph"}', chunkCreatedAt);
+
+      rawDb.close();
+
+      // Now open with Store — migration should fire
+      const migratedStore = new Store();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      await migratedStore.open(tmpPath);
+
+      // Verify sources got backfilled: created_at = indexed_at, timestamp = indexed_at
+      const src = await migratedStore.getSource("/old/doc.md");
+      expect(src).not.toBeNull();
+      expect(src?.createdAt).toBe(indexedAt);
+      expect(src?.timestamp).toBe(indexedAt);
+
+      // Verify chunks got backfilled: timestamp = created_at
+      const results = await migratedStore.search({ text: "Legacy chunk", mode: "keyword" });
+      expect(results.length).toBe(1);
+      expect(results[0].chunk.timestamp).toBe(chunkCreatedAt);
+
+      await migratedStore.close();
+      await unlink(tmpPath);
+    });
+
+    it("is idempotent — re-opening a migrated DB does not fail", async () => {
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const { unlink } = await import("node:fs/promises");
+      const { randomUUID: uuid } = await import("node:crypto");
+
+      const tmpPath = join(tmpdir(), `ragclaw-temporal-idem-${uuid()}.sqlite`);
+
+      // First open — normal Store (has temporal columns from the start)
+      const firstStore = new Store();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      await firstStore.open(tmpPath);
+      await firstStore.addSource(makeSource({ path: "/idem/test.md" }));
+      await firstStore.close();
+
+      // Second open — should not crash (migration is idempotent)
+      const secondStore = new Store();
+      await secondStore.open(tmpPath);
+      const src = await secondStore.getSource("/idem/test.md");
+      expect(src).not.toBeNull();
+      expect(src?.createdAt).toBeGreaterThan(0);
+      expect(src?.timestamp).toBeGreaterThan(0);
+      await secondStore.close();
+
+      await unlink(tmpPath);
+    });
+  });
+
+  // ─── Time-Filtered Search ─────────────────────────────────────────────────
+
+  describe("time-filtered search", () => {
+    // Three time buckets: past, middle, future
+    const T_PAST = 1000000000000; // ~2001
+    const T_MIDDLE = 1500000000000; // ~2017
+    const T_FUTURE = 1700000000000; // ~2023
+
+    let sourceId: string;
+
+    beforeEach(async () => {
+      sourceId = await store.addSource(makeSource({ path: "/time-test.md" }));
+      await store.addChunks([
+        makeChunk(
+          sourceId,
+          "Keyword: alpha. Old data from the past about databases",
+          undefined,
+          T_PAST
+        ),
+        makeChunk(
+          sourceId,
+          "Keyword: alpha. Middle-era data about databases and caching",
+          undefined,
+          T_MIDDLE
+        ),
+        makeChunk(
+          sourceId,
+          "Keyword: alpha. Recent data about databases and performance",
+          undefined,
+          T_FUTURE
+        ),
+      ]);
+    });
+
+    describe("keyword search", () => {
+      it("returns all chunks when no time filter", async () => {
+        const results = await store.search({ text: "alpha", mode: "keyword" });
+        expect(results.length).toBe(3);
+      });
+
+      it("filters with after (inclusive)", async () => {
+        const results = await store.search({
+          text: "alpha",
+          mode: "keyword",
+          filter: { after: T_MIDDLE },
+        });
+        expect(results.length).toBe(2);
+        for (const r of results) {
+          expect(r.chunk.timestamp).toBeGreaterThanOrEqual(T_MIDDLE);
+        }
+      });
+
+      it("filters with before (exclusive)", async () => {
+        const results = await store.search({
+          text: "alpha",
+          mode: "keyword",
+          filter: { before: T_MIDDLE },
+        });
+        expect(results.length).toBe(1);
+        expect(results[0].chunk.timestamp).toBe(T_PAST);
+      });
+
+      it("filters with both after and before", async () => {
+        const results = await store.search({
+          text: "alpha",
+          mode: "keyword",
+          filter: { after: T_MIDDLE, before: T_FUTURE },
+        });
+        expect(results.length).toBe(1);
+        expect(results[0].chunk.timestamp).toBe(T_MIDDLE);
+      });
+
+      it("returns empty when no chunks match the time window", async () => {
+        const results = await store.search({
+          text: "alpha",
+          mode: "keyword",
+          filter: { after: T_FUTURE + 1 },
+        });
+        expect(results.length).toBe(0);
+      });
+    });
+
+    describe("vector search (JS fallback)", () => {
+      let vecSourceId: string;
+
+      beforeEach(async () => {
+        vecSourceId = await store.addSource(makeSource({ path: "/time-vec.md" }));
+        await store.addChunks([
+          makeChunk(vecSourceId, "Old vector chunk about AI", fakeEmbedding(1), T_PAST),
+          makeChunk(vecSourceId, "Middle vector chunk about AI", fakeEmbedding(1.01), T_MIDDLE),
+          makeChunk(vecSourceId, "Recent vector chunk about AI", fakeEmbedding(1.02), T_FUTURE),
+        ]);
+      });
+
+      it("returns all when no time filter", async () => {
+        const results = await store.search({
+          text: "",
+          embedding: fakeEmbedding(1),
+          mode: "vector",
+          limit: 10,
+        });
+        // The 3 vec chunks have embeddings; keyword chunks from outer beforeEach don't.
+        // Vector search only returns chunks with embeddings, so we expect exactly 3.
+        expect(results.length).toBeGreaterThanOrEqual(3);
+      });
+
+      it("filters with after", async () => {
+        const results = await store.search({
+          text: "",
+          embedding: fakeEmbedding(1),
+          mode: "vector",
+          limit: 10,
+          filter: { after: T_MIDDLE },
+        });
+        for (const r of results) {
+          expect(r.chunk.timestamp).toBeGreaterThanOrEqual(T_MIDDLE);
+        }
+      });
+
+      it("filters with before", async () => {
+        const results = await store.search({
+          text: "",
+          embedding: fakeEmbedding(1),
+          mode: "vector",
+          limit: 10,
+          filter: { before: T_MIDDLE },
+        });
+        for (const r of results) {
+          expect(r.chunk.timestamp).toBeLessThan(T_MIDDLE);
+        }
+      });
+
+      it("filters with after + before", async () => {
+        const results = await store.search({
+          text: "",
+          embedding: fakeEmbedding(1),
+          mode: "vector",
+          limit: 10,
+          filter: { after: T_MIDDLE, before: T_FUTURE },
+        });
+        for (const r of results) {
+          expect(r.chunk.timestamp).toBeGreaterThanOrEqual(T_MIDDLE);
+          expect(r.chunk.timestamp).toBeLessThan(T_FUTURE);
+        }
+      });
+    });
+
+    describe("hybrid search", () => {
+      let hybridSourceId: string;
+
+      beforeEach(async () => {
+        hybridSourceId = await store.addSource(makeSource({ path: "/time-hybrid.md" }));
+        await store.addChunks([
+          makeChunk(
+            hybridSourceId,
+            "Old hybrid chunk about neural networks",
+            fakeEmbedding(5),
+            T_PAST
+          ),
+          makeChunk(
+            hybridSourceId,
+            "Middle hybrid chunk about neural networks",
+            fakeEmbedding(5.01),
+            T_MIDDLE
+          ),
+          makeChunk(
+            hybridSourceId,
+            "Recent hybrid chunk about neural networks",
+            fakeEmbedding(5.02),
+            T_FUTURE
+          ),
+        ]);
+      });
+
+      it("filters with after in hybrid mode", async () => {
+        const results = await store.search({
+          text: "neural networks",
+          embedding: fakeEmbedding(5),
+          mode: "hybrid",
+          limit: 10,
+          filter: { after: T_FUTURE },
+        });
+        for (const r of results) {
+          expect(r.chunk.timestamp).toBeGreaterThanOrEqual(T_FUTURE);
+        }
+      });
+
+      it("filters with before in hybrid mode", async () => {
+        const results = await store.search({
+          text: "neural networks",
+          embedding: fakeEmbedding(5),
+          mode: "hybrid",
+          limit: 10,
+          filter: { before: T_MIDDLE },
+        });
+        for (const r of results) {
+          expect(r.chunk.timestamp).toBeLessThan(T_MIDDLE);
+        }
+      });
     });
   });
 });

@@ -74,6 +74,11 @@ export interface IndexSourceOptions {
    * Takes highest priority over config overrides and auto-selection.
    */
   chunker?: string;
+  /**
+   * User-supplied content timestamp (UTC epoch ms).
+   * Defaults to `Date.now()` when omitted.
+   */
+  timestamp?: number;
 }
 
 /** Outcome of a single `reindexSource()` call. */
@@ -435,6 +440,7 @@ export class IndexingService {
       }
 
       const now = Date.now();
+      const timestamp = options.timestamp ?? now;
       let mtime: number | undefined;
       if (source.type === "file") {
         const fileStat = await stat(source.path);
@@ -448,6 +454,8 @@ export class IndexingService {
           mtime,
           indexedAt: now,
           metadata: extracted.metadata,
+          // Preserve the existing timestamp unless explicitly overridden
+          ...(options.timestamp !== undefined ? { timestamp: options.timestamp } : {}),
         });
         finalSourceId = existing.id;
       } else {
@@ -457,15 +465,21 @@ export class IndexingService {
           contentHash,
           mtime,
           indexedAt: now,
+          createdAt: now,
+          timestamp,
           metadata: extracted.metadata,
         });
       }
+
+      const sourceTimestamp =
+        existing && options.timestamp === undefined ? existing.timestamp : timestamp;
 
       const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
         ...chunk,
         sourceId: finalSourceId,
         embedding: embeddings[i],
         createdAt: now,
+        timestamp: sourceTimestamp,
       }));
 
       await store.addChunks(chunkRecords);
@@ -538,11 +552,13 @@ export class IndexingService {
         metadata: extracted.metadata,
       });
 
+      // Re-index preserves the source's existing timestamp
       const chunkRecords: ChunkRecord[] = chunks.map((chunk, i) => ({
         ...chunk,
         sourceId: source.id,
         embedding: embeddings[i],
         createdAt: now,
+        timestamp: source.timestamp,
       }));
 
       await store.addChunks(chunkRecords);

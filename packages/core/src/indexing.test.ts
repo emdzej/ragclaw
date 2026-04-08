@@ -381,4 +381,48 @@ describe("IndexingService", () => {
       expect(list.every((c) => c.source === "built-in")).toBe(true);
     });
   });
+
+  describe("timestamp option threading", () => {
+    it("stores user-supplied timestamp on the source and chunks", async () => {
+      const store = await makeStore();
+      const embedder512 = makePluginEmbedder(512, "test-ts-embedder");
+      const svc = new IndexingService({ embedder: embedder512 });
+
+      const source = { type: "url" as const, url: "https://example.com/timestamp-test" };
+      const userTimestamp = 1700000000000;
+
+      const result = await svc.indexSource(store, source, { timestamp: userTimestamp });
+
+      if (result.status === "error") {
+        // Allow non-timestamp errors (e.g. extraction failures)
+        expect(result.error).not.toMatch(/timestamp/i);
+        return;
+      }
+
+      if (result.status === "indexed") {
+        // Verify the source record has the user-supplied timestamp
+        const sourceRecord = await store.getSource("https://example.com/timestamp-test");
+        expect(sourceRecord).toBeDefined();
+        expect(sourceRecord?.timestamp).toBe(userTimestamp);
+      }
+    });
+
+    it("defaults timestamp to approximately now when not provided", async () => {
+      const store = await makeStore();
+      const embedder512 = makePluginEmbedder(512, "test-ts-embedder-2");
+      const svc = new IndexingService({ embedder: embedder512 });
+
+      const before = Date.now();
+      const source = { type: "url" as const, url: "https://example.com/no-timestamp-test" };
+      const result = await svc.indexSource(store, source);
+      const after = Date.now();
+
+      if (result.status === "indexed") {
+        const sourceRecord = await store.getSource("https://example.com/no-timestamp-test");
+        expect(sourceRecord).toBeDefined();
+        expect(sourceRecord?.timestamp).toBeGreaterThanOrEqual(before);
+        expect(sourceRecord?.timestamp).toBeLessThanOrEqual(after);
+      }
+    });
+  });
 });

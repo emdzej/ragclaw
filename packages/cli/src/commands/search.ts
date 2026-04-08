@@ -11,10 +11,29 @@ import chalk from "chalk";
 import ora from "ora";
 import { getDbPath } from "../config.js";
 
+/**
+ * Parse a user-supplied timestamp value.
+ * Accepts either a numeric epoch (milliseconds) or an ISO 8601 string.
+ * Returns UTC epoch ms or `undefined` if the value is not provided.
+ * Throws on invalid input.
+ */
+function parseTimestamp(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const asNum = Number(value);
+  if (Number.isFinite(asNum) && asNum > 0) return asNum;
+  const asDate = new Date(value);
+  if (!Number.isNaN(asDate.getTime())) return asDate.getTime();
+  throw new Error(
+    `Invalid timestamp: "${value}". Provide epoch milliseconds or an ISO 8601 string.`
+  );
+}
+
 interface SearchOptions {
   db: string;
   limit: string;
   json?: boolean;
+  after?: string;
+  before?: string;
 }
 
 export async function searchCommand(query: string, options: SearchOptions): Promise<void> {
@@ -25,6 +44,11 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
     console.log(chalk.dim(`Run: ragclaw init ${options.db}`));
     process.exit(1);
   }
+
+  // Parse time filter flags
+  const after = parseTimestamp(options.after);
+  const before = parseTimestamp(options.before);
+  const filter = after !== undefined || before !== undefined ? { after, before } : undefined;
 
   const store = new Store();
   await store.open(dbPath);
@@ -45,6 +69,7 @@ export async function searchCommand(query: string, options: SearchOptions): Prom
       embedding,
       limit: parseInt(options.limit, 10),
       mode: "hybrid",
+      filter,
     });
 
     spinner.stop();

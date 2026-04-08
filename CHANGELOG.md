@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.9.0] — 2026-04-08
+
+### New features
+
+#### Temporal memory — timestamps on sources and chunks
+
+RagClaw now supports associating data with time, enabling AI agents to use it as long-term memory with temporal recall (e.g. "what did I write down last week?").
+
+**Schema changes:**
+
+- `sources.created_at` (INTEGER, epoch ms) — immutable first-seen timestamp, never overwritten on re-index
+- `sources.timestamp` (INTEGER, epoch ms) — user-supplied content time, defaults to `Date.now()` if omitted
+- `chunks.timestamp` (INTEGER, epoch ms) — denormalized copy of the source timestamp for query performance
+- `idx_chunks_timestamp` index on `chunks(timestamp)`
+
+**Search filtering:**
+
+- New `after`/`before` fields on `SearchQuery.filter` — hard WHERE clause on `chunks.timestamp`, applied before scoring
+- Works across all search modes: vector (native vec0 and JS fallback), keyword, and hybrid
+- Removed unused `sourceType`/`sourcePath` from the filter type definition (they were declared but never implemented)
+
+**CLI:**
+
+- `ragclaw add --timestamp <value>` — set content timestamp (epoch ms or ISO 8601)
+- `ragclaw search --after <value>` / `--before <value>` — filter results by time window (epoch ms or ISO 8601)
+
+**MCP tools:**
+
+- `kb_add` — new `timestamp` parameter (optional, number — UTC epoch ms)
+- `kb_search` — new `after`/`before` parameters (optional, number — UTC epoch ms), passed through query decomposition
+
+**Migration:**
+
+Lazy migration on `store.open()` — detects missing columns via `PRAGMA table_info`, runs `ALTER TABLE ADD COLUMN`, backfills existing rows from `indexed_at`/`created_at`, and creates the timestamp index. Idempotent, runs once per DB, takes milliseconds.
+
+#### Skills reorganized
+
+Skills moved from `skill/` to `skills/` with two variants:
+
+- `skills/openclaw/` — CLI-oriented skill for OpenClaw (moved from `skill/`)
+- `skills/opencode/` — MCP-oriented skill for OpenCode, renamed from `kb-search` to `memory`. Covers knowledge base search, temporal recall, and storing memories for later retrieval.
+
+---
+
 ## [0.8.1] — 2026-03-29
 
 ### Fixes

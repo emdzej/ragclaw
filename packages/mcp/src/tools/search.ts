@@ -126,7 +126,13 @@ function reciprocalRankFusion(
 // Tool implementation
 // ---------------------------------------------------------------------------
 
-async function ragSearch(args: { query: string; db?: string; limit?: number }): Promise<string> {
+async function ragSearch(args: {
+  query: string;
+  db?: string;
+  limit?: number;
+  after?: number;
+  before?: number;
+}): Promise<string> {
   const dbName = args.db || "default";
   const dbPath = getDbPath(dbName);
 
@@ -137,6 +143,12 @@ async function ragSearch(args: { query: string; db?: string; limit?: number }): 
   const store = await getCachedStore(dbName);
   const embedder = await getEmbedder(dbName, store);
   const limit = args.limit || 5;
+
+  // Build temporal filter
+  const filter =
+    args.after !== undefined || args.before !== undefined
+      ? { after: args.after, before: args.before }
+      : undefined;
 
   const subQueries = decomposeQuery(args.query);
 
@@ -150,6 +162,7 @@ async function ragSearch(args: { query: string; db?: string; limit?: number }): 
       embedding,
       limit,
       mode: "hybrid",
+      filter,
     });
   } else {
     // Multiple sub-queries — search each independently, merge with RRF
@@ -161,6 +174,7 @@ async function ragSearch(args: { query: string; db?: string; limit?: number }): 
           embedding,
           limit: limit * 2, // over-fetch per sub-query for better RRF merging
           mode: "hybrid",
+          filter,
         });
       })
     );
@@ -197,11 +211,23 @@ export function registerSearchTool(server: McpServer): void {
         query: z.string().describe("Search query text"),
         db: z.string().optional().describe("Knowledge base name (default: 'default')"),
         limit: z.number().optional().describe("Maximum number of results (default: 5)"),
+        after: z
+          .number()
+          .optional()
+          .describe(
+            "Only return chunks with timestamp >= this value (UTC epoch milliseconds). Use for temporal queries like 'what did I add in the last 24 hours'."
+          ),
+        before: z
+          .number()
+          .optional()
+          .describe(
+            "Only return chunks with timestamp < this value (UTC epoch milliseconds). Use to restrict results to a time window."
+          ),
       },
     },
-    async ({ query, db, limit }) => {
+    async ({ query, db, limit, after, before }) => {
       try {
-        const result = await ragSearch({ query, db, limit });
+        const result = await ragSearch({ query, db, limit, after, before });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {
         return { content: [{ type: "text" as const, text: `Error: ${error}` }], isError: true };

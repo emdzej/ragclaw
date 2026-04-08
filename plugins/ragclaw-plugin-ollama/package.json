@@ -1,6 +1,6 @@
 {
   "name": "ragclaw-plugin-ollama",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "RagClaw plugin for local embeddings via Ollama",
   "type": "module",
   "main": "dist/index.js",

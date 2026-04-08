@@ -341,6 +341,8 @@ export class MergeService {
         contentHash: remote.contentHash,
         mtime: remote.mtime,
         indexedAt: remote.indexedAt,
+        createdAt: remote.createdAt,
+        timestamp: remote.timestamp,
         metadata: remote.metadata,
       });
     }

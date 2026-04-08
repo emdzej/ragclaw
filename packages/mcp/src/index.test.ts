@@ -153,6 +153,7 @@ function makeEmbedder(overrides: Record<string, unknown> = {}) {
 }
 
 function makeResult(sourcePath: string, text: string): SearchResult {
+  const now = Date.now();
   const chunk: ChunkRecord = {
     id: "c1",
     sourceId: "s1",
@@ -161,7 +162,8 @@ function makeResult(sourcePath: string, text: string): SearchResult {
     startLine: 1,
     endLine: 5,
     metadata: { type: "section" },
-    createdAt: Date.now(),
+    createdAt: now,
+    timestamp: now,
   };
   return { chunk, score: 0.85, scoreVector: 0.9, scoreKeyword: 0.7 };
 }
@@ -446,7 +448,8 @@ describe("MCP kb_add — inline text (content parameter)", () => {
         expect.objectContaining({
           type: "text",
           content: "OAuth2 flow notes",
-        })
+        }),
+        expect.objectContaining({ timestamp: undefined })
       );
     });
 
@@ -462,7 +465,8 @@ describe("MCP kb_add — inline text (content parameter)", () => {
           type: "text",
           content: "API key rotation policy",
           name: "security-notes",
-        })
+        }),
+        expect.objectContaining({ timestamp: undefined })
       );
     });
 
@@ -515,5 +519,146 @@ describe("MCP kb_add — inline text (content parameter)", () => {
 
       expect(storeMock.close).toHaveBeenCalledOnce();
     });
+  });
+});
+
+// ── kb_add temporal timestamp tests ─────────────────────────────────────────
+
+describe("MCP kb_add — timestamp parameter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(true);
+    storeMock.open.mockResolvedValue(undefined);
+    storeMock.close.mockResolvedValue(undefined);
+    storeMock.getMeta.mockResolvedValue(null);
+    indexingServiceMock.indexSource.mockResolvedValue({
+      status: "indexed" as const,
+      sourceId: "s1",
+      chunks: 3,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes timestamp to indexSource when provided", async () => {
+    await callRagAdd({ content: "Temporal note", timestamp: 1700000000000 });
+
+    expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ timestamp: 1700000000000 })
+    );
+  });
+
+  it("passes timestamp: undefined to indexSource when not provided", async () => {
+    await callRagAdd({ content: "No timestamp note" });
+
+    expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ timestamp: undefined })
+    );
+  });
+
+  it("includes timestamp in successful response", async () => {
+    const result = await callRagAdd({ content: "Dated content", timestamp: 1700000000000 });
+
+    expect(result).toContain("Indexed");
+    expect(result).toContain("3 chunks");
+  });
+});
+
+// ── kb_search temporal filter tests ─────────────────────────────────────────
+
+describe("MCP kb_search — after/before temporal filter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(true);
+    storeMock.open.mockResolvedValue(undefined);
+    storeMock.close.mockResolvedValue(undefined);
+    storeMock.getMeta.mockResolvedValue(null);
+    storeMock.search.mockResolvedValue([]);
+    (mockCreateEmbedder as Mock).mockReturnValue(makeEmbedder());
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes after and before as filter to store.search", async () => {
+    await callRagSearch({
+      query: "temporal query",
+      db: freshDb(),
+      after: 1700000000000,
+      before: 1700100000000,
+    });
+
+    expect(storeMock.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: { after: 1700000000000, before: 1700100000000 },
+      })
+    );
+  });
+
+  it("passes only after when before is not provided", async () => {
+    await callRagSearch({
+      query: "after only",
+      db: freshDb(),
+      after: 1700000000000,
+    });
+
+    expect(storeMock.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: { after: 1700000000000, before: undefined },
+      })
+    );
+  });
+
+  it("passes only before when after is not provided", async () => {
+    await callRagSearch({
+      query: "before only",
+      db: freshDb(),
+      before: 1700100000000,
+    });
+
+    expect(storeMock.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: { after: undefined, before: 1700100000000 },
+      })
+    );
+  });
+
+  it("does not pass filter when neither after nor before is provided", async () => {
+    await callRagSearch({
+      query: "no filter",
+      db: freshDb(),
+    });
+
+    expect(storeMock.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: undefined,
+      })
+    );
+  });
+
+  it("passes filter through to each sub-query when query is decomposed", async () => {
+    await callRagSearch({
+      query: "how authentication works; what are the migration steps",
+      db: freshDb(),
+      after: 1700000000000,
+    });
+
+    // Should have been called twice (two sub-queries), each with the filter
+    const searchCalls = storeMock.search.mock.calls as unknown[][];
+    expect(searchCalls.length).toBe(2);
+    for (const call of searchCalls) {
+      expect(call[0]).toEqual(
+        expect.objectContaining({
+          filter: { after: 1700000000000, before: undefined },
+        })
+      );
+    }
   });
 });

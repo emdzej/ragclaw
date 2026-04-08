@@ -73,6 +73,10 @@ program
   .option("--chunker <name>", "Chunker to use (e.g. sentence, fixed, semantic, code)")
   .option("--chunk-size <n>", "Override chunk size (tokens)")
   .option("--overlap <n>", "Override overlap size (tokens)")
+  .option(
+    "--timestamp <value>",
+    "Content timestamp (epoch ms or ISO 8601). Associates content with a specific time."
+  )
   .option("--allowed-paths <paths>", "Restrict indexing to these paths (comma-separated)")
   .option("--max-depth <n>", "Max directory recursion depth")
   .option("--max-files <n>", "Max files per directory source")
@@ -107,6 +111,14 @@ program
   .argument("<query>", "Search query")
   .option("-d, --db <name>", "Knowledge base name", "default")
   .option("-l, --limit <number>", "Max results", "10")
+  .option(
+    "--after <value>",
+    "Only include chunks with timestamp after this value (epoch ms or ISO 8601)"
+  )
+  .option(
+    "--before <value>",
+    "Only include chunks with timestamp before this value (epoch ms or ISO 8601)"
+  )
   .option("--json", "Output as JSON")
   .action(searchCommand);
 

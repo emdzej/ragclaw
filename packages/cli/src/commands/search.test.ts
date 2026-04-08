@@ -89,6 +89,7 @@ function makeEmbedder(overrides: Record<string, unknown> = {}) {
 
 /** A minimal SearchResult for testing output formatting */
 function makeResult(sourcePath: string, text: string): SearchResult {
+  const now = Date.now();
   const chunk: ChunkRecord = {
     id: "c1",
     sourceId: "s1",
@@ -97,7 +98,8 @@ function makeResult(sourcePath: string, text: string): SearchResult {
     startLine: 1,
     endLine: 5,
     metadata: { type: "section" },
-    createdAt: Date.now(),
+    createdAt: now,
+    timestamp: now,
   };
   return { chunk, score: 0.85, scoreVector: 0.9, scoreKeyword: 0.7 };
 }
@@ -274,6 +276,79 @@ describe("searchCommand() — embedder resolution from DB metadata (Bug 1)", () 
       await expect(searchCommand("hello", defaultOptions)).rejects.toThrow("db error");
 
       expect(storeMock.close).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── --after / --before time filter flags ──────────────────────────────────
+
+  describe("--after / --before time filter flags", () => {
+    it("passes parsed after and before to store.search as filter", async () => {
+      await searchCommand("hello", {
+        ...defaultOptions,
+        after: "1700000000000",
+        before: "1700100000000",
+      });
+
+      expect(storeMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: { after: 1700000000000, before: 1700100000000 },
+        })
+      );
+    });
+
+    it("passes only after when before is not provided", async () => {
+      await searchCommand("hello", {
+        ...defaultOptions,
+        after: "1700000000000",
+      });
+
+      expect(storeMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: { after: 1700000000000, before: undefined },
+        })
+      );
+    });
+
+    it("passes only before when after is not provided", async () => {
+      await searchCommand("hello", {
+        ...defaultOptions,
+        before: "1700100000000",
+      });
+
+      expect(storeMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: { after: undefined, before: 1700100000000 },
+        })
+      );
+    });
+
+    it("does not pass filter when neither after nor before is provided", async () => {
+      await searchCommand("hello", defaultOptions);
+
+      expect(storeMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: undefined,
+        })
+      );
+    });
+
+    it("parses ISO 8601 strings for after and before", async () => {
+      const afterIso = "2024-01-01T00:00:00Z";
+      const beforeIso = "2024-06-01T00:00:00Z";
+      const expectedAfter = new Date(afterIso).getTime();
+      const expectedBefore = new Date(beforeIso).getTime();
+
+      await searchCommand("hello", {
+        ...defaultOptions,
+        after: afterIso,
+        before: beforeIso,
+      });
+
+      expect(storeMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: { after: expectedAfter, before: expectedBefore },
+        })
+      );
     });
   });
 });

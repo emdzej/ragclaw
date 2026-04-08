@@ -39,6 +39,10 @@ export interface SourceRecord {
   contentHash: string;
   mtime?: number;
   indexedAt: number;
+  /** Immutable first-seen time (UTC epoch ms). Never overwritten on re-index. */
+  createdAt: number;
+  /** User-supplied content time, or ingestion time if omitted (UTC epoch ms). */
+  timestamp: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -81,6 +85,8 @@ export interface Chunk {
 export interface ChunkRecord extends Chunk {
   embedding?: Float32Array;
   createdAt: number;
+  /** Content timestamp inherited from the parent source (UTC epoch ms). */
+  timestamp: number;
 }
 
 export interface Chunker {
@@ -110,8 +116,10 @@ export interface SearchQuery {
   limit?: number;
   mode?: SearchMode;
   filter?: {
-    sourceType?: ContentType;
-    sourcePath?: string;
+    /** Only return chunks with timestamp >= this value (UTC epoch ms). */
+    after?: number;
+    /** Only return chunks with timestamp < this value (UTC epoch ms). */
+    before?: number;
   };
 }
 

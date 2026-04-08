@@ -40,6 +40,7 @@ async function ragAdd(args: {
   chunker?: string;
   chunkSize?: number;
   overlap?: number;
+  timestamp?: number;
 }): Promise<string> {
   // Validate: exactly one of source or content must be provided
   const hasSource = args.source !== undefined && args.source !== "";
@@ -85,7 +86,9 @@ async function ragAdd(args: {
       };
 
       const displayName = args.name ?? "inline-text";
-      const outcome = await indexingService.indexSource(store, textSource);
+      const outcome = await indexingService.indexSource(store, textSource, {
+        timestamp: args.timestamp,
+      });
 
       switch (outcome.status) {
         case "indexed":
@@ -156,7 +159,9 @@ async function ragAdd(args: {
         src.type === "url" ? src.url : src.type === "file" ? src.path : (src.name ?? "unknown");
 
       try {
-        const outcome = await indexingService.indexSource(store, src);
+        const outcome = await indexingService.indexSource(store, src, {
+          timestamp: args.timestamp,
+        });
 
         switch (outcome.status) {
           case "indexed":
@@ -261,6 +266,12 @@ export function registerAddTool(server: McpServer): void {
           .int()
           .optional()
           .describe("Override overlap size in tokens for the selected chunker."),
+        timestamp: z
+          .number()
+          .optional()
+          .describe(
+            "Content timestamp as UTC epoch milliseconds. Associates the content with a specific point in time for temporal queries (e.g. 'what did I add yesterday'). Defaults to the current time when omitted."
+          ),
       },
     },
     async ({
@@ -281,6 +292,7 @@ export function registerAddTool(server: McpServer): void {
       chunker,
       chunkSize,
       overlap,
+      timestamp,
     }) => {
       try {
         const result = await ragAdd({
@@ -301,6 +313,7 @@ export function registerAddTool(server: McpServer): void {
           chunker,
           chunkSize,
           overlap,
+          timestamp,
         });
         return { content: [{ type: "text" as const, text: result }] };
       } catch (error) {

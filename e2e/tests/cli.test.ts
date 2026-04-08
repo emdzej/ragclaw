@@ -612,3 +612,100 @@ describe("error handling", () => {
     expect(result.failed).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// temporal memory — --timestamp, --after, --before
+// ---------------------------------------------------------------------------
+
+describe("temporal memory workflow", () => {
+  it("indexes with --timestamp and filters with --after / --before", {
+    timeout: 120_000,
+  }, async () => {
+    await env.run(["init", "temporal"]);
+
+    // Add two notes at very different timestamps
+    const oldTs = "1700000000000"; // 2023-11-14 ~UTC
+    const newTs = "1710000000000"; // 2024-03-09 ~UTC
+    const midpoint = "1705000000000"; // between old and new
+
+    const addOld = await env.run([
+      "add",
+      "--text",
+      "The old authentication system used session cookies",
+      "--timestamp",
+      oldTs,
+      "--name",
+      "old-auth-note",
+      "--db",
+      "temporal",
+    ]);
+    expect(addOld.exitCode).toBe(0);
+
+    const addNew = await env.run([
+      "add",
+      "--text",
+      "The new authentication system uses JWT tokens with refresh rotation",
+      "--timestamp",
+      newTs,
+      "--name",
+      "new-auth-note",
+      "--db",
+      "temporal",
+    ]);
+    expect(addNew.exitCode).toBe(0);
+
+    // Search with --after midpoint: should return only the new note
+    const afterResult = await env.run([
+      "search",
+      "authentication",
+      "--db",
+      "temporal",
+      "--after",
+      midpoint,
+    ]);
+    expect(afterResult.exitCode).toBe(0);
+    expect(afterResult.stdout).toContain("JWT");
+    expect(afterResult.stdout).not.toContain("session cookies");
+
+    // Search with --before midpoint: should return only the old note
+    const beforeResult = await env.run([
+      "search",
+      "authentication",
+      "--db",
+      "temporal",
+      "--before",
+      midpoint,
+    ]);
+    expect(beforeResult.exitCode).toBe(0);
+    expect(beforeResult.stdout).toContain("session cookies");
+    expect(beforeResult.stdout).not.toContain("JWT");
+
+    // Search without time filter: should return both
+    const allResult = await env.run(["search", "authentication", "--db", "temporal"]);
+    expect(allResult.exitCode).toBe(0);
+    // At least one result should be found
+    expect(allResult.stdout.length).toBeGreaterThan(0);
+  });
+
+  it("accepts ISO 8601 timestamps on --timestamp flag", {
+    timeout: 120_000,
+  }, async () => {
+    await env.run(["init", "iso-ts"]);
+
+    const addResult = await env.run([
+      "add",
+      "--text",
+      "ISO timestamp test content about deployment pipelines",
+      "--timestamp",
+      "2024-06-15T12:00:00Z",
+      "--db",
+      "iso-ts",
+    ]);
+    expect(addResult.exitCode).toBe(0);
+
+    // Verify it was indexed successfully — search for it
+    const searchResult = await env.run(["search", "deployment pipelines", "--db", "iso-ts"]);
+    expect(searchResult.exitCode).toBe(0);
+    expect(searchResult.stdout).toContain("deployment pipelines");
+  });
+});

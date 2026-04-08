@@ -9,6 +9,7 @@ Table of contents
   - [5.1 Files and directories](#51-files-and-directories)
   - [5.2 Web pages and crawling](#52-web-pages-and-crawling)
   - [5.3 Custom schemes and plugins](#53-custom-schemes-and-plugins)
+  - [5.5 Timestamps and long-term memory](#55-timestamps-and-long-term-memory)
 - [6. Searching](#6-searching)
 - [7. Keeping the index fresh](#7-keeping-the-index-fresh)
 - [8. Merging databases](#8-merging-databases)
@@ -352,6 +353,25 @@ ragclaw plugin create my-plugin-name
 
 Note: `plugin add` and `plugin remove` are currently stubs — install plugins via npm and enable/disable via the CLI.
 
+### 5.5 Timestamps and long-term memory
+
+RagClaw can serve as long-term memory for AI agents. Every indexed source and chunk carries a `timestamp` that enables time-aware retrieval — e.g. "what did I write down 2 days ago?"
+
+By default, `timestamp` is set to the current time at ingestion. You can supply a custom timestamp to record when the content was created, not when it was indexed:
+
+```bash
+# Epoch milliseconds
+ragclaw add --text "Sprint 42 retrospective notes" --timestamp 1700000000000
+
+# ISO 8601
+ragclaw add --text "Meeting notes from Q1 review" --timestamp "2025-03-15T10:00:00Z"
+
+# File with custom timestamp
+ragclaw add ./journal/2025-03-10.md --timestamp "2025-03-10"
+```
+
+On re-index, the original `timestamp` is preserved (unless explicitly overridden). The `created_at` field (first-seen time) is always immutable.
+
 ## 6. Searching
 
 Basic search example:
@@ -370,6 +390,8 @@ Additional flags:
 
 - `-l, --limit <n>` — number of results to return
 - `--json` — machine-readable output for piping to scripts
+- `--after <value>` — only return chunks with timestamp >= value (epoch ms or ISO 8601)
+- `--before <value>` — only return chunks with timestamp < value (epoch ms or ISO 8601)
 
 Embedder detection: the search command auto-detects the embedder used by a KB from DB metadata (`store_meta`). There is no `--embedder` flag on search; embedder selection is only relevant to indexing/reindexing.
 
@@ -384,6 +406,21 @@ Scripting example (bash + jq):
 ```bash
 ragclaw search "memory leak" -d monitoring-kb --json | jq '.results[0]'
 ```
+
+Time-filtered search examples:
+
+```bash
+# Everything indexed in the last 7 days
+ragclaw search "project status" --after "$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)"
+
+# Content from a specific date range
+ragclaw search "sprint notes" --after "2025-03-01" --before "2025-04-01"
+
+# Using epoch milliseconds
+ragclaw search "meeting decisions" --after 1709251200000 --before 1711929600000
+```
+
+Time filtering applies a hard cutoff — only chunks whose `timestamp` falls within the window are returned. There is no recency boost; results within the window are ranked purely by search relevance.
 
 ## 7. Keeping the index fresh
 
@@ -734,9 +771,9 @@ mcpServers:
 
 | Tool | Description |
 |------|-------------|
-| `kb_search` | Search a knowledge base (query, mode, limit) |
+| `kb_search` | Search a knowledge base (query, mode, limit, `after`/`before` time filter) |
 | `kb_read_source` | Retrieve the full indexed content of a source by path — use when you need more than the matching chunk |
-| `kb_add` | Index a file/directory/URL or inline text (`content`, `name`, `chunker`, `chunkSize`, `overlap` params supported) |
+| `kb_add` | Index a file/directory/URL or inline text (`content`, `name`, `timestamp`, `chunker`, `chunkSize`, `overlap` params supported) |
 | `kb_reindex` | Re-process changed sources (`chunker`, `chunkSize`, `overlap` params supported) |
 | `kb_db_merge` | Merge another `.db` file |
 | `kb_status` | Get KB statistics |
@@ -756,6 +793,9 @@ Index the ./src directory into ragclaw
 Search ragclaw for "error handling patterns"
 Reindex ragclaw with force=true
 Crawl https://docs.example.com and index it into ragclaw
+Remember this: the deploy key rotates every 90 days
+What did I write down about deploy keys last week?
+Search ragclaw for notes from March 2025
 ```
 
 **Security note:** the MCP server always enforces guards. Configure `allowedPaths` and other guard settings in `~/.config/ragclaw/config.yaml` before exposing RagClaw to external clients.

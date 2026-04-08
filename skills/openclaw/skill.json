@@ -1,7 +1,7 @@
 {
   "name": "ragclaw",
-  "version": "0.8.1",
-  "description": "Local-first knowledge base for RagClaw - index and search documents, code, and web pages",
+  "version": "0.9.0",
+  "description": "Local-first knowledge base and long-term memory for RagClaw - index, search, and recall with timestamps",
   "triggers": [
     "/kb",
     "knowledge base",

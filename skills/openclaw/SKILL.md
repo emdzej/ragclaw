@@ -1,10 +1,10 @@
 # RagClaw Knowledge Base Skill
 
-Local-first knowledge base for OpenClaw.
+Local-first knowledge base and long-term memory for OpenClaw.
 
 ## Description
 
-Index and search your documents, code, and web pages locally. Zero external APIs, offline embeddings, SQLite-based storage.
+Index and search your documents, code, and web pages locally. Zero external APIs, offline embeddings, SQLite-based storage. Supports temporal memory — associate data with timestamps for time-aware retrieval (e.g. "what did I write down last week?").
 
 ## Commands
 
@@ -36,6 +36,7 @@ Index a file, directory, or URL.
 - `--crawl-concurrency <n>` — Concurrent fetchers (default: 1)
 - `--crawl-delay <ms>` — Delay between requests in ms (default: 1000)
 - `--enforce-guards` — Enable path/URL security guards
+- `--timestamp <value>` — Content timestamp (epoch ms or ISO 8601; defaults to now)
 
 ### `/kb search <query>`
 Search the knowledge base.
@@ -45,6 +46,7 @@ Search the knowledge base.
 /kb search how to configure authentication
 /kb search async function error handling
 /kb search "memory leak" --mode hybrid --limit 10
+/kb search "meeting notes" --after "2025-03-01" --before "2025-04-01"
 ```
 
 **Options:**
@@ -52,6 +54,8 @@ Search the knowledge base.
 - `--limit <n>` — Max results (default: 5)
 - `--mode <mode>` — Search mode: vector|keyword|hybrid (default: hybrid)
 - `--json` — Machine-readable JSON output
+- `--after <value>` — Only return chunks with timestamp >= value (epoch ms or ISO 8601)
+- `--before <value>` — Only return chunks with timestamp < value (epoch ms or ISO 8601)
 
 ### `/kb reindex`
 Re-process changed sources and keep vectors up to date.
@@ -159,7 +163,7 @@ Knowledge bases are stored as SQLite files following XDG conventions:
 1. **Extract** — Pull text from documents (PDF, DOCX, HTML, code, images via OCR)
 2. **Chunk** — Split into semantic units (paragraphs, functions, classes)
 3. **Embed** — Generate vectors using a configurable local model (default: nomic-embed-text-v1.5, 768 dims)
-4. **Store** — SQLite with FTS5 for keyword search; embedder info written to DB metadata
-5. **Search** — Hybrid: 70% vector similarity + 30% BM25 keyword; embedder auto-detected from DB
+4. **Store** — SQLite with FTS5 for keyword search; embedder info written to DB metadata; each chunk carries a timestamp for temporal queries
+5. **Search** — Hybrid: 70% vector similarity + 30% BM25 keyword; embedder auto-detected from DB; optional time filtering via `after`/`before`
 
 All processing happens locally. No API keys required.

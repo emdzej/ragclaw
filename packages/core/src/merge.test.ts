@@ -53,11 +53,14 @@ async function addSourceWithChunks(
   dims = 768,
   contentHash = `hash-${randomUUID()}`
 ): Promise<string> {
+  const now = Date.now();
   const sourceId = await store.addSource({
     path,
     type: "file",
     contentHash,
-    indexedAt: Date.now(),
+    indexedAt: now,
+    createdAt: now,
+    timestamp: now,
   });
 
   if (texts.length > 0) {
@@ -71,7 +74,8 @@ async function addSourceWithChunks(
         endLine: i * 10 + 10,
         metadata: { type: "paragraph" as const },
         embedding: fakeEmbedding(i, dims),
-        createdAt: Date.now(),
+        createdAt: now,
+        timestamp: now,
       }))
     );
   }

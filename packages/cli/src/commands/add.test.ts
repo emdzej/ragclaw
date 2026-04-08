@@ -279,6 +279,59 @@ describe("addCommand — inline text input", () => {
     });
   });
 
+  // ── --timestamp flag ─────────────────────────────────────────────────────────
+
+  describe("--timestamp flag", () => {
+    it("passes epoch ms timestamp to indexSource as third argument", async () => {
+      await addCommand(undefined, {
+        ...defaultOptions,
+        text: "Timestamped content",
+        timestamp: "1700000000000",
+      });
+
+      expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ timestamp: 1700000000000 })
+      );
+    });
+
+    it("parses ISO 8601 string to epoch ms and passes to indexSource", async () => {
+      await addCommand(undefined, {
+        ...defaultOptions,
+        text: "ISO timestamped content",
+        timestamp: "2024-06-15T12:00:00Z",
+      });
+
+      const expectedMs = new Date("2024-06-15T12:00:00Z").getTime();
+      expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ timestamp: expectedMs })
+      );
+    });
+
+    it("passes { timestamp: undefined } when --timestamp is not provided", async () => {
+      await addCommand(undefined, { ...defaultOptions, text: "No timestamp" });
+
+      expect(indexingServiceMock.indexSource).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ timestamp: undefined })
+      );
+    });
+
+    it("reports error for invalid timestamp value", async () => {
+      await addCommand(undefined, {
+        ...defaultOptions,
+        text: "Bad timestamp",
+        timestamp: "not-a-date",
+      });
+
+      expect(spinnerMock.fail).toHaveBeenCalledWith(expect.stringContaining("Invalid timestamp"));
+    });
+  });
+
   // ── Store lifecycle ─────────────────────────────────────────────────────────
 
   describe("store lifecycle", () => {
