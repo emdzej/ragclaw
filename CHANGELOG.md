@@ -46,7 +46,7 @@ Skills moved from `skill/` to `skills/` with two variants:
 
 - **Removed all `pnpm.overrides`** — updated transitive dependencies (vitest 4.1.0→4.1.3, vite 7.3.1→8.0.7) so all CVEs are resolved naturally without version overrides. Removed stale overrides for `picomatch`, `path-to-regexp`, `@xmldom/xmldom`, and `vite`.
 - **Fixed biome lint warning** in `packages/cli/src/plugins/loader.ts` — replaced manual null guard with optional chain.
-- **Fixed Publish CI workflow** — removed the `npm install -g npm@latest` self-upgrade step entirely. The npm 11.x self-upgrade crashes on GitHub Actions Node 22 runners with `MODULE_NOT_FOUND: Cannot find module 'promise-retry'`. Node 22 ships with npm 10.x which already supports `--provenance` (added in npm 9.5.0), so the upgrade was unnecessary.
+- **Fixed Publish CI workflow** — the `npm install -g npm@latest` self-upgrade crashes on GitHub Actions Node 22 runners with `MODULE_NOT_FOUND: Cannot find module 'promise-retry'` (runner image regression), and the bundled npm 10.x fails with `ENEEDAUTH` when using `actions/setup-node`'s `.npmrc`. Fix: install npm 11.x to a local prefix (`$RUNNER_TEMP/npm`) and prepend it to `$PATH`, avoiding the global self-upgrade race while getting npm 11's OIDC auth support.
 
 ---
 

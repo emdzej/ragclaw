@@ -30,9 +30,17 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      # npm 10.x ships with Node 22 and supports --provenance (added in 9.5.0).
-      # No npm self-upgrade needed — avoids MODULE_NOT_FOUND crashes during
-      # the global npm install on GitHub Actions runners.
+      # npm 11.x is required for OIDC trusted publishing to work with
+      # actions/setup-node's .npmrc (npm 10.x bundled with Node 22 fails
+      # with ENEEDAUTH). Installing globally crashes with MODULE_NOT_FOUND
+      # (promise-retry) due to a self-upgrade race on GHA runners, so we
+      # install to a local prefix and prepend it to PATH instead.
+      - name: Install npm 11 (local prefix — avoids global self-upgrade crash)
+        run: |
+          npm install npm@latest --prefix "$RUNNER_TEMP/npm"
+          echo "$RUNNER_TEMP/npm/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Verify npm version
+        run: npm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
