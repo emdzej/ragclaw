@@ -31,7 +31,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Upgrade npm (provenance requires npm >= 9.5.0)
-        run: npm install -g npm@latest
+        run: npm install -g npm@10
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

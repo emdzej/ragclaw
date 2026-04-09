@@ -46,6 +46,7 @@ Skills moved from `skill/` to `skills/` with two variants:
 
 - **Removed all `pnpm.overrides`** — updated transitive dependencies (vitest 4.1.0→4.1.3, vite 7.3.1→8.0.7) so all CVEs are resolved naturally without version overrides. Removed stale overrides for `picomatch`, `path-to-regexp`, `@xmldom/xmldom`, and `vite`.
 - **Fixed biome lint warning** in `packages/cli/src/plugins/loader.ts` — replaced manual null guard with optional chain.
+- **Fixed Publish CI workflow** — pinned npm upgrade to `npm@10` instead of `npm@latest`. The `npm@latest` (11.x+) broke the self-upgrade step on Node 22 runners due to a missing `promise-retry` module during install.
 
 ---
 
