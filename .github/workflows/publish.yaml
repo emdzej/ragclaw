@@ -30,8 +30,9 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - name: Upgrade npm (provenance requires npm >= 9.5.0)
-        run: npm install -g npm@11.12.0
+      # npm 10.x ships with Node 22 and supports --provenance (added in 9.5.0).
+      # No npm self-upgrade needed — avoids MODULE_NOT_FOUND crashes during
+      # the global npm install on GitHub Actions runners.
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
