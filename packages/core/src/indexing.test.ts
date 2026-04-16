@@ -388,7 +388,7 @@ describe("IndexingService", () => {
       const embedder512 = makePluginEmbedder(512, "test-ts-embedder");
       const svc = new IndexingService({ embedder: embedder512 });
 
-      const source = { type: "url" as const, url: "https://example.com/timestamp-test" };
+      const source = { type: "url" as const, url: "https://example.com/ts-thread-test" };
       const userTimestamp = 1700000000000;
 
       const result = await svc.indexSource(store, source, { timestamp: userTimestamp });
@@ -401,7 +401,7 @@ describe("IndexingService", () => {
 
       if (result.status === "indexed") {
         // Verify the source record has the user-supplied timestamp
-        const sourceRecord = await store.getSource("https://example.com/timestamp-test");
+        const sourceRecord = await store.getSource("https://example.com/ts-thread-test");
         expect(sourceRecord).toBeDefined();
         expect(sourceRecord?.timestamp).toBe(userTimestamp);
       }
